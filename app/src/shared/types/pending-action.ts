@@ -10,6 +10,8 @@ export interface PendingAction {
   details: { label: string; value: string }[]
   danger: boolean
   status: PendingStatus
+  // Lý do khi failed (đề nghị agent AI thêm; chưa có thì null).
+  error?: string | null
   expires_at: string
   created_at: string
 }
@@ -24,6 +26,9 @@ export interface ConfirmInfo {
   cancel_label: string
   danger: boolean
   expires_at: string
+  // Trạng thái máy chủ ghi kèm hành động confirm trong tin (khi có).
+  status?: PendingStatus | null
+  error?: string | null
 }
 
 export function toConfirmInfo(action: PendingAction, labels: { confirm?: string; cancel?: string } = {}): ConfirmInfo {

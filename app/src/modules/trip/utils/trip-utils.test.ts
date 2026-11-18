@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Risk, Stop, TripBrief } from '@/modules/trip/types/trip'
-import { canNavigate, defaultDayNo, formatDuration, formatKm, groupStops, navigationTarget, risksByStop, sortTrips } from '@/modules/trip/utils/trip-utils'
+import { canNavigate, defaultDayNo, formatDuration, formatKm, groupStops, navigationTarget, pickedDirectionsUrl, pickedInTripOrder, risksByStop, sortTrips, stopCoord } from '@/modules/trip/utils/trip-utils'
 
 const brief = (id: number, start: string | null, end: string | null): TripBrief => ({
   id, title: `Chuyến ${id}`, start_date: start, end_date: end, nights: null, travel_mode: 'motorbike', status: 'planned', total_km: null, red_count: 0, yellow_count: 0, needs_confirmation_count: 0,
@@ -74,5 +74,32 @@ describe('thứ tự chuyến', () => {
     const days = [{ day_no: 1, date: '2026-11-17' }, { day_no: 2, date: '2026-11-18' }]
     expect(defaultDayNo(days, '2026-11-18')).toBe(2)
     expect(defaultDayNo(days, '2026-12-01')).toBe(1)
+  })
+})
+
+describe('chọn điểm để chỉ đường', () => {
+  it('điểm trong link: tọa độ 6 chữ số, không có thì tên tìm', () => {
+    expect(stopCoord(stop({ lat: 10.1, lng: 106.25 }))).toBe('10.100000,106.250000')
+    expect(stopCoord(stop({ lat: null, lng: null, place_query: ' Ao Bà Om, Trà Vinh ' }))).toBe('Ao Bà Om, Trà Vinh')
+    expect(stopCoord(stop({ lat: null, lng: null, place_query: null, title: 'Chùa Âng' }))).toBe('Chùa Âng')
+  })
+
+  it('không origin, điểm cuối là destination, còn lại là waypoints theo thứ tự lịch trình', () => {
+    const a = stop({ id: 1, seq: 1, lat: 10.1, lng: 106.2 })
+    const b = stop({ id: 2, seq: 2, lat: null, lng: null, place_query: 'Ao Bà Om, Trà Vinh' })
+    const c = stop({ id: 3, seq: 3, lat: 9.9, lng: 106.3 })
+    const ordered = pickedInTripOrder([a, b, c], new Set([3, 1, 2]))
+    expect(ordered.map((s) => s.id)).toEqual([1, 2, 3])
+    const url = pickedDirectionsUrl(ordered)
+    expect(url).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=9.900000,106.300000&travelmode=two-wheeler&avoid=highways&waypoints=10.100000,106.200000|Ao%20B%C3%A0%20Om,%20Tr%C3%A0%20Vinh&dir_action=navigate',
+    )
+    expect(url).not.toContain('origin=')
+  })
+
+  it('hai điểm: một waypoint', () => {
+    const url = pickedDirectionsUrl([stop({ lat: 1, lng: 2 }), stop({ lat: 3, lng: 4 })])
+    expect(url).toContain('destination=3.000000,4.000000')
+    expect(url).toContain('waypoints=1.000000,2.000000&')
   })
 })

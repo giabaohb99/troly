@@ -29,10 +29,11 @@ export type ChatAction =
 
 export const KNOWN_ACTION_TYPES = new Set(['open_map_navigation', 'open_map_directions', 'open_map_place', 'open_link', 'open_screen', 'confirm', 'undo', 'memory_changed', 'choices', 'file'])
 
+// Tin người dùng: máy chủ có thể chỉ gửi file_id (app hỏi thêm GET /files/{id}); tin trợ lý có đủ trường.
 export interface Attachment {
   file_id: number
-  mime: string
-  name: string
+  mime?: string | null
+  name?: string | null
   // Tệp bot xuất (QĐ-41) có cỡ; tệp người dùng gửi có thể không.
   size_bytes?: number | null
 }

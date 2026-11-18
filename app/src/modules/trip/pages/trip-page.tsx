@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Brain, CalendarPlus, ChevronLeft, FileDown, Lightbulb, Loader2, Map as MapIcon, MapPinOff, MessageCircle, MoreHorizontal, RefreshCw, Scale, Trash2, TriangleAlert } from 'lucide-react'
+import { Brain, CalendarPlus, ChevronLeft, ListChecks, Navigation, FileDown, Lightbulb, Loader2, Map as MapIcon, MapPinOff, MessageCircle, MoreHorizontal, RefreshCw, Scale, Trash2, TriangleAlert } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -9,8 +9,8 @@ import { openExternal } from '@/core/native/open-external'
 import { deleteTrip, evaluateTrip, exportDocx, getMapLinks, getTrip, sendToCalendar, updateTripStartDate } from '@/modules/trip/api/trip-api'
 import { StopRow } from '@/modules/trip/components/stop-row'
 import { ConfirmPlacesDialog, OptionsDialog, RisksDialog } from '@/modules/trip/components/trip-dialogs'
-import type { Trip, TripDay } from '@/modules/trip/types/trip'
-import { defaultDayNo, formatDuration, formatKm, groupStops, risksByStop } from '@/modules/trip/utils/trip-utils'
+import type { Stop, Trip, TripDay } from '@/modules/trip/types/trip'
+import { canNavigate, defaultDayNo, formatDuration, formatKm, groupStops, MAX_PICKED_STOPS, navigationTarget, pickedDirectionsUrl, pickedInTripOrder, risksByStop } from '@/modules/trip/utils/trip-utils'
 import { ErrorState } from '@/shared/components/error-state'
 import { SkeletonList } from '@/shared/components/skeleton-list'
 import { queryKeys } from '@/shared/constants/query-keys'
@@ -91,6 +91,20 @@ function StartDateConfirm({ trip }: { trip: Trip }) {
   )
 }
 
+// Mở Google Maps cho các điểm đã chọn: 1 điểm thì dẫn đường tới điểm đó; nhiều điểm thì link chỉ đường từ vị trí
+// hiện tại do app dựng giống links.py (điều phối chốt không làm stop_ids ở máy chủ).
+async function openPicked(chosen: Stop[]) {
+  try {
+    if (chosen.length === 1) {
+      await Maps.navigate({ ...navigationTarget(chosen[0]), mode: 'l', avoid: 'h' })
+      return
+    }
+    await Maps.openUrl({ url: pickedDirectionsUrl(chosen) })
+  } catch {
+    toast.error('Không mở được bản đồ.')
+  }
+}
+
 // Chi tiết chuyến (31 mục 3.5): điểm cần xác nhận, rủi ro, theo ngày, dẫn đường xe máy, menu ba chấm.
 export function TripPage() {
   const navigate = useNavigate()
@@ -98,6 +112,10 @@ export function TripPage() {
   const tripId = Number(useParams().tripId)
   const [params, setParams] = useSearchParams()
   const [todayKey] = useState(() => toDateKey(new Date()))
+  // Chọn điểm để chỉ đường (1.0.2): tối đa 10 điểm, mở Google Maps từ vị trí hiện tại.
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<Set<number>>(() => new Set())
+  const [pickOpening, setPickOpening] = useState(false)
   const [panel, setPanel] = useState<'menu' | 'confirm' | 'risks' | 'options' | 'delete' | null>(null)
 
   const trip = useQuery({
@@ -227,11 +245,61 @@ export function TripPage() {
                   {estimated && (day.total_km || day.ride_minutes) ? ' (ước tính)' : ''}
                 </p>
               )}
+              {day.stops.some(canNavigate) && (
+                <div className="flex justify-end pt-1">
+                  <Button
+                    size="sm"
+                    variant={picking ? 'secondary' : 'outline'}
+                    onClick={() => {
+                      setPicking(!picking)
+                      setPicked(new Set())
+                    }}
+                  >
+                    <ListChecks className="size-4" />
+                    {picking ? 'Thôi chọn' : 'Chọn điểm'}
+                  </Button>
+                </div>
+              )}
               <div className="divide-y">
                 {groupStops(day.stops).map((stop) => (
-                  <StopRow key={stop.id} stop={stop} estimated={estimated} risks={risks.get(stop.id) ?? []} facts={data.facts.filter((f) => f.stop_id === stop.id)} />
+                  <StopRow
+                    key={stop.id}
+                    stop={stop}
+                    estimated={estimated}
+                    risks={risks.get(stop.id) ?? []}
+                    facts={data.facts.filter((f) => f.stop_id === stop.id)}
+                    picked={picking ? (canNavigate(stop) ? picked.has(stop.id) : null) : undefined}
+                    onTogglePick={() => {
+                      if (!picked.has(stop.id) && picked.size >= MAX_PICKED_STOPS) {
+                        toast.info(`Google Maps chỉ nhận tối đa ${MAX_PICKED_STOPS} điểm một lần`)
+                        return
+                      }
+                      setPicked((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(stop.id)) next.delete(stop.id)
+                        else if (next.size < MAX_PICKED_STOPS) next.add(stop.id)
+                        return next
+                      })
+                    }}
+                  />
                 ))}
               </div>
+              {picking && (
+                <div className="sticky bottom-0 -mx-4 flex gap-2 border-t bg-background px-4 py-2">
+                  <Button
+                    className="flex-1"
+                    disabled={picked.size === 0 || pickOpening}
+                    onClick={() => {
+                      const chosen = pickedInTripOrder(groupStops(day.stops), picked)
+                      setPickOpening(true)
+                      void openPicked(chosen).finally(() => setPickOpening(false))
+                    }}
+                  >
+                    {pickOpening ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
+                    {picked.size <= 1 ? 'Dẫn đường' : `Chỉ đường ${picked.size} điểm`}
+                  </Button>
+                </div>
+              )}
               {day.stops.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Ngày này chưa có điểm nào.</p>}
             </section>
           )}

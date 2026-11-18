@@ -5,6 +5,8 @@ import { KNOWN_ACTION_TYPES, type ChatAction, type ChatMessage } from '@/modules
 
 export interface ChatTurn {
   clientMessageId: string
+  // Tệp người dùng gửi kèm lượt này (để hiện ngay trong bong bóng đang gửi).
+  attachments?: { file_id: number; name?: string | null; mime?: string | null }[]
   userText: string
   userMessage: ChatMessage | null
   conversationId: number | null

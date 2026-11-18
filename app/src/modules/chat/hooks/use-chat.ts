@@ -46,7 +46,7 @@ export function useChatTurn() {
       if (busyRef.current) return
       busyRef.current = true
       lastInputRef.current = input
-      let current = startTurn(clientMessageId, input.text)
+      let current: ChatTurn = { ...startTurn(clientMessageId, input.text), attachments: input.fileIds.map((id) => ({ file_id: id })) }
       let usedTool = false
       setTurn(current)
       try {

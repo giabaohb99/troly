@@ -178,7 +178,14 @@ export function ActionList({ actions, pendingActions, onChoice, disabled, hidden
           case 'memory_changed':
             return <MemoryLine key={action.id} action={action} />
           case 'confirm':
-            return <ConfirmCard key={action.id} action={action} serverStatus={pendingActions?.find((p) => p.id === action.pending_action_id)?.status} />
+            return (
+              <ConfirmCard
+                key={action.id}
+                action={action}
+                serverStatus={pendingActions?.find((p) => p.id === action.pending_action_id)?.status}
+                lookupStatus={!!pendingActions && !pendingActions.some((p) => p.id === action.pending_action_id)}
+              />
+            )
           case 'choices':
             return (
               <div key={action.id} className="flex flex-wrap gap-2">

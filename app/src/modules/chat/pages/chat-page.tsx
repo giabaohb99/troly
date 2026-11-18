@@ -254,7 +254,7 @@ export function ChatPage() {
 
           {turn && (
             <>
-              <MessageBubble role="user" text={turn.userText} />
+              <MessageBubble role="user" text={turn.userText} attachments={turn.userMessage?.attachments ?? turn.attachments} />
               {turn.status === 'streaming' && !turn.text && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
                   <Loader2 className="size-4 animate-spin" />

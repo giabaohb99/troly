@@ -41,6 +41,22 @@ export function fileKindLabel(mime: string, name: string): string {
   return 'Tệp'
 }
 
+export function isImageFile(mime: string, name: string): boolean {
+  return mime.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(name)
+}
+
+// Rút gọn giữa, giữ đuôi tệp: "bao-cao-chi-tieu-thang-11-2026.pdf" thành "bao-cao-chi…11-2026.pdf".
+export function truncateMiddle(name: string, max: number): string {
+  if (name.length <= max) return name
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 && name.length - dot <= 6 ? name.slice(dot) : ''
+  const base = ext ? name.slice(0, dot) : name
+  const keep = max - ext.length - 1
+  const head = Math.ceil(keep * 0.6)
+  const tail = keep - head
+  return `${base.slice(0, head)}…${tail > 0 ? base.slice(-tail) : ''}${ext}`
+}
+
 export function formatFileSize(bytes: number | null | undefined): string | null {
   if (!bytes || bytes <= 0) return null
   if (bytes < 1024) return `${bytes} B`

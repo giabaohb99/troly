@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Brain, Globe, Loader2, Mic, Paperclip, Send, Square, X } from 'lucide-react'
+import { Brain, FileText, Globe, Loader2, Mic, Paperclip, Send, Square, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
 import { ACCEPTED_FILES, uploadFile, type UploadedFile } from '@/modules/chat/api/upload-api'
@@ -7,6 +7,7 @@ import type { ChatMode } from '@/modules/chat/types/chat'
 import { useSpeechRecognition } from '@/shared/voice/use-speech-recognition'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/utils/cn'
+import { fileKindLabel, formatFileSize, isImageFile, truncateMiddle } from '@/shared/utils/open-file'
 
 export const MAX_MESSAGE_CHARS = 4000
 const MAX_FILES = 4
@@ -21,6 +22,10 @@ interface ComposerProps {
 interface PendingFile {
   key: string
   name: string
+  mime: string
+  size: number
+  // Ảnh: link tạm trong máy để xem trước trước khi gửi.
+  previewUrl: string | null
   uploaded: UploadedFile | null
 }
 
@@ -61,7 +66,9 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
     const chosen = Array.from(list).slice(0, MAX_FILES - files.length)
     for (const file of chosen) {
       const key = crypto.randomUUID()
-      setFiles((prev) => [...prev, { key, name: file.name, uploaded: null }])
+      const mime = file.type || ''
+      const previewUrl = isImageFile(mime, file.name) ? URL.createObjectURL(file) : null
+      setFiles((prev) => [...prev, { key, name: file.name, mime, size: file.size, previewUrl, uploaded: null }])
       try {
         const uploaded = await uploadFile(file)
         setFiles((prev) => prev.map((f) => (f.key === key ? { ...f, uploaded } : f)))
@@ -90,6 +97,43 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
   return (
     <form onSubmit={handleSubmit} className="-mx-4 shrink-0 border-t bg-background px-4 py-2">
       <div className="mx-auto flex max-w-lg flex-col gap-2">
+        {files.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {files.map((file) => (
+              <div key={file.key} className="relative shrink-0">
+                {file.previewUrl ? (
+                  <img src={file.previewUrl} alt={file.name} className="size-16 rounded-xl object-cover" />
+                ) : (
+                  <div className="flex h-16 w-40 items-center gap-2 rounded-xl border bg-card px-2.5">
+                    <FileText className="size-5 shrink-0 text-primary" />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium" title={file.name}>
+                        {truncateMiddle(file.name, 20)}
+                      </span>
+                      <span className="block text-[11px] text-muted-foreground">{[fileKindLabel(file.mime, file.name), formatFileSize(file.size)].filter(Boolean).join(' · ')}</span>
+                    </span>
+                  </div>
+                )}
+                {!file.uploaded && (
+                  <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/60" aria-label="Đang tải lên">
+                    <Loader2 className="size-4 animate-spin" />
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Bỏ tệp ${file.name}`}
+                  onClick={() => {
+                    if (file.previewUrl) URL.revokeObjectURL(file.previewUrl)
+                    setFiles((prev) => prev.filter((f) => f.key !== file.key))
+                  }}
+                  className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-background"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
@@ -109,15 +153,6 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
             <Globe className="size-3.5" />
             Tìm web
           </button>
-          {files.map((file) => (
-            <span key={file.key} className="inline-flex max-w-[10rem] items-center gap-1 rounded-full bg-secondary px-2 py-1 text-xs">
-              {file.uploaded ? null : <Loader2 className="size-3 animate-spin" />}
-              <span className="truncate">{file.name}</span>
-              <button type="button" aria-label={`Bỏ tệp ${file.name}`} onClick={() => setFiles((prev) => prev.filter((f) => f.key !== file.key))}>
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
           {draft.length > MAX_MESSAGE_CHARS - 200 && (
             <span className={cn('ml-auto text-xs', tooLong ? 'text-destructive' : 'text-muted-foreground')}>
               {draft.length}/{MAX_MESSAGE_CHARS}

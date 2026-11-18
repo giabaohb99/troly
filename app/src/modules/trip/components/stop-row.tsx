@@ -1,5 +1,6 @@
 import {
   BedDouble,
+  Check,
   Bike,
   Clock,
   Coffee,
@@ -57,7 +58,17 @@ async function openMap(open: () => Promise<unknown>) {
 
 // Một điểm trong ngày (31 mục 3.5): giờ, loại, tên, km và giờ chạy từ điểm trước, mốc cứng, rủi ro, Dẫn đường, Xem.
 // Dẫn đường: xe hai bánh, tránh cao tốc (30 mục 3.12).
-export function StopRow({ stop, risks, facts, estimated }: { stop: Stop; risks: Risk[]; facts: TripFact[]; estimated: boolean }) {
+interface StopRowProps {
+  stop: Stop
+  risks: Risk[]
+  facts: TripFact[]
+  estimated: boolean
+  // Chế độ Chọn điểm: undefined là không chọn; null là điểm này không chọn được (điểm phụ).
+  picked?: boolean | null
+  onTogglePick?: () => void
+}
+
+export function StopRow({ stop, risks, facts, estimated, picked, onTogglePick }: StopRowProps) {
   const Icon = CATEGORY_ICON[stop.category] ?? MapPin
   const role = ROLE_LABEL[stop.role]
   const legParts = [formatKm(stop.leg_km), stop.leg_minutes ? `khoảng ${formatDuration(stop.leg_minutes)}` : null].filter(Boolean)
@@ -65,6 +76,19 @@ export function StopRow({ stop, risks, facts, estimated }: { stop: Stop; risks: 
   const secondary = stop.role !== 'main' && stop.role !== 'via'
   return (
     <div className={cn('flex gap-3 py-3', secondary && 'pl-6 opacity-80')}>
+      {picked !== undefined && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={!!picked}
+          aria-label={`Chọn ${stop.title}`}
+          disabled={picked === null}
+          onClick={onTogglePick}
+          className={cn('mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border disabled:opacity-30', picked && 'border-primary bg-primary text-primary-foreground')}
+        >
+          {picked && <Check className="size-4" />}
+        </button>
+      )}
       <span className="w-11 shrink-0 pt-0.5 text-sm text-muted-foreground tabular-nums">{stopTime(stop)}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-start gap-2">

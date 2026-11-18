@@ -1,6 +1,6 @@
-import { FileText } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { MessageText } from '@/modules/chat/components/message-text'
+import { AttachmentPreview } from '@/modules/chat/components/attachment-preview'
 import { CitationList } from '@/modules/chat/components/citation-list'
 import { FileCard } from '@/modules/chat/components/file-card'
 import type { Attachment, Citation } from '@/modules/chat/types/chat'
@@ -27,12 +27,9 @@ export function MessageBubble({ messageId, role, text, model, citations, attachm
   return (
     <div id={messageId ? `tin-${messageId}` : undefined} className={cn('flex scroll-mt-4 flex-col gap-1.5', role === 'user' ? 'items-end' : 'items-start')}>
       {role === 'user' && attachments && attachments.length > 0 && (
-        <div className="flex flex-wrap justify-end gap-1">
+        <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
           {attachments.map((file) => (
-            <span key={file.file_id} className="inline-flex items-center gap-1 rounded-lg bg-secondary px-2 py-1 text-xs">
-              <FileText className="size-3.5" />
-              {file.name}
-            </span>
+            <AttachmentPreview key={file.file_id} attachment={file} />
           ))}
         </div>
       )}
@@ -46,7 +43,8 @@ export function MessageBubble({ messageId, role, text, model, citations, attachm
           <MessageText text={text} />
         </p>
       )}
-      {role === 'assistant' && attachments?.map((file) => <FileCard key={file.file_id} file={file} />)}
+      {role === 'assistant' &&
+        attachments?.map((file) => <FileCard key={file.file_id} file={{ file_id: file.file_id, name: file.name ?? 'Tệp', mime: file.mime ?? '', size_bytes: file.size_bytes }} />)}
       {modelLabel && (
         <span className="px-1 text-[11px] text-muted-foreground/80">
           {modelLabel}

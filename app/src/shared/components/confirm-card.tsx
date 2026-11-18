@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CircleCheck, Clock, Loader2, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { getErrorMessage } from '@/core/api/api-error'
 import { Alarm } from '@/core/native/alarm'
-import { approveAction, rejectAction } from '@/shared/api/pending-action-api'
+import { approveAction, getActionStatus, rejectAction } from '@/shared/api/pending-action-api'
 import { queryKeys } from '@/shared/constants/query-keys'
 import type { ConfirmInfo, PendingStatus } from '@/shared/types/pending-action'
 import { Button } from '@/shared/ui/button'
 import { formatTime } from '@/shared/utils/format'
+import { classifyDecisionError, initialStatus, outcomeFromAction, outcomeFromServer, type CardOutcome } from '@/shared/utils/pending-decision'
 import { cn } from '@/shared/utils/cn'
 
 function hoursLeft(expiresAt: string, now = Date.now()): number {
@@ -17,52 +18,82 @@ function hoursLeft(expiresAt: string, now = Date.now()): number {
 interface ConfirmCardProps {
   action: ConfirmInfo
   serverStatus?: PendingStatus
+  // Thẻ trong lịch sử mà danh sách việc chờ duyệt không còn nó: hỏi máy chủ trạng thái thật trước khi hiện nút.
+  lookupStatus?: boolean
   className?: string
   onDecided?: (status: PendingStatus) => void
 }
 
 // Thẻ duyệt: chỉ cho gửi ra ngoài, xóa hàng loạt, xóa chuyến (QĐ-27). Duyệt chỉ bằng nút (31 mục 3.3).
-export function ConfirmCard({ action, serverStatus, className, onDecided }: ConfirmCardProps) {
+// Dùng trạng thái máy chủ; gặp 409 thì tải lại trạng thái và hiện kết quả cuối (lỗi thẻ kẹt ở bản 1.0.1).
+export function ConfirmCard({ action, serverStatus, lookupStatus, className, onDecided }: ConfirmCardProps) {
   const queryClient = useQueryClient()
-  const [status, setStatus] = useState<PendingStatus | null>(null)
+  const [outcome, setOutcome] = useState<CardOutcome | null>(null)
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState('')
   const [resultAt, setResultAt] = useState<string | null>(null)
   const sendingRef = useRef(false)
   const [openedAt] = useState(() => Date.now())
-  const expired = Date.parse(action.expires_at) < openedAt
-  const effective: PendingStatus = status ?? serverStatus ?? (expired ? 'expired' : 'pending')
+  const lookup = useQuery({
+    queryKey: ['pending-action', action.pending_action_id],
+    queryFn: () => getActionStatus(action.pending_action_id),
+    enabled: !!lookupStatus && !outcome && !action.status,
+    staleTime: 60_000,
+  })
+  const looked = lookup.data ? outcomeFromServer(lookup.data) : null
+  const current: CardOutcome = outcome ?? looked ?? { status: initialStatus(action.status, serverStatus), reason: action.error ?? null, transient: false }
+
+  const finish = (next: CardOutcome) => {
+    setOutcome(next)
+    setResultAt(new Date().toISOString())
+    onDecided?.(next.status)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
+    void queryClient.invalidateQueries({ queryKey: ['pending-action', action.pending_action_id] })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.expense.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.trip.all })
+    if (next.status === 'done') void Alarm.sync()
+  }
 
   async function decide(approve: boolean) {
     if (sendingRef.current) return
     sendingRef.current = true
     setSending(true)
-    setError('')
     try {
-      let next: PendingStatus = 'rejected'
       if (approve) {
         const result = await approveAction(action.pending_action_id)
-        next = result.action.status === 'pending' ? 'done' : result.action.status
+        finish(outcomeFromAction(result.action, result.result_text))
       } else {
-        await rejectAction(action.pending_action_id)
+        const result = await rejectAction(action.pending_action_id)
+        finish(outcomeFromAction({ ...result.action, status: result.action.status === 'pending' ? 'rejected' : result.action.status }))
       }
-      setStatus(next)
-      setResultAt(new Date().toISOString())
-      onDecided?.(next)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.expense.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
-      if (next === 'done') void Alarm.sync()
     } catch (err) {
-      setError(getErrorMessage(err))
-      setStatus('failed')
+      const kind = classifyDecisionError(err)
+      if (kind === 'refetch') {
+        // Máy chủ đã xử lý hoặc hết hạn: lấy trạng thái thật, không hiện lại nút.
+        const real = await getActionStatus(action.pending_action_id).catch(() => null)
+        const next = real ? outcomeFromServer(real) : { status: 'expired' as const, reason: null, transient: false }
+        // Bấm Bỏ mà máy chủ vẫn giữ failed: coi như đã bỏ trên máy này.
+        finish(!approve && next.status === 'failed' ? { status: 'rejected', reason: null, transient: false } : next)
+      } else if (!approve && current.status === 'failed') {
+        finish({ status: 'rejected', reason: null, transient: false })
+      } else {
+        setOutcome({ status: 'failed', reason: getErrorMessage(err), transient: kind === 'transient' })
+      }
     } finally {
       sendingRef.current = false
       setSending(false)
     }
   }
 
-  if (effective === 'done') {
+  if (lookupStatus && !outcome && !action.status && lookup.isPending) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        {action.title}
+      </p>
+    )
+  }
+  if (current.status === 'done') {
     return (
       <p className="flex items-center gap-2 text-sm text-primary">
         <CircleCheck className="size-4" />
@@ -71,7 +102,7 @@ export function ConfirmCard({ action, serverStatus, className, onDecided }: Conf
       </p>
     )
   }
-  if (effective === 'rejected') {
+  if (current.status === 'rejected') {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Ban className="size-4" />
@@ -79,7 +110,7 @@ export function ConfirmCard({ action, serverStatus, className, onDecided }: Conf
       </p>
     )
   }
-  if (effective === 'expired') {
+  if (current.status === 'expired') {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Clock className="size-4" />
@@ -88,6 +119,7 @@ export function ConfirmCard({ action, serverStatus, className, onDecided }: Conf
     )
   }
 
+  const failed = current.status === 'failed'
   return (
     <div className={cn('w-full max-w-[92%] rounded-2xl border bg-card p-4', className, action.danger ? 'border-destructive/40' : 'border-primary/40')}>
       <p className="flex items-center gap-2 font-semibold">
@@ -105,10 +137,10 @@ export function ConfirmCard({ action, serverStatus, className, onDecided }: Conf
           ))}
         </dl>
       )}
-      {effective === 'failed' && error && (
-        <p className="mt-3 flex items-center gap-2 text-sm text-destructive">
-          <TriangleAlert className="size-4 shrink-0" />
-          {error}
+      {failed && (
+        <p className="mt-3 flex items-start gap-2 text-sm text-destructive">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {current.reason ?? 'Không làm được việc này.'}
         </p>
       )}
       <div className="mt-4 flex gap-2">
@@ -117,12 +149,14 @@ export function ConfirmCard({ action, serverStatus, className, onDecided }: Conf
             {action.cancel_label || 'Bỏ'}
           </Button>
         )}
-        <Button variant={action.danger ? 'destructive' : 'default'} className="flex-1" disabled={sending} onClick={() => void decide(true)}>
-          {sending ? <Loader2 className="size-4 animate-spin" /> : effective === 'failed' ? <RefreshCw className="size-4" /> : null}
-          {sending ? 'Đang làm...' : effective === 'failed' ? 'Thử lại' : action.confirm_label || 'Duyệt'}
-        </Button>
+        {(!failed || current.transient) && (
+          <Button variant={action.danger ? 'destructive' : 'default'} className="flex-1" disabled={sending} onClick={() => void decide(true)}>
+            {sending ? <Loader2 className="size-4 animate-spin" /> : failed ? <RefreshCw className="size-4" /> : null}
+            {sending ? 'Đang làm...' : failed ? 'Thử lại' : action.confirm_label || 'Duyệt'}
+          </Button>
+        )}
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">Hết hạn sau {hoursLeft(action.expires_at, openedAt)} giờ</p>
+      {!failed && <p className="mt-2 text-xs text-muted-foreground">Hết hạn sau {hoursLeft(action.expires_at, openedAt)} giờ</p>}
     </div>
   )
 }

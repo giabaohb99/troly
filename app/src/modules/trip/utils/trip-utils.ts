@@ -74,4 +74,38 @@ export function defaultDayNo(days: { day_no: number; date: string | null }[], to
   return days.find((d) => d.date === todayKey)?.day_no ?? days[0]?.day_no ?? 1
 }
 
+// Chọn điểm để chỉ đường (1.0.2): Google Maps nhận tối đa 10 điểm một lần.
+export const MAX_PICKED_STOPS = 10
+
+// Điểm trong link như `_coord` của backend/app/modules/trip/links.py: tọa độ 6 chữ số, không có thì tên tìm.
+export function stopCoord(stop: Pick<Stop, 'lat' | 'lng' | 'place_query' | 'title'>): string {
+  if (stop.lat !== null && stop.lng !== null) return `${Number(stop.lat).toFixed(6)},${Number(stop.lng).toFixed(6)}`
+  return (stop.place_query || stop.title || '').trim()
+}
+
+// Mã hóa như urlencode(quote_via=quote, safe=",|") của Python: giữ dấu phẩy và dấu |.
+function encodeParam(value: string): string {
+  return encodeURIComponent(value).replace(/%2C/gi, ',').replace(/%7C/gi, '|')
+}
+
+// Link chỉ đường các điểm đã chọn: không có origin (Google lấy vị trí hiện tại), destination là điểm cuối, waypoints
+// là các điểm còn lại theo thứ tự trong lịch trình. Đây là đường chính (máy chủ không dựng link này).
+export function pickedDirectionsUrl(stops: Pick<Stop, 'lat' | 'lng' | 'place_query' | 'title'>[]): string {
+  const points = stops.map(stopCoord)
+  const params: [string, string][] = [
+    ['api', '1'],
+    ['destination', points[points.length - 1]],
+    ['travelmode', 'two-wheeler'],
+    ['avoid', 'highways'],
+  ]
+  if (points.length > 1) params.push(['waypoints', points.slice(0, -1).join('|')])
+  params.push(['dir_action', 'navigate'])
+  return `https://www.google.com/maps/dir/?${params.map(([k, v]) => `${k}=${encodeParam(v)}`).join('&')}`
+}
+
+// Các điểm đã chọn xếp theo thứ tự trong lịch trình (không theo thứ tự bấm).
+export function pickedInTripOrder(ordered: Stop[], picked: Set<number>): Stop[] {
+  return ordered.filter((s) => picked.has(s.id))
+}
+
 export const TRAVEL_MODE_LABEL = { motorbike: 'Xe máy', car: 'Ô tô', walk: 'Đi bộ' } as const

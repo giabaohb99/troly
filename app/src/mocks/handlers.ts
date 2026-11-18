@@ -51,6 +51,10 @@ const EXPORT_FILES: Record<string, { mime: string; ext: string }> = {
   excel: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' },
 }
 export const mockFiles = new Map<number, { id: number; name: string; mime: string; size_bytes: number }>()
+// Nội dung tệp người dùng tải lên trong chế độ giả (để xem trước ảnh).
+const mockBlobs = new Map<number, Blob>()
+// Việc chờ duyệt mà duyệt sẽ thất bại (đối tượng không còn).
+const failingActions = new Set<number>()
 
 function planReply(text: string, mode: string) {
   const lower = text.toLowerCase()
@@ -72,6 +76,13 @@ function planReply(text: string, mode: string) {
       { id: 'a1', type: 'open_screen', label: 'Sửa khoản này', screen: 'expense_detail', params: { expense_id: id } },
     ]
     return { tool: { name: 'add_expense', label: 'Đang ghi khoản chi' }, reply: `Ghi ${amount.toLocaleString('vi-VN')} đ ${merchant.toLowerCase()}, ăn uống.`, model: 'claude-haiku-5-5', actions, citations: null }
+  }
+  if (lower.includes('xóa chuyến')) {
+    const pending = { id: nextId(), tool_name: 'delete_trip', title: 'Xóa chuyến Đà Lạt', summary: 'Xóa cả chuyến cần bấm duyệt.', details: [{ label: 'Chuyến', value: 'Đà Lạt cuối tuần' }], danger: true, status: 'pending' as const, expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(), created_at: new Date().toISOString() }
+    mockDb.pending.push(pending)
+    failingActions.add(pending.id)
+    const actions: ChatAction[] = [{ id: 'a1', type: 'confirm', label: pending.title, pending_action_id: pending.id, title: pending.title, summary: pending.summary, details: pending.details, confirm_label: 'Xóa', cancel_label: 'Bỏ', danger: true, expires_at: pending.expires_at }]
+    return { tool: { name: 'delete_trip', label: 'Đang chuẩn bị xóa' }, reply: 'Bấm Xóa để xóa chuyến.', model: 'claude-haiku-5-5', actions, citations: null }
   }
   if (lower.includes('xóa')) {
     const victims = mockDb.expenses.filter((e) => !e.deleted).slice(0, 2)
@@ -198,7 +209,7 @@ export const handlers = [
   http.post(`${API}/chat/messages`, async ({ request }) => {
     const body = (await request.json()) as { text: string; mode?: string; attachment_file_ids?: number[] }
     if (body.text.toLowerCase().includes('lỗi mạng')) return fail(502, 'AI_UNAVAILABLE', 'Trợ lý đang lỗi, thử lại sau.')
-    const userMessage = message('user', body.text)
+    const userMessage = message('user', body.text, { attachments: body.attachment_file_ids?.length ? body.attachment_file_ids.map((id) => ({ file_id: id })) : null })
     const plan = planReply(body.text, body.mode ?? 'chat')
     const attachments = 'attachments' in plan ? (plan.attachments as ChatMessage['attachments']) : null
     const assistant = message('assistant', plan.reply, { model: plan.model, citations: plan.citations, actions: plan.actions, attachments })
@@ -222,9 +233,17 @@ export const handlers = [
     }
     const action = mockDb.pending.find((p) => p.id === Number(params.id))
     if (!action || action.status !== 'pending') return fail(409, 'ACTION_NOT_PENDING', 'Hành động này đã được xử lý.')
+    if (failingActions.has(action.id)) {
+      Object.assign(action, { status: 'failed', error: 'Chuyến này đã bị xóa trước đó.' })
+      return ok({ action, result_text: 'Chuyến này đã bị xóa trước đó.' })
+    }
     action.status = 'done'
     mockDb.expenses.filter((e) => !e.deleted).slice(0, 2).forEach((e) => (e.deleted = true))
     return ok({ action, result_text: 'Đã xóa 2 khoản.' })
+  }),
+  http.get(`${API}/chat/actions`, ({ request }) => {
+    const wanted = (new URL(request.url).searchParams.get('status') ?? 'pending').split(',')
+    return ok({ items: [...mockDb.pending, ...[...calendarPending.values()].map((c) => c.action)].filter((a) => wanted.includes(a.status)) })
   }),
   http.post(`${API}/chat/actions/:id/reject`, ({ params }) => {
     const calendar = calendarPending.get(Number(params.id))
@@ -234,6 +253,7 @@ export const handlers = [
     }
     const action = mockDb.pending.find((p) => p.id === Number(params.id))
     if (!action) return fail(404, 'NOT_FOUND', 'Không tìm thấy.')
+    if (action.status !== 'pending') return fail(409, 'ACTION_NOT_PENDING', 'Hành động này đã được xử lý.')
     action.status = 'rejected'
     return ok({ action })
   }),
@@ -251,16 +271,25 @@ export const handlers = [
 
   // Kiểm purpose như máy chủ thật (file/models.py PURPOSES); lệch là 400 giống thật.
   http.post(`${API}/files/upload-url`, async ({ request }) => {
-    const body = (await request.json()) as { purpose?: string }
+    const body = (await request.json()) as { purpose?: string; original_name?: string; mime?: string; size_bytes?: number }
     const purposes = ['chat_attachment', 'voice', 'document', 'trip_source', 'trip_export', 'report_export', 'other']
     if (body.purpose !== undefined && !purposes.includes(body.purpose)) return fail(400, 'VALIDATION_ERROR', 'Dữ liệu không hợp lệ.')
-    return ok({ file_id: nextId(), upload_url: '/mock-r2/upload', upload_headers: null, expires_at: new Date(Date.now() + 300_000).toISOString() })
+    const id = nextId()
+    mockFiles.set(id, { id, name: body.original_name ?? 'tep', mime: body.mime ?? 'application/octet-stream', size_bytes: body.size_bytes ?? 0 })
+    return ok({ file_id: id, upload_url: `/mock-r2/upload/${id}`, upload_headers: null, expires_at: new Date(Date.now() + 300_000).toISOString() })
   }),
-  http.put('/mock-r2/upload', () => new HttpResponse(null, { status: 200 })),
+  http.put('/mock-r2/upload/:id', async ({ params, request }) => {
+    mockBlobs.set(Number(params.id), await request.blob())
+    return new HttpResponse(null, { status: 200 })
+  }),
   http.get(`${API}/files/:id`, ({ params }) => {
     const file = mockFiles.get(Number(params.id))
     if (!file) return fail(404, 'NOT_FOUND', 'Không tìm thấy tệp.')
-    return ok({ id: file.id, original_name: file.name, mime: file.mime, size_bytes: file.size_bytes, download_url: `/mock-files/${file.name}` })
+    return ok({ id: file.id, original_name: file.name, mime: file.mime, size_bytes: file.size_bytes, download_url: mockBlobs.has(file.id) ? `/mock-blobs/${file.id}` : `/mock-files/${file.name}` })
+  }),
+  http.get('/mock-blobs/:id', ({ params }) => {
+    const blob = mockBlobs.get(Number(params.id))
+    return blob ? new HttpResponse(blob, { headers: { 'Content-Type': blob.type || 'application/octet-stream' } }) : new HttpResponse(null, { status: 404 })
   }),
   http.get('/mock-files/:name', ({ params }) => new HttpResponse(`Tệp giả ${String(params.name)}`, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })),
   http.post(`${API}/files/:id/complete`, ({ params }) => ok({ id: Number(params.id), status: 'ready' })),
