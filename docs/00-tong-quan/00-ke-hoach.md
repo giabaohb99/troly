@@ -80,7 +80,7 @@ Mỗi agent là một phiên Claude Code riêng, gom trong nhóm **agent trợ l
 
 0. **Bảng việc chung** ở `docs/90-quan-ly/bang-viec.md`: mọi việc, người giữ, chờ ai, trạng thái; hỏi nhỏ thì agent nhắn thẳng nhau rồi ghi lại, đổi hợp đồng thì qua điều phối.
 1. **Chốt hợp đồng trước.** Điều phối chốt schema, API và tên công cụ của phase theo 11, 12, 20; agent không tự đổi giữa chừng.
-2. **Chia theo vùng mã, mỗi agent một nhánh riêng** (git worktree), không hai agent sửa cùng một tệp:
+2. **Chia theo vùng mã, làm chung một thư mục** `D:/giabao/troly`, không hai agent sửa cùng một tệp; điều phối commit:
 
 | Agent | Vùng mã |
 |---|---|
@@ -92,10 +92,24 @@ Mỗi agent là một phiên Claude Code riêng, gom trong nhóm **agent trợ l
 
 3. **Thứ tự trong phase:** backend và hạ tầng đi trước; agent AI viết `tools.py` khi `service.py` đã có; app chạy song song bằng API giả rồi nối thật.
 4. **Kiểm trong Docker:** mỗi agent chạy bài kiểm phần mình sửa; CI chạy đủ và build APK.
-5. **Điều phối rà và gộp** từng nhánh vào `main`, chạy lại bài kiểm, commit, đẩy.
-6. **Deploy:** điều phối chạy `scripts/deploy.sh`; lần đầu và mỗi lần đụng VPS (dừng `core-game`, đổi Cloudflare) đều hỏi người dùng trước.
+5. **Điều phối rà**, chạy lại bài kiểm, commit, đẩy `main`.
+6. **Deploy:** điều phối chạy `scripts/deploy.sh`. Không đụng Gamebar, gym, tunnel (QĐ-29).
 7. **Người dùng thử trên S25+** theo danh sách thử tay của phase; lỗi thì sửa vòng nhỏ rồi mới sang phase sau.
 8. **Ghi lại:** nhật ký việc, và sửa tài liệu nếu mã khác thiết kế.
+
+### 4.4 Luật mỗi phase (QĐ-30)
+
+Rút từ app gym: đổi một người sang nhiều người giữa chừng, ba lần sửa lỗi điện thoại kẹt bản cũ và màn đen, đổi luật tài khoản ba lần trong một ngày, làm lại màn tập và ô nhập kg nhiều lần.
+
+| Luật | Cụ thể |
+|---|---|
+| **Chốt trước khi viết mã** | Danh sách việc của phase, hợp đồng (bảng, API, công cụ AI) và khung màn hình chốt trên bảng việc. Giữa phase chỉ sửa lỗi chặn; ý mới ghi vào *Hàng chờ ý tưởng*, làm ở phase sau |
+| **Lát cắt mỏng trước** | Ngày đầu phase dựng một đường chạy từ đầu tới cuối trên Galaxy S25+ (app, API, DB, AI), rồi mới làm dày từng màn |
+| **Đường cập nhật và lỗi có từ Phase 1** | App báo lỗi giao diện và lỗi gọi API về máy chủ (`POST /api/v1/client-logs`); kiểm bản APK mới và thử cập nhật đè trên máy thật ở mọi phase; không có màn trắng hay đen: lỗi luôn hiện câu và nút *Tải lại* |
+| **Dữ liệu đúng từ đầu** | Bảng theo 11; migration chỉ đi tiến, không đổi tên cột tùy hứng; sửa dữ liệu thật trên VPS phải sao lưu trước và đi bằng lệnh có sẵn, không gõ SQL tay |
+| **Giao diện một vòng** | Phase có màn mới thì có khung màn trước; người dùng thử xong gom góp ý một lần, sửa một vòng; không sửa lẻ từng nút qua nhiều lần đẩy |
+| **Đo AI trước khi chốt** | Câu lệnh, công cụ, model chạy bộ câu mẫu trước khi đưa lên máy; đổi model dựa trên số đo |
+| **Xong phase là** | Bài kiểm phần dễ sai xanh; CI build APK; deploy; người dùng thử theo danh sách tối đa 10 mục; lỗi gom thành một vòng sửa; nhật ký, tài liệu, bảng việc cập nhật; gắn thẻ bản (`v0.1`, `v0.2`...) để quay lui |
 
 ## 5. Ngân sách
 

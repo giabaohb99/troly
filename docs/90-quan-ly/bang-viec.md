@@ -36,15 +36,40 @@ Trạng thái: `chờ`, `đang làm`, `chờ rà`, `xong`, `chặn`. Mã việc:
 | A-04 | A | Vòng 3 gọn hóa 40, 41 | agent Google | | xong | 40: 991 xuống 561 dòng; 41: 880 xuống 461. Một đổi hợp đồng ở mục 4 (`trip.ferries`); phần còn lại theo QĐ-26 chờ 11 gom |
 | A-05 | A | Vòng 3 gọn hóa 50, 60, 70 | agent hạ tầng | | xong | 50: 791 xuống 333 dòng; 60: 402 xuống 166; 70: 496 xuống 214. Hai đổi hợp đồng ở mục 4 |
 | A-06 | A | Rà nhanh, commit tài liệu | điều phối | | xong | Tài liệu còn khoảng 4.900 dòng (từ khoảng 8.600) |
-| 0-01 | 0 | Chạy `ss -ltn`, `docker stats --no-stream`, `df -h /` trên VPS, gửi kết quả | người dùng | | chờ | Điều phối không SSH được (bộ kiểm quyền chặn); người dùng chạy hoặc cho phép |
+| 0-01 | 0 | Kiểm VPS: cổng, RAM, ổ, container | điều phối | | xong | 18/11: cổng 8200 trống; RAM 3,9 GB, còn dùng được 2,8 GB, swap 8 GB; ổ còn 15 GB trên 22 GB; core-game 51 MB, gymcanhan 40 MB, cloudflared 19 MB; bộ đệm build 1,3 GB |
 | 0-02 | 0 | Thêm Public Hostname `troly.baohuynh.io.vn` trỏ `http://localhost:8200` | người dùng | 0-01 | chờ | |
 | 0-03 | 0 | Tạo khóa API Anthropic cho troly, đặt hạn mức chi trên trang Anthropic | người dùng | | chờ | |
 | 0-04 | 0 | Tạo bucket R2 và mã truy cập | người dùng | | chờ | Số bucket theo 50 bản 3 |
 | 0-05 | 0 | Sinh khóa ký APK, cất hai bản, đặt secret GitHub | người dùng, agent hạ tầng | | chờ | |
-| 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | A-06 | chờ | |
-| 0-07 | 0 | Tạm dừng `core-game`, giữ `cloudflared`, kiểm gym còn sống | điều phối | 0-01, người dùng xác nhận | chờ | QĐ-24 |
+| 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | | đang làm | |
+| 0-07 | 0 | Tạm dừng `core-game` | điều phối | | bỏ | QĐ-29: để Gamebar chạy |
+| 1-01 | 1 | Chốt hợp đồng Phase 1: các mục V1.0, V1.1 trong 11, 12, 20 + `POST /client-logs` | điều phối | 0-06 | chờ | |
+| 1-02 | 1 | Backend lõi: config, db, auth (đăng nhập, mã làm mới 365 ngày, mã thiết bị), lỗi, log, `client-logs`, migration đầu | agent kiến trúc | 1-01 | chờ | |
+| 1-03 | 1 | Module setting, file (tải lên R2, trích chữ), memory, chat (SSE, hành động chờ duyệt, hoàn tác), expense, search, device (kiểm bản APK) | agent kiến trúc | 1-02 | chờ | |
+| 1-04 | 1 | Worker và job V1.0: sao lưu tuần, dọn dữ liệu, tóm tắt phiên 04:05, trích chữ tệp, hết hạn duyệt, trả dòng kẹt, kiểm ổ | agent kiến trúc | 1-02 | chờ | |
+| 1-05 | 1 | Tầng AI: client, giá, lời nhắc, `run_turn`, nén phiên, nối phiên 3 giờ, chia model, tìm web, hành động | agent AI | 1-02 | chờ | |
+| 1-06 | 1 | `tools.py` của memory, chat, file, expense, search; bộ câu mẫu và `FakeClaude` | agent AI | 1-03 | chờ | |
+| 1-07 | 1 | App: vỏ Capacitor, đăng nhập, Chat (SSE, hành động, hoàn tác, nhãn model, nguồn web, Nghĩ kỹ, Tìm web), Chi tiêu, Tìm, Cài đặt cơ bản, kiểm bản APK, gửi lỗi về `client-logs` | agent app Android | 1-01 | chờ | Làm với API giả trước, nối thật khi 1-03 xong |
+| 1-08 | 1 | CI build APK và `releases/latest.json`; deploy lần đầu; sao lưu lên R2 | agent hạ tầng | 0-02 tới 0-05 | chờ | |
+| 1-09 | 1 | Lát cắt mỏng chạy trên S25+: đăng nhập, gửi một câu, nhận trả lời | cả nhóm | 1-02, 1-05, 1-07, 1-08 | chờ | Làm ngay khi có thể, trước khi làm dày |
+| 1-10 | 1 | Thử theo danh sách Phase 1, gom góp ý một vòng | người dùng | 1-09 | chờ | |
+| 2-01 | 2 | Plugin Kotlin nghe thông báo, lọc OTP, hàng đợi, màn Thiết lập máy Samsung | agent app Android | Phase 1 | chờ | |
+| 2-02 | 2 | Nhận sự kiện thiết bị, bóc tách VCB, TCB, MoMo, ghép cặp chuyển tiền, hộp tin, luật quan trọng | agent kiến trúc | Phase 1 | chờ | |
+| 2-03 | 2 | Bóc tách bằng AI khi mẫu không khớp; công cụ hộp tin; bộ mẫu OTP chung | agent AI | 2-02 | chờ | |
+| 2-04 | 2 | Gửi ảnh 5 tới 10 thông báo mỗi ví; làm bước thiết lập máy | người dùng | | chờ | |
+| 3-01 | 3 | OAuth Google, Calendar hai chiều, Tasks (đọc ngược xong và xóa), outbox, webhook | agent Google | Phase 2 | chờ | |
+| 3-02 | 3 | Module task, calendar, nhắc (`/calendar/reminders`), mời khách qua duyệt | agent kiến trúc, agent Google | 3-01 | chờ | |
+| 3-03 | 3 | Màn Lịch và việc, plugin Alarm, kết nối Google | agent app Android | 3-01 | chờ | |
+| 3-04 | 3 | Làm các bước trên Google Cloud Console | người dùng | | chờ | |
+| 4-01 | 4 | Module trip: nhập, bóc tách, Places, Routes, 9 luật rủi ro, phương án, link bản đồ, xuất Word; khóa `trip.*` | agent Google, agent kiến trúc | Phase 3 | chờ | |
+| 4-02 | 4 | Đánh giá lịch trình bằng Sonnet; công cụ trip, report, setting | agent AI | 4-01 | chờ | |
+| 4-03 | 4 | Màn Lịch trình, Báo cáo, Cài đặt đầy đủ | agent app Android | 4-01 | chờ | |
+| 4-04 | 4 | Tạo khóa Maps, đặt quota | người dùng | | chờ | |
+| 5-01 | 5 | Gmail, Contacts, Drive, Sheets; job `sync_gmail`, `sync_google_contacts` | agent Google | Phase 4 | chờ | |
+| 5-02 | 5 | Công cụ Gmail, danh bạ, xuất Sheets; gửi thư qua duyệt | agent AI | 5-01 | chờ | |
+| 5-03 | 5 | Hộp tin có Gmail, nút xuất Sheets | agent app Android | 5-01 | chờ | |
 
-Việc của Phase 1 trở đi điều phối thêm khi Phase 0 xong.
+Mỗi phase theo luật ở `00-ke-hoach.md` mục 4.4. Phase sau chỉ bắt đầu khi phase trước đã qua bước người dùng thử.
 
 ## 4. Chờ điều phối
 
@@ -55,7 +80,15 @@ Việc của Phase 1 trở đi điều phối thêm khi Phase 0 xong.
 | 18/11/2026 | agent app Android | Hợp đồng mới cho giao diện QĐ-27: (1) `GET /api/v1/search?q=&types=` trên ghi chú, chat, hộp tin, lịch trình, chữ trích từ tệp; trả đoạn trích và chỗ mở (12, 11 chỉ mục toàn văn). (2) `Message` thêm `model` (model thật đã dùng) và `citations[]` (`title`, `url`) cho câu trả lời có tìm web; `message.completed` mang hai trường này (12, 20). Chi tiết ở 31 mục 3.5 và 9 | Đồng ý; gộp với dòng dưới của agent AI |
 | 18/11/2026 | agent AI | Hợp đồng mới của 20 bản 3 (chi tiết 20 mục 4, 5, 9): (1) `POST /chat/messages` có `mode` (`chat`, `think`, `research`, `summary`) thay `think_harder` (12). (2) Kiểu hành động `undo` và `POST /expenses/{id}/restore`, `/tasks/{id}/restore`, `/calendar/events/{id}/restore` (12). (3) Module mới `search` cho `search_everything` và `GET /search?q=&types=` (đã khớp đề xuất của 31); bảng `tab_file_text`, `search_vector` cho `tab_message`, `tab_trip`, `tab_trip_stop`; job `extract_file_text` (10, 11). (4) `tab_ai_run` thêm `mode`, `web_search_requests`, `fallback_used`; `purpose` thêm `trip_evaluate`, `file_extract`, bỏ `summarize_inbox`; `tab_message` thêm `model`, `citations` (11). (5) Biến `AI_MODEL_STRONG`, `AI_MODEL_MAX` (10). (6) Gộp `search_notes`, `search_conversations` thành `search_everything`; còn 41 công cụ | Đồng ý cả 6 ý. Riêng tên biến: dùng `AI_MODEL_CHAT`, `AI_MODEL_SMART`, `AI_MODEL_MAX` (thay `AI_MODEL_STRONG`) |
 | 18/11/2026 | agent Google | Bảng giờ phà quen (QĐ-26 câu 28) lưu ở khóa cài đặt `trip.ferries` (jsonb: tuyến, bến, chuyến đầu, chuyến cuối, hotline, ngày cập nhật); luật R3 dùng khi tệp không ghi giờ phà (41 mục 5.4). Cần 11 thêm khóa này cùng `trip.night_start`, `trip.night_end`, `trip.ride_break_minutes`, `trip.speed_factor` | Đồng ý; agent kiến trúc thêm 5 khóa vào 11 khi vào Phase 4 (việc 4-xx) |
-| 18/11/2026 | agent kiến trúc | Không còn vai trò chủ (QĐ-27): `GET /admin/worker` đổi thành `GET /system/status`, thêm `POST /system/jobs/{name}/run` cho nút *Sao lưu ngay* (12 mục 5.9). Ảnh hưởng 31 (màn *Máy chủ*), 50 | |
+| 18/11/2026 | agent kiến trúc | Không còn vai trò chủ (QĐ-27): `GET /admin/worker` đổi thành `GET /system/status`, thêm `POST /system/jobs/{name}/run` cho nút *Sao lưu ngay* (12 mục 5.9). Ảnh hưởng 31 (màn *Máy chủ*), 50 | Đồng ý |
+| 18/11/2026 | điều phối | Thêm `POST /api/v1/client-logs`: app gửi lỗi giao diện và lỗi gọi API (thời điểm, màn, thông điệp, bản app); lưu bảng `tab_client_log`, giữ 30 ngày (QĐ-30) | Chốt; agent kiến trúc thêm vào 11, 12 trong 1-02 |
+
+## 4b. Hàng chờ ý tưởng
+
+Ý mới nảy ra giữa phase ghi ở đây, xét ở đầu phase sau.
+
+| Ngày | Ai đề xuất | Ý tưởng | Đưa vào phase |
+|---|---|---|---|
 
 ## 5. Thỏa thuận giữa agent
 
