@@ -18,6 +18,8 @@ from app.core.ratelimit import limiter
 from app.core.security import (
     create_access_token,
     decode_access_token,
+    decrypt_bound,
+    encrypt_bound,
     hash_password,
     new_token,
     sha256_hex,
@@ -52,11 +54,26 @@ class DeviceRevoked(AppError):
 # ---------- Dịch vụ đăng nhập ----------
 
 
-def _issue_tokens(session: Session, user: User, auth_session: AuthSession) -> dict:
+REFRESH_GRACE = timedelta(seconds=60)
+_GRACE_PROVIDER = "auth_refresh"
+
+
+def _issue_tokens(session: Session, user: User, auth_session: AuthSession, rotate: bool = True) -> dict:
+    """Cấp cặp mã. `rotate=False`: trả lại mã làm mới hiện tại (ân hạn), chỉ cấp mã truy cập mới."""
     settings = get_settings()
-    refresh = new_token("rt")
-    auth_session.refresh_token_hash = sha256_hex(refresh)
-    auth_session.expires_at = clock.now() + timedelta(days=settings.jwt_refresh_days)
+    if rotate:
+        refresh = new_token("rt")
+        auth_session.previous_token_hash = auth_session.refresh_token_hash
+        auth_session.rotated_at = clock.now()
+        auth_session.refresh_token_hash = sha256_hex(refresh)
+        auth_session.current_token_enc, auth_session.current_token_key_version = encrypt_bound(
+            user.id, _GRACE_PROVIDER, refresh
+        )
+        auth_session.expires_at = clock.now() + timedelta(days=settings.jwt_refresh_days)
+    else:
+        refresh = decrypt_bound(
+            user.id, _GRACE_PROVIDER, auth_session.current_token_enc, auth_session.current_token_key_version
+        )
     auth_session.last_used_at = clock.now()
     session.flush()
     access, access_expires = create_access_token(user.id, auth_session.id)
@@ -91,17 +108,32 @@ def login(session: Session, email: str, password: str, label: str | None, ip: st
 
 
 def refresh(session: Session, refresh_token: str) -> dict:
+    """Xoay mã làm mới. Mã vừa bị xoay mà dùng lại trong REFRESH_GRACE (cùng phiên, chưa thu hồi) thì trả
+    lại đúng cặp kế tiếp đã cấp: hai lần gọi gần nhau của cùng app (WebView nạp lại sau cài đè APK) nhận
+    cùng mã, không bị đăng xuất. Ngoài cửa sổ đó mã cũ là 401 như trước."""
+    token_hash = sha256_hex(refresh_token)
     row = session.scalar(
-        select(AuthSession)
-        .where(AuthSession.refresh_token_hash == sha256_hex(refresh_token))
-        .with_for_update()
+        select(AuthSession).where(AuthSession.refresh_token_hash == token_hash).with_for_update()
     )
-    if row is None or row.revoked_at is not None or row.expires_at <= clock.now():
+    grace = False
+    if row is None:
+        row = session.scalar(
+            select(AuthSession).where(AuthSession.previous_token_hash == token_hash).with_for_update()
+        )
+        grace = (
+            row is not None
+            and row.rotated_at is not None
+            and row.current_token_enc is not None
+            and clock.now() - row.rotated_at <= REFRESH_GRACE
+        )
+        if not grace:
+            raise RefreshInvalid()
+    if row.revoked_at is not None or row.expires_at <= clock.now():
         raise RefreshInvalid()
     user = session.get(User, row.user_id)
     if user is None:
         raise RefreshInvalid()
-    return _issue_tokens(session, user, row)
+    return _issue_tokens(session, user, row, rotate=not grace)
 
 
 def logout(session: Session, user_id: int, session_id: int) -> None:

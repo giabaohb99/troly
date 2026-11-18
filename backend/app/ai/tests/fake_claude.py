@@ -48,6 +48,9 @@ def validate_request(kwargs: dict) -> str | None:
         for block in _blocks(msg.get("content")):
             if block.get("type") == "text" and not block.get("text"):
                 return f"messages.{i}: text content blocks must be non-empty"
+            # Khối giữ chỗ nội bộ (troly_file) lọt ra API là 400 thật (gặp khi đọc lịch trình từ ảnh).
+            if block.get("type") == "troly_file":
+                return f"messages.{i}.content: Input tag 'troly_file' found using 'type' does not match"
         if role == "assistant":
             uses = [b["id"] for b in _blocks(msg["content"]) if b.get("type") == "tool_use"]
             if uses and i + 1 < len(messages):

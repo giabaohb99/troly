@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     Text,
     text,
@@ -33,12 +34,25 @@ class User(TimestampMixin, Base):
 
 class AuthSession(UserOwnedMixin, Base):
     __tablename__ = "tab_auth_session"
+    __table_args__ = (
+        Index(
+            "ix_tab_auth_session_previous_token_hash",
+            "previous_token_hash",
+            postgresql_where=text("previous_token_hash IS NOT NULL"),
+        ),
+    )
 
     refresh_token_hash: Mapped[str] = mapped_column(Text, unique=True)
     label: Mapped[str | None] = mapped_column(Text)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Ân hạn khi mã vừa xoay bị dùng lại (core/auth.refresh): hash mã liền trước, lúc xoay, và mã hiện tại
+    # mã hóa Fernet để trả lại đúng cặp kế tiếp. Ngoài cửa sổ ân hạn thì mã cũ là 401 như cũ.
+    previous_token_hash: Mapped[str | None] = mapped_column(Text)
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    current_token_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    current_token_key_version: Mapped[int | None] = mapped_column(SmallInteger)
 
 
 class JobQueue(UserOwnedMixin, Base):

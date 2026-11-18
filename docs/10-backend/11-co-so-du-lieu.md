@@ -68,6 +68,11 @@ Bỏ theo QĐ-27: `tab_audit_log`, `tab_consent`, `tab_app_release` (bản APK �
 | last_used_at | timestamptz | |
 | expires_at | timestamptz NN | 365 ngày (QĐ-27) |
 | revoked_at | timestamptz | |
+| previous_token_hash | text | Mã làm mới liền trước; chỉ mục một phần khi khác rỗng |
+| rotated_at | timestamptz | Lúc xoay mã gần nhất |
+| current_token_enc, current_token_key_version | bytea, smallint | Mã làm mới hiện tại mã hóa Fernet (`TOKEN_ENCRYPTION_KEYS`) để trả lại khi ân hạn |
+
+Ân hạn xoay mã (lỗi cài đè APK 19/11): mã vừa bị xoay mà dùng lại trong 60 giây, cùng phiên chưa thu hồi, thì trả lại đúng cặp kế tiếp (mã truy cập mới, cùng mã làm mới); ngoài 60 giây hoặc mã cũ hơn một lần xoay thì 401 như cũ.
 
 **`tab_job_queue`**: việc dài chạy nền.
 

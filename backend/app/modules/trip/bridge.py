@@ -135,7 +135,10 @@ def read_file_bytes(session: Session, user_id: int, file_id: int) -> tuple[bytes
 
 
 def claude_blocks(session: Session, user_id: int, file_ids: list[int]) -> list[dict]:
-    return _file_service().build_claude_blocks(session, user_id, file_ids)
+    """Khối image, document thật cho Claude. build_claude_blocks chỉ trả khối giữ chỗ troly_file (để lưu
+    tin chat); gửi thẳng khối giữ chỗ thì Claude trả 400, nên phải materialize ở đây."""
+    files = _file_service()
+    return files.materialize_blocks(session, user_id, files.build_claude_blocks(session, user_id, file_ids))
 
 
 def store_generated_file(

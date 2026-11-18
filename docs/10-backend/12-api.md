@@ -133,7 +133,7 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 |---|---|---|---|---|---|
 | GET | `/api/health` | - | | `{status, db, worker_lag_seconds, version, git_sha}` | V1.0 |
 | POST | `/auth/login` | - | `email`, `password`, `label` | `{access_token, access_expires_at, refresh_token, refresh_expires_at, user}` | V1.0 |
-| POST | `/auth/refresh` | - | `refresh_token` | như trên (mã làm mới xoay vòng, 365 ngày) | V1.0 |
+| POST | `/auth/refresh` | - | `refresh_token` | như trên (mã làm mới xoay vòng, 365 ngày); mã vừa xoay gửi lại trong 60 giây thì nhận lại đúng mã làm mới kế tiếp, không 401 | V1.0 |
 | POST | `/auth/logout` | U | | `null` | V1.0 |
 | POST | `/auth/change-password` | U | `current_password`, `new_password` | `null`; thu hồi phiên khác | V1.0 |
 | GET | `/auth/me` | U | | `{id, name, email, timezone}` | V1.0 |

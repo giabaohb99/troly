@@ -10,16 +10,47 @@ def test_wrong_password_401_without_leaking_email(client, user):
     assert other.json()["message"] == resp.json()["message"]
 
 
-def test_refresh_rotates_and_old_token_dies(client, user):
+REFRESH = "/api/v1/auth/refresh"
+
+
+def _later(monkeypatch, seconds):
+    from datetime import timedelta
+
+    from app.core import clock
+
+    real = clock.now
+    monkeypatch.setattr(clock, "now", lambda: real() + timedelta(seconds=seconds))
+
+
+def test_refresh_reused_within_grace_returns_same_next_pair(client, user):
+    """Cài đè APK: WebView nạp hai lần, gọi refresh hai lần cách 43 ms với cùng mã (lỗi 19/11 trên S25+)."""
     tokens = client.post(LOGIN, json=CREDS).json()["data"]
+    first = client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
+    second = client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
 
-    new = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-    again = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert first.status_code == 200 and second.status_code == 200
+    assert second.json()["data"]["refresh_token"] == first.json()["data"]["refresh_token"]
+    assert first.json()["data"]["refresh_token"] != tokens["refresh_token"]
+    # Mã kế tiếp vẫn dùng bình thường và lại xoay.
+    third = client.post(REFRESH, json={"refresh_token": first.json()["data"]["refresh_token"]})
+    assert third.status_code == 200
+    # Mã hai lần trước không còn được ân hạn.
+    assert client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]}).status_code == 401
 
-    assert new.status_code == 200
-    assert new.json()["data"]["refresh_token"] != tokens["refresh_token"]
-    assert again.status_code == 401
-    assert again.json()["data"]["code"] == "AUTH_REFRESH_INVALID"
+
+def test_refresh_reused_after_grace_is_refused(client, user, monkeypatch):
+    tokens = client.post(LOGIN, json=CREDS).json()["data"]
+    assert client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]}).status_code == 200
+    _later(monkeypatch, 61)
+    again = client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
+    assert again.status_code == 401 and again.json()["data"]["code"] == "AUTH_REFRESH_INVALID"
+
+
+def test_refresh_grace_does_not_cover_revoked_session(client, user):
+    tokens = client.post(LOGIN, json=CREDS).json()["data"]
+    new = client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]}).json()["data"]
+    client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {new['access_token']}"})
+    assert client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]}).status_code == 401
 
 
 def test_logout_revokes_refresh(client, user):
