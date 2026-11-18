@@ -90,7 +90,7 @@ Bảng này là nguồn chuẩn cho luật duyệt.
 |---|---|---|
 | Gửi thư Gmail | V1.8 | Thẻ duyệt; soạn nháp thì không cần |
 | Gửi lời mời sự kiện, sửa sự kiện có khách (QĐ-23) | V1.4 | Thẻ duyệt |
-| Chia sẻ tệp Drive cho người khác | V1.8 | Thẻ duyệt (khi có công cụ ở `20`) |
+| Chia sẻ tệp Drive ra ngoài (`share_drive_file`, QĐ-38) | V1.8 | Thẻ duyệt; thẻ nêu tên tệp, người nhận (email) và quyền (xem, nhận xét, sửa) |
 | Trả lời tin nhắn | V2 | Thẻ duyệt, hiện nguyên văn và người nhận |
 | Xóa nhiều dòng một lần, xóa cả chuyến đi | V1 | Thẻ duyệt |
 | Xóa một dòng (chi tiêu, việc, sự kiện, ghi chú) | V1 | Làm ngay, có nút *Hoàn tác* |

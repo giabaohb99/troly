@@ -29,11 +29,12 @@ Màn chưa tới phase vẫn có ô trên thanh dưới, hiện trạng thái r�
 Chép nguyên luật giao diện của app gym (ĐX-31-02):
 
 - React 19, Vite (cổng 5190, `50`), TypeScript, Tailwind 4 cấu hình bằng CSS ở `src/index.css`, shadcn trong `src/shared/ui/`, TanStack Query, react-router, sonner, recharts.
-- Màu chỉ là token (`:root` và `.dark`), cấm hex lẻ; **chỉ nền tối** ở V1. Bộ token khởi đầu là của app gym; thêm `--app-1` tới `--app-6` (nhãn app trong Hộp tin), `--income`, `--transfer`.
+- Màu chỉ là token (`:root` sáng và `.dark` tối), cấm hex lẻ. Giao diện **Theo máy** (mặc định), **Sáng** hoặc **Tối** chọn ở Cài đặt, lưu trên máy (QĐ-37, `src/core/theme.ts`); thanh trạng thái và thanh điều hướng Android đổi màu theo (`System.setBarStyle`). Bộ token khởi đầu là của app gym; thêm `--app-1` tới `--app-6` (nhãn app trong Hộp tin), `--income`, `--transfer`.
 - Icon chỉ `lucide-react`, cấm emoji. Thông báo, xác nhận, nhập liệu bằng `sonner`, `ConfirmDialog`, `Dialog`; cấm `alert`, `confirm`, `prompt`. Nút lưu chặn bấm đúp bằng `useRef`.
 - Cột giữa `max-w-lg`, lề 16 px, vùng an toàn `env(safe-area-inset-*)`, vùng chạm từ 44 px.
 - Tiền `45.000 đ`, tóm tắt `45k`, `1,2 tr`; ngày `Thứ Hai, 18/11`; giờ 24 giờ, giờ Việt Nam.
 - Trợ lý xưng **em**; chữ trên nút viết trung tính (*Lưu*, *Duyệt*, *Bỏ*).
+- Ô chat: trên điện thoại Enter xuống dòng, gửi bằng nút gửi; trên máy tính Enter gửi, Shift+Enter xuống dòng.
 
 ### 3.2 Điều hướng
 

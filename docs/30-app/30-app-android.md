@@ -77,7 +77,7 @@ Luật kiểm được (lọc, OTP, trùng lặp, giờ nhắc) viết thành h�
 | **Notify** (P2) | `getStatus()` trả `{listenerGranted, listenerConnected, lastEventAt, queueSize, droppedToday, otpBlockedToday}`; `flushQueue()` | `listenerStateChanged`, `queueChanged` |
 | **Alarm** (P3) | `sync()` (lớp gốc tự tải `/calendar/reminders` bằng mã thiết bị); `getScheduled()` trả `{count, revision, lastSyncAt, exactAllowed, next[]}`; `canScheduleExact()` | `reminderAction` |
 | **Update** (P1) | `checkApk()`; `downloadAndInstall()` (chỉ gọi sau khi người dùng bấm *Cập nhật*); `getVersion()` | `downloadProgress`, `installState` |
-| **Maps** (P4) | `navigate({lat, lng, mode, avoid})`; `openUrl({url})`; `isMapsInstalled()` | |
+| **Maps** (P4) | `navigate({lat, lng, query, mode, avoid, uri, fallbackUrl})`; `openUrl({url})`; `isMapsInstalled()` | |
 | **Secure** (P1) | `storeDeviceToken`, `hasDeviceToken`, `saveRefreshToken`, `loadRefreshToken`, `clearAll` | `deviceRevoked` |
 | **System** (P1, P2) | `getPermissions()`; `openSettings({target})` (`notification_listener`, `app_details`, `battery`, `samsung_never_sleeping`, `exact_alarm`, `unknown_sources`, `notifications`); `getDeviceInfo()` trả `{manufacturer, model, androidSdk, defaultSmsPackage}` | `permissionsChanged` |
 | **Voice** (P1) | `start({lang: 'vi-VN'})`, `stop()` bằng `SpeechRecognizer` của Android (Web Speech trong WebView chưa chắc chạy) | `partial`, `final`, `error` |
@@ -200,7 +200,7 @@ Không xin: vị trí, danh bạ máy, SMS, `QUERY_ALL_PACKAGES`, dịch vụ ti
 
 | Hành động | Cách mở |
 |---|---|
-| `open_map_navigation` | `google.navigation:q=<lat>,<lng>&mode=l&avoid=h`, `setPackage("com.google.android.apps.maps")` (`l` xe hai bánh, `h` tránh cao tốc) [N24]. Có `query` mà chưa có tọa độ thì dùng `q=<query>` |
+| `open_map_navigation` | Có `uri` (máy chủ dựng sẵn) thì mở thẳng; không thì `google.navigation:q=<lat>,<lng>&mode=l&avoid=h`, `setPackage("com.google.android.apps.maps")` (`l` xe hai bánh, `h` tránh cao tốc) [N24]. Không có tọa độ (thường gặp từ QĐ-36, V1 không có Maps Platform) thì `q=<tên đã mã hóa>`; màn Lịch trình dùng `place_query`, thiếu thì tên điểm |
 | `open_map_directions`, `open_map_place` | Mở URL do máy chủ dựng (`/trips/{id}/map-links`, `12` mục 5.8) [N25] |
 
 Luôn `resolveActivity` trước; không có Maps thì mở `https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>&travelmode=two-wheeler&dir_action=navigate` bằng trình duyệt [N24][N25]. App gửi `max_waypoints = 9` nếu có Maps, `3` nếu không (URL chỉ đường cho tối đa 3 điểm dừng trên trình duyệt di động, 9 ở nơi khác) [N25]. Chế độ `two-wheeler` chỉ có ở quốc gia được hỗ trợ [N25]: thử trên máy thật.

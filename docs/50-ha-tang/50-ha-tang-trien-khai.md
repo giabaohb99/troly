@@ -247,7 +247,7 @@ Thử app trên điện thoại với máy chủ ở máy cá nhân: tạm đặ
 
 ### 3.11 Build APK trên máy bằng Docker
 
-Bản phát hành và bản thử đều build trên máy bằng ảnh tự viết `infra/android-builder/Dockerfile` (`eclipse-temurin:21-jdk`, Android command-line tools, Node 24, phiên bản ghim) dùng cho dịch vụ `android-test` (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`). Bản thử ký khóa debug, `applicationIdSuffix ".debug"`, cài song song bản chính. `adb` để ngoài container.
+Bản phát hành và bản thử đều build trên máy bằng ảnh tự viết `infra/android-builder/Dockerfile` (`eclipse-temurin:21-jdk`, Android command-line tools, Node 24, phiên bản ghim) dùng cho dịch vụ `android-test` (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`). Bản thử ký khóa debug cố định ở `D:/giabao/troly-secrets/android-debug/debug.keystore` (gắn vào `/root/.android`, ngoài kho) nên cài đè lên điện thoại không lỗi chữ ký; `applicationIdSuffix ".debug"`, cài song song bản chính. `adb` để ngoài container.
 
 | | GitHub Actions | Docker trên máy |
 |---|---|---|

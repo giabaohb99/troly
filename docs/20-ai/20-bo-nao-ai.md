@@ -357,6 +357,14 @@ Schema `BankNotificationExtract`:
 
 Câu chat chi tiêu không có lần bóc tách riêng: model gọi thẳng `add_expense`. Cách đọc số nằm trong mô tả công cụ: *45k = 45.000; 1tr2 = 1.200.000; 200 cành = 200.000; số không đơn vị nhỏ hơn 1.000 hiểu là nghìn đồng; 2 lít xăng không phải số tiền*. Hàm chạy kiểm `0 < amount_vnd < 1.000.000.000` và `spent_at` không ở tương lai quá 1 giờ.
 
+### 3.10b Ước tính chặng lịch trình (QĐ-36, `ai/trip_legs.py`)
+
+V1 không có Routes, Places. Khi đánh giá, trip gọi `estimate_legs(stops, legs, think)` qua `trip/bridge` (chặng là mọi cặp điểm liền nhau trong ngày; `note` luôn có tên quốc lộ chính cho luật chạy đêm R5): Sonnet (effort `low`, đầu ra có cấu trúc, `purpose = trip_evaluate`) trả `km`, `minutes` (gồm chờ phà), `ferry_minutes`, `confidence` cho từng chặng.
+
+- Mã kẹp số, lệch thì sửa và đặt `adjusted`: không âm; tốc độ phần chạy xe (`minutes - ferry_minutes`) trong 15 tới 60 km/h; có tọa độ hai đầu thì km không dưới đường chim bay và không quá 3 lần cộng 5 km. Model bỏ sót chặng có tọa độ thì lấy đường chim bay nhân 1,4, 30 km/h. Mọi chặng mang `estimated = true`; app ghi *ước tính*.
+- Nghĩ kỹ: thêm một lượt Sonnet chỉ có `web_search` (tối đa 2 lần mỗi điểm, trần 6) tra giờ mở cửa (tham quan, ăn uống, mua sắm) và giờ phà cuối, rồi lượt có cấu trúc đọc ghi chú ra `checks` (giờ theo dạng `periods` của Google, có nghỉ trưa; `last_time` của phà). Hai lượt tách vì citations không đi cùng đầu ra có cấu trúc. Nguồn mâu thuẫn thì `found = false`, giữ câu giải thích; link nguồn phải có trong kết quả tìm.
+- Thử thật 18/11/2026 (`tests/ai_eval/leg_cases.yaml`): bốn mẫu chặng đạt, khoảng 0,006 USD mỗi lần đánh giá; lượt nghĩ kỹ khoảng 0,10 USD và giờ tìm được không ổn định giữa các lần chạy.
+
 ### 3.11 Hành động trả cho app (nguồn chuẩn, vỏ phẳng theo QĐ-26)
 
 Mỗi hành động: `{id, type, label, ...trường riêng}`. `id` duy nhất trong một tin (`a1`, `a2`). Đi trong sự kiện SSE `action` và mảng `actions` của `Message`. App gặp `type` lạ thì bỏ qua.
