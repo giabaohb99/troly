@@ -1,0 +1,23 @@
+# Kiểm api từ ngoài mỗi 2 giờ; hỏng thì GitHub gửi thư báo workflow lỗi (docs/50-ha-tang mục 3.7).
+# Chỉ chạy khi biến kho HEALTH_CHECK_ENABLED = true (đặt sau lần deploy đầu tiên).
+name: health-check
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: vars.HEALTH_CHECK_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Gọi /api/health
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 15 https://troly.baohuynh.io.vn/api/health; then exit 0; fi
+            sleep 20
+          done
+          echo "api không trả lời sau 3 lần thử."
+          exit 1

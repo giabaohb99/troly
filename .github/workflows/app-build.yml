@@ -1,0 +1,139 @@
+# Kiểm giao diện mỗi lần đổi app/; build, ký, đăng APK khi đẩy thẻ vX.Y.Z (docs/50-ha-tang mục 3.7).
+# Đăng bản: đẩy APK và releases/latest.json lên bucket troly-release; api chỉ đọc latest.json.
+name: app-build
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - ".github/workflows/app-build.yml"
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "app/**"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run check
+
+  apk:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      BUCKET: troly-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Tính phiên bản từ thẻ
+        id: ver
+        run: |
+          NAME="${GITHUB_REF_NAME#v}"
+          IFS=. read -r X Y Z <<< "$NAME"
+          CODE=$(( X * 10000 + Y * 100 + Z ))
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Dựng giao diện và dự án Android
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+          # Khung: khi kho chưa có app/android thì sinh tạm; agent app Android sẽ đưa dự án Android thật vào kho.
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ steps.ver.outputs.code }}/; s/versionName \"[^\"]*\"/versionName \"${{ steps.ver.outputs.name }}\"/" android/app/build.gradle
+
+      - name: Giải mã khóa ký
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Build APK đã ký
+        working-directory: app/android
+        run: |
+          ./gradlew --no-daemon assembleRelease \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.jks" \
+            -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
+
+      - name: So dấu vân tay chứng chỉ ký
+        id: apk
+        env:
+          EXPECTED: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          APK=app/android/app/build/outputs/apk/release/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          GOT=$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          WANT=$(echo "$EXPECTED" | tr -d ': ' | tr 'A-F' 'a-f')
+          if [ -z "$WANT" ] || [ "$GOT" != "$WANT" ]; then
+            echo "Dấu vân tay chứng chỉ không khớp biến ANDROID_SIGNING_CERT_SHA256 (được: $GOT)."
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Đẩy APK và latest.json lên R2
+        run: |
+          NAME="${{ steps.ver.outputs.name }}"
+          CODE="${{ steps.ver.outputs.code }}"
+          APK="${{ steps.apk.outputs.path }}"
+          KEY="releases/troly-$NAME.apk"
+          MIN=$(jq -r '.troly.minSupportedVersionCode // 0' app/package.json)
+          aws s3 cp "$APK" "s3://$BUCKET/$KEY" --endpoint-url "$R2_ENDPOINT"
+          jq -n \
+            --argjson version_code "$CODE" \
+            --arg version_name "$NAME" \
+            --arg apk_key "$KEY" \
+            --arg sha256 "$(sha256sum "$APK" | cut -d' ' -f1)" \
+            --argjson size_bytes "$(stat -c %s "$APK")" \
+            --argjson min_supported_version_code "$MIN" \
+            --arg notes "$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")" \
+            --arg published_at "$(date -u +%FT%TZ)" \
+            '{version_code:$version_code, version_name:$version_name, apk_key:$apk_key, sha256:$sha256,
+              size_bytes:$size_bytes, min_supported_version_code:$min_supported_version_code,
+              notes:$notes, published_at:$published_at}' > latest.json
+          aws s3 cp latest.json "s3://$BUCKET/releases/latest.json" --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json
+
+      - name: Giữ 10 APK mới nhất
+        run: |
+          aws s3api list-objects-v2 --bucket "$BUCKET" --prefix releases/troly- --endpoint-url "$R2_ENDPOINT" \
+            --query 'sort_by(Contents, &LastModified)[].Key' --output text | tr '\t' '\n' | grep . \
+            | head -n -10 | while read -r OLD; do
+                aws s3 rm "s3://$BUCKET/$OLD" --endpoint-url "$R2_ENDPOINT"
+              done
+
+      - name: Xóa khóa ký tạm
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"

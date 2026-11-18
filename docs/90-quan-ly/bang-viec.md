@@ -41,7 +41,7 @@ Trạng thái: `chờ`, `đang làm`, `chờ rà`, `xong`, `chặn`. Mã việc:
 | 0-03 | 0 | Tạo khóa API Anthropic cho troly, đặt hạn mức chi trên trang Anthropic | người dùng | | chờ | |
 | 0-04 | 0 | Tạo bucket R2 và mã truy cập | người dùng | | chờ | Số bucket theo 50 bản 3 |
 | 0-05 | 0 | Sinh khóa ký APK, cất hai bản, đặt secret GitHub | người dùng, agent hạ tầng | | chờ | |
-| 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | | đang làm | |
+| 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | | chờ rà | Chạy được ở máy: api, db, worker, `/api/health` 200; pytest 2 bài xanh trong container. `backend/app/main.py`, `worker/main.py`, `app/` là khung, agent kiến trúc và agent app Android thay |
 | 0-07 | 0 | Tạm dừng `core-game` | điều phối | | bỏ | QĐ-29: để Gamebar chạy |
 | 1-01 | 1 | Chốt hợp đồng Phase 1: các mục V1.0, V1.1 trong 11, 12, 20 + `POST /client-logs` | điều phối | 0-06 | chờ | |
 | 1-02 | 1 | Backend lõi: config, db, auth (đăng nhập, mã làm mới 365 ngày, mã thiết bị), lỗi, log, `client-logs`, migration đầu | agent kiến trúc | 1-01 | chờ | |

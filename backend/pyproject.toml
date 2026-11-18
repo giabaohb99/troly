@@ -1,0 +1,47 @@
+# Khung tối thiểu do agent hạ tầng dựng (việc 0-06) để chạy thử Docker và CI.
+# Agent kiến trúc thay và bổ sung phụ thuộc thật theo docs/10-backend.
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "troly-backend"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "watchfiles>=1.0",
+    "pip-audit>=2.7",
+]
+
+# Chỉ dùng pyproject để khai phụ thuộc; mã chạy thẳng từ /app, không đóng gói.
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "app"]
+addopts = "-q -p no:cacheprovider"
+markers = [
+    "ai_eval: gọi Claude thật, chỉ chạy tay",
+    "commits: bài kiểm cần commit thật, dọn bằng TRUNCATE",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+cache-dir = "/tmp/ruff-cache"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

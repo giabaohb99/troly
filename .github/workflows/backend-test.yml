@@ -1,0 +1,71 @@
+# Bài kiểm backend, chạy đúng lệnh như ở máy cá nhân (docs/50-ha-tang mục 3.7, docs/70-kiem-thu mục 3.2).
+name: backend-test
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "testdata/**"
+      - "docker-compose*.yml"
+      - "infra/docker-compose.test.yml"
+      - ".github/workflows/backend-test.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "testdata/**"
+      - "docker-compose*.yml"
+      - "infra/docker-compose.test.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  T: docker compose -f infra/docker-compose.test.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kiểm cấu hình compose
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+          $T config --quiet
+
+      - name: Dựng ảnh test (đích dev)
+        run: $T build test
+
+      - name: Ruff
+        run: $T run --rm test ruff check .
+
+      - name: Migration trên DB trống
+        if: hashFiles('backend/alembic.ini') != ''
+        run: $T run --rm test alembic upgrade head
+
+      - name: Pytest
+        run: $T run --rm test pytest -m "not ai_eval"
+
+      - name: Kiểm lỗ hổng phụ thuộc
+        run: docker run --rm troly-backend:dev pip-audit --skip-editable
+
+      - name: Dựng ảnh chạy thật (đích prod)
+        run: docker build --target prod -t troly-backend:ci backend
+
+      - name: Dọn
+        if: always()
+        run: $T down -v
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

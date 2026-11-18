@@ -1,0 +1,23 @@
+{
+  "name": "troly-app",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Khung tối thiểu do agent hạ tầng dựng (việc 0-06) để chạy thử workflow build APK. Agent app Android thay toàn bộ theo docs/30-app.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "vite build"
+  },
+  "troly": {
+    "minSupportedVersionCode": 0
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "vite": "^8.3.8"
+  }
+}

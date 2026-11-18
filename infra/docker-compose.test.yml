@@ -1,0 +1,68 @@
+# Chạy bài kiểm trong container, cùng một lệnh ở máy cá nhân và GitHub Actions (docs/70-kiem-thu mục 3.2).
+#   docker compose -f infra/docker-compose.test.yml run --rm test pytest -m "not ai_eval"
+#   docker compose -f infra/docker-compose.test.yml run --rm test ruff check .
+#   docker compose -f infra/docker-compose.test.yml down -v
+# Tệp đứng riêng, không đọc .env của máy, không đụng DB phát triển.
+name: troly-test
+
+services:
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: troly_test
+      POSTGRES_USER: troly
+      POSTGRES_PASSWORD: troly
+      TZ: UTC
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks: [test_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U troly -d troly_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  test:
+    build:
+      context: ../backend
+      target: dev
+    image: troly-backend:dev
+    working_dir: /app
+    volumes:
+      - ../backend:/app
+    environment:
+      ENV: test
+      TZ: UTC
+      TEST_DATABASE_URL: postgresql+psycopg://troly:troly@db-test:5432/troly_test
+      DATABASE_URL: postgresql+psycopg://troly:troly@db-test:5432/troly_test
+    depends_on:
+      db-test: { condition: service_healthy }
+    # Mạng internal: bài kiểm thường không gọi được dịch vụ thật ngoài Internet.
+    networks: [test_net]
+    command: ["pytest", "-m", "not ai_eval"]
+
+  # Bộ câu mẫu AI gọi Claude thật nên cần mạng ra ngoài; chỉ bật bằng --profile ai.
+  test-ai:
+    extends: test
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    networks: [test_net, ai_net]
+    command: ["pytest", "-m", "ai_eval"]
+    profiles: ["ai"]
+
+  web-test:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - ../app:/app
+      - web-test-node-modules:/app/node_modules
+    command: sh -c "npm ci && npm run check"
+    profiles: ["web"]
+
+networks:
+  test_net:
+    internal: true
+  ai_net: {}
+
+volumes:
+  web-test-node-modules:

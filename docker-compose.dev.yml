@@ -1,0 +1,61 @@
+# Ghép đè khi phát triển trên máy cá nhân (docs/50-ha-tang mục 3.10).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Hoặc đặt trong .env của máy: COMPOSE_FILE=docker-compose.yml;docker-compose.dev.yml
+# Giao diện: thêm --profile web. S3 giả: thêm --profile s3.
+
+x-backend-dev: &backend-dev
+  build:
+    context: ./backend
+    target: dev
+  image: troly-backend:dev
+  volumes:
+    - ./backend:/app
+  environment:
+    # Mã nằm trên ổ Windows, sự kiện đổi tệp không chắc tới container nên dò định kỳ.
+    WATCHFILES_FORCE_POLLING: "true"
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes: !override
+      - troly-dev-pgdata:/var/lib/postgresql/data
+
+  migrate:
+    <<: *backend-dev
+
+  api:
+    <<: *backend-dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload",
+              "--reload-dir", "app"]
+
+  worker:
+    <<: *backend-dev
+    command: ["watchfiles", "python -m worker.main", "app", "worker"]
+
+  web:
+    image: node:24-alpine
+    container_name: troly-web
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5190"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./app:/app
+      - troly-dev-node-modules:/app/node_modules
+    ports:
+      - "127.0.0.1:5190:5190"
+    networks: [troly_edge]
+    profiles: ["web"]
+
+  s3:
+    image: motoserver/moto:latest
+    container_name: troly-s3
+    ports:
+      - "127.0.0.1:55500:5000"
+    networks: [troly_edge]
+    profiles: ["s3"]
+
+volumes:
+  troly-dev-pgdata:
+  troly-dev-node-modules:
