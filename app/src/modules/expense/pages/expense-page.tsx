@@ -11,6 +11,7 @@ import type { Expense, Period } from '@/modules/expense/types/expense'
 import { periodRange } from '@/modules/expense/utils/period-range'
 import { EmptyState } from '@/shared/components/empty-state'
 import { ErrorState } from '@/shared/components/error-state'
+import { ListenerBanner } from '@/shared/components/listener-banner'
 import { OfflineBanner } from '@/shared/components/offline-banner'
 import { PageHeader } from '@/shared/components/page-header'
 import { SkeletonList } from '@/shared/components/skeleton-list'
@@ -79,6 +80,7 @@ export function ExpensePage() {
     <div className="flex flex-col gap-4 pb-8">
       <PageHeader title="Chi tiêu" subtitle={PERIODS.find((p) => p.value === period)?.label} />
       <OfflineBanner />
+      <ListenerBanner text="Chưa bật đọc thông báo nên chưa tự ghi từ ngân hàng." />
       <div className="grid grid-cols-3 gap-2">
         {PERIODS.map((p) => (
           <SummaryCard key={p.value} period={p.value} label={p.label} active={period === p.value} onClick={() => setPeriod(p.value)} />

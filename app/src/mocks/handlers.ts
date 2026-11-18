@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { mockDb } from '@/mocks/db'
 import type { ChatAction, ChatMessage } from '@/modules/chat/types/chat'
+import type { InboxMessage } from '@/modules/inbox/types/inbox'
 import { parseMoney } from '@/shared/utils/format'
 
 // API giả theo 12-api.md, đủ cho Phase 1: đăng nhập, chat SSE, hành động, chi tiêu, tìm, bản APK, client-logs.
@@ -93,6 +94,41 @@ function inRange(iso: string, from: string | null, to: string | null) {
   const t = Date.parse(iso)
   return (!from || t >= Date.parse(from)) && (!to || t < Date.parse(to))
 }
+
+
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
+const inboxRow = (id: number, app: InboxMessage['app'], key: string, sender: string, text: string | null, minutes: number, extra: Partial<InboxMessage> = {}): InboxMessage => ({
+  id, source: 'notification', app, sender, conversation_key: key, conversation_title: null, is_group: false, subject: null,
+  text: text ?? '(Nội dung bị ẩn)', hidden_content: text === null, posted_at: minutesAgo(minutes), status: 'new', importance: 'normal', importance_reason: null, ...extra,
+})
+const mockInbox: InboxMessage[] = [
+  inboxRow(1, 'zalo', 'zalo:lan', 'Chị Lan', 'Chiều nay họp lúc 3h nha em', 50, { importance: 'important', importance_reason: 'Người quan trọng' }),
+  inboxRow(2, 'zalo', 'zalo:lan', 'Chị Lan', 'Nhớ mang bản in hợp đồng', 45, { importance: 'important', importance_reason: 'Người quan trọng' }),
+  inboxRow(3, 'telegram', 'telegram:du-an-a', 'Tuấn', 'file mới đã up', 120, { conversation_title: 'Nhóm Dự án A', is_group: true }),
+  inboxRow(4, 'zalo', 'zalo:hung', 'Anh Hùng', null, 300),
+  inboxRow(5, 'sms', 'sms:me', 'Mẹ', 'Tối về ăn cơm nhé con', 2000, { status: 'seen' }),
+]
+function mockConversations() {
+  const keys = [...new Set(mockInbox.map((m) => m.conversation_key))]
+  return keys.map((key) => {
+    const rows = mockInbox.filter((m) => m.conversation_key === key).sort((a, b) => Date.parse(b.posted_at) - Date.parse(a.posted_at))
+    const last = rows[0]
+    return {
+      conversation_key: key, app: last.app, title: last.conversation_title ?? last.sender, is_group: last.is_group, last_sender: last.sender, last_text: last.text,
+      last_posted_at: last.posted_at, unread_count: rows.filter((m) => m.status === 'new').length,
+      importance: rows.some((m) => m.importance === 'important' && m.status !== 'done') ? 'important' : 'normal', is_private: false,
+    }
+  }).sort((a, b) => Number(b.importance === 'important') - Number(a.importance === 'important') || Date.parse(b.last_posted_at) - Date.parse(a.last_posted_at))
+}
+const mockListened = [
+  { id: 1, package_name: 'com.VCB', label: 'Vietcombank', purpose: 'expense', parser: 'vcb', enabled: true, is_default: true },
+  { id: 2, package_name: 'vn.com.techcombank.bb.app', label: 'Techcombank', purpose: 'expense', parser: 'tcb', enabled: true, is_default: true },
+  { id: 3, package_name: 'com.mservice.momotransfer', label: 'MoMo', purpose: 'expense', parser: 'momo', enabled: true, is_default: true },
+  { id: 4, package_name: 'com.zing.zalo', label: 'Zalo', purpose: 'inbox', parser: 'zalo', enabled: true, is_default: true },
+  { id: 5, package_name: 'org.telegram.messenger', label: 'Telegram', purpose: 'inbox', parser: 'telegram', enabled: true, is_default: true },
+  { id: 6, package_name: 'com.facebook.orca', label: 'Messenger', purpose: 'inbox', parser: 'messenger', enabled: false, is_default: true },
+  { id: 7, package_name: 'sms_default', label: 'SMS', purpose: 'inbox', parser: 'sms', enabled: true, is_default: true },
+]
 
 export const handlers = [
   http.post(`${API}/auth/login`, async ({ request }) => {
@@ -213,6 +249,36 @@ export const handlers = [
     const expense = mockDb.expenses.find((e) => e.id === Number(params.id))
     if (expense) expense.deleted = false
     return ok(expense ?? null)
+  }),
+
+
+  http.get(`${API}/expenses/:id/source`, ({ params }) => {
+    const expense = mockDb.expenses.find((e) => e.id === Number(params.id))
+    if (!expense || expense.source !== 'bank_notification') return fail(404, 'NOT_FOUND', 'Không còn thông báo gốc.')
+    return ok({ app_package: 'com.VCB', title: 'Vietcombank', text: `So du TK VCB xxxx${expense.account_last4 ?? '0000'} -${expense.amount_vnd.toLocaleString('en-US')} VND luc 18-11-2026 08:15:02. Ref MBVCB.8812345`, posted_at: expense.spent_at })
+  }),
+
+  http.get(`${API}/devices/listened-apps`, () => ok({ items: mockListened })),
+  http.patch(`${API}/devices/listened-apps/:id`, async ({ params, request }) => {
+    const app = mockListened.find((a) => a.id === Number(params.id))
+    if (!app) return fail(404, 'NOT_FOUND', 'Không tìm thấy app trong danh sách nghe.')
+    Object.assign(app, (await request.json()) as object)
+    return ok(app)
+  }),
+
+  http.get(`${API}/inbox/conversations`, ({ request }) => {
+    const url = new URL(request.url)
+    const app = url.searchParams.get('app')
+    const importance = url.searchParams.get('importance')
+    const rows = mockConversations().filter((c) => (!app || c.app === app) && (!importance || c.importance === importance))
+    return ok({ items: rows, next_cursor: null })
+  }),
+  http.get(`${API}/inbox/conversations/:key/messages`, ({ params }) => ok({ items: mockInbox.filter((m) => m.conversation_key === params.key), next_cursor: null })),
+  http.post(`${API}/inbox/conversations/:key/mark`, async ({ params, request }) => {
+    const { status } = (await request.json()) as { status: 'seen' | 'done' }
+    const rows = mockInbox.filter((m) => m.conversation_key === params.key)
+    rows.forEach((m) => (m.status = status))
+    return ok({ updated: rows.length })
   }),
 
   http.get(`${API}/search`, async ({ request }) => {

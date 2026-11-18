@@ -42,9 +42,42 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Dịch vụ nghe thông báo (30 mục 3.6): chỉ hệ thống gắn được nhờ quyền BIND_NOTIFICATION_LISTENER_SERVICE. -->
+        <service
+            android:name=".notify.TrolyNotificationListener"
+            android:label="${appLabel}"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.notification.disabled_filter_types"
+                android:value="ongoing" />
+        </service>
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+
+    <!-- Gói cần biết đã cài hay chưa (Android 11+, không dùng QUERY_ALL_PACKAGES). -->
+    <queries>
+        <package android:name="com.VCB" />
+        <package android:name="vn.com.techcombank.bb.app" />
+        <package android:name="com.mservice.momotransfer" />
+        <package android:name="com.zing.zalo" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="com.samsung.android.messaging" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.samsung.android.lool" />
+    </queries>
 </manifest>

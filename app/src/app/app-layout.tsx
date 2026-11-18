@@ -2,6 +2,7 @@ import { Suspense, useState } from 'react'
 import { CalendarDays, ChartColumn, Inbox, LayoutGrid, Loader2, MessageCircle, Route, Settings, Wallet } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ErrorBoundary } from '@/app/error-boundary'
+import { useDeviceStartup } from '@/app/use-device-startup'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
 import { cn } from '@/shared/utils/cn'
 
@@ -26,6 +27,7 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
+  useDeviceStartup()
   const moreActive = MORE_ITEMS.some((item) => pathname.startsWith(item.to))
 
   return (

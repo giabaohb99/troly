@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import { getErrorMessage } from '@/core/api/api-error'
+import { ExpenseSourceBlock } from '@/modules/expense/components/expense-source'
 import { useCategories, useDeleteExpense, useSaveExpense } from '@/modules/expense/hooks/use-expenses'
 import type { Expense, ExpenseKind } from '@/modules/expense/types/expense'
 import { fromLocalInput, toLocalInput } from '@/modules/expense/utils/period-range'
@@ -121,6 +122,7 @@ export function ExpenseDialog({ expense, open, onOpenChange }: ExpenseDialogProp
             <Label htmlFor="note">Ghi chú</Label>
             <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
           </div>
+          {expense?.source === 'bank_notification' && <ExpenseSourceBlock expenseId={expense.id} />}
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {error}

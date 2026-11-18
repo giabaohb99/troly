@@ -24,5 +24,13 @@ export const queryKeys = {
   device: {
     release: ['device', 'release'] as const,
     list: ['device', 'list'] as const,
+    permissions: ['device', 'permissions'] as const,
+    notifyStatus: ['device', 'notify-status'] as const,
+    listenedApps: ['device', 'listened-apps'] as const,
+  },
+  inbox: {
+    all: ['inbox'] as const,
+    conversations: (filters: Record<string, unknown>) => ['inbox', 'conversations', filters] as const,
+    messages: (key: string) => ['inbox', 'messages', key] as const,
   },
 }

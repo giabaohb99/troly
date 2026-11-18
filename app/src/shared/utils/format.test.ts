@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDayTitle, formatModelLabel, formatMoney, formatMoneyShort, formatTime, parseMoney, toDateKey } from '@/shared/utils/format'
+import { formatDayTitle, formatModelLabel, formatMoney, formatMoneyShort, formatTime, formatWhen, parseMoney, toDateKey } from '@/shared/utils/format'
 
 describe('parseMoney', () => {
   it.each([
@@ -49,5 +49,12 @@ describe('formatModelLabel', () => {
     expect(formatModelLabel('claude-haiku-5-5')).toBe('Haiku 5.5')
     expect(formatModelLabel('claude-sonnet-5-5-20261101')).toBe('Sonnet 5.5')
     expect(formatModelLabel(null)).toBeNull()
+  })
+})
+
+describe('formatWhen', () => {
+  it('hôm nay ra giờ, ngày khác ra ngày tháng', () => {
+    expect(formatWhen('2026-11-18T02:05:00Z', '2026-11-18')).toBe('09:05')
+    expect(formatWhen('2026-11-16T02:05:00Z', '2026-11-18')).toBe('16/11')
   })
 })

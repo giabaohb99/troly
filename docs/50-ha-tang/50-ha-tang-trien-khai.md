@@ -75,7 +75,7 @@ Máy cá nhân: api 8200, Vite 5190, DB dev `127.0.0.1:55432`.
 | `docker-compose.dev.yml` | Máy cá nhân, ghép đè | Mã gắn volume, tự nạp lại, DB mở cổng, `web`, S3 giả (mục 3.10) |
 | `infra/docker-compose.test.yml` | Máy cá nhân và CI, đứng riêng | `db-test` trên tmpfs, `test`, `web-test`, `android-test` (`70` mục 3.2) |
 
-`backend/Dockerfile` ba đích: `base` (`python:3.12-slim`, phụ thuộc chạy thật, `postgresql-client-16`), `dev` (thêm pytest, ruff, watchfiles; mã gắn volume), `prod` (chép mã, user không phải root). Ảnh nền chốt cho mọi nơi: `postgres:16-alpine`, `python:3.12-slim`, `node:24-alpine`.
+`backend/Dockerfile` ba đích: `base` (`python:3.12-slim`, phụ thuộc chạy thật, `postgresql-client-16` lấy từ apt.postgresql.org vì bản 17 của Debian ghi bản sao lưu mà máy chủ 16 không khôi phục được), `dev` (thêm pytest, ruff, watchfiles; mã gắn volume), `prod` (chép mã, user không phải root). Ảnh nền chốt cho mọi nơi: `postgres:16-alpine`, `python:3.12-slim`, `node:24-alpine`.
 
 ```yaml
 name: troly
@@ -190,7 +190,7 @@ Bộ câu mẫu AI chạy ở máy: `docker compose -f infra/docker-compose.test
 3. `apksigner verify --print-certs`; dấu vân tay phải bằng `cert-sha256.txt`, lệch thì dừng.
 4. Đẩy `releases/troly-X.Y.Z.apk` lên bucket `assistant`, ghi đè `releases/latest.json`: `{version_code, version_name, apk_key, sha256, size_bytes, min_supported_version_code, notes, published_at}`; giữ 10 APK mới nhất. Mã R2 đọc từ `D:/giabao/troly-secrets/r2.env`.
 
-Bản phát hành chỉ build từ mã đã commit (script từ chối cây còn thay đổi). api đọc `latest.json` (đệm 5 phút) để trả `GET /api/v1/device/release` kèm URL ký sẵn 300 giây. App luôn hỏi trước khi cài (QĐ-18). Bản lỗi thì đăng bản mới có `versionCode` lớn hơn; ép cập nhật bằng `troly.minSupportedVersionCode` trong `app/package.json`.
+Máy chưa có `r2.env` thì build với `--no-upload`, chép APK lên VPS và chạy `scripts/vps-publish-apk.sh <tệp.apk> X.Y.Z "ghi chú"` trong `/opt/troly`: script đẩy APK và `latest.json` bằng mã R2 trong `.env` của troly (qua container worker), mã R2 không rời VPS. Bản phát hành chỉ build từ mã đã commit (script từ chối cây còn thay đổi). api đọc `latest.json` (đệm 5 phút) để trả `GET /api/v1/device/release` kèm URL ký sẵn 300 giây. App luôn hỏi trước khi cài (QĐ-18). Bản lỗi thì đăng bản mới có `versionCode` lớn hơn; ép cập nhật bằng `troly.minSupportedVersionCode` trong `app/package.json`.
 
 ### 3.8 Deploy và quay lui
 

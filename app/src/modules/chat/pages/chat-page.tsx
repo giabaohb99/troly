@@ -38,6 +38,16 @@ export function ChatPage() {
     if (params.get('hoi')) setParams({}, { replace: true })
   }, [params, setParams])
 
+  // Từ Hộp tin: nút Tóm tắt gửi câu dựng sẵn với mode = summary (12 mục 5.2), không có endpoint riêng.
+  const summaryRef = useRef(false)
+  useEffect(() => {
+    const prompt = params.get('tom-tat')
+    if (!prompt || summaryRef.current) return
+    summaryRef.current = true
+    setParams({}, { replace: true })
+    void send({ text: prompt, mode: 'summary', fileIds: [] })
+  }, [params, setParams, send])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages.length, turn?.text, turn?.actions.length, turn?.status])

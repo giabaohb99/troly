@@ -4,6 +4,8 @@ import importlib
 import importlib.util
 
 ENABLED_MODULES = ["setting", "memory", "chat", "file", "device", "expense", "inbox", "search", "system"]
+# Tích hợp ngoài ở app/integrations/<tên>/; không import modules, module cài store cho nó (10 mục 3.4).
+ENABLED_INTEGRATIONS = ["google"]
 
 
 def _import_if_exists(name: str):
@@ -20,6 +22,8 @@ def import_all_models() -> None:
     _import_if_exists("app.ai.models")
     for module in ENABLED_MODULES:
         _import_if_exists(f"app.modules.{module}.models")
+    for integration in ENABLED_INTEGRATIONS:
+        _import_if_exists(f"app.integrations.{integration}.models")
 
 
 def iter_module_parts(part: str):
@@ -28,3 +32,26 @@ def iter_module_parts(part: str):
         loaded = _import_if_exists(f"app.modules.{module}.{part}")
         if loaded is not None:
             yield module, loaded
+
+
+def iter_integration_parts(part: str):
+    for integration in ENABLED_INTEGRATIONS:
+        loaded = _import_if_exists(f"app.integrations.{integration}.{part}")
+        if loaded is not None:
+            yield integration, loaded
+
+
+def register_integrations() -> None:
+    """Gọi một lần lúc api và worker khởi động: module calendar, task cài store cho đồng bộ Google.
+
+    Module có `google_store.py` khai `STORE`; chưa có (trước 3-02) thì job Google bỏ qua và ghi log.
+    """
+    google_stores = _import_if_exists("app.integrations.google.stores")
+    if google_stores is None:
+        return
+    calendar = _import_if_exists("app.modules.calendar.google_store")
+    if calendar is not None:
+        google_stores.register_calendar_store(calendar.STORE)
+    task = _import_if_exists("app.modules.task.google_store")
+    if task is not None:
+        google_stores.register_task_store(task.STORE)

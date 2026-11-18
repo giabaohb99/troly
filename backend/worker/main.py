@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.db import SessionLocal, get_engine
 from app.core.logging import setup_logging
 from app.core.scheduler import due_jobs, ensure_schedule, run_job
-from app.registry import import_all_models
+from app.registry import import_all_models, register_integrations
 from worker.jobs import build_jobs
 
 log = logging.getLogger("troly.worker")
@@ -69,6 +69,7 @@ def run() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
     import_all_models()
+    register_integrations()
     signal.signal(signal.SIGTERM, handle_stop)
     signal.signal(signal.SIGINT, handle_stop)
     jobs = build_jobs()

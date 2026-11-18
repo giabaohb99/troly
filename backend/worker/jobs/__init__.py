@@ -7,11 +7,13 @@ from app.core.scheduler import DailyAt, Every, Job
 
 
 def build_jobs() -> list[Job]:
+    from app.integrations.google import jobs as google_jobs
     from app.modules.chat import jobs as chat_jobs
     from app.modules.file import jobs as file_jobs
     from worker.jobs import backup, cleanup, device_events, disk, queue
 
     s = get_settings()
+    queue.HANDLERS["google_initial_sync"] = google_jobs.run_initial_sync
 
     def extract_unless_disk_full() -> int:
         return 0 if disk.heavy_jobs_paused() else file_jobs.extract_file_text()
@@ -20,6 +22,11 @@ def build_jobs() -> list[Job]:
         Job("run_queued_jobs", 7001, None, queue.run_queued_jobs),
         Job("extract_file_text", 7002, None, extract_unless_disk_full),
         Job("process_device_events", 7003, None, device_events.process_device_events),
+        Job("push_google_outbox", 7004, None, google_jobs.push_outbox),
+        # Hai job đồng bộ tự xét next_sync_at nên chạy mỗi vòng; nút Đồng bộ ngay đặt về bây giờ.
+        Job("sync_google_calendar", 7005, None, google_jobs.sync_due_calendars),
+        Job("pull_google_tasks_status", 7302, None, google_jobs.pull_due_tasks),
+        Job("renew_google_watch", 7301, DailyAt(3, 0), google_jobs.renew_watches),
         Job("summarize_previous_day", 7101, DailyAt(4, 5), chat_jobs.summarize_previous_day),
         Job("expire_pending_actions", 7102, Every(timedelta(minutes=5)), chat_jobs.expire_pending_actions),
         Job(

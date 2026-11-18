@@ -74,3 +74,11 @@ export function formatModelLabel(model: string | null | undefined): string | nul
 export function formatUsd(value: number): string {
   return `${value.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
 }
+
+// Giờ nếu là hôm nay, không thì ngày "dd/mm" (danh sách hộp tin).
+export function formatWhen(iso: string, todayKey: string = toDateKey(new Date())): string {
+  const key = toDateKey(iso)
+  if (key === todayKey) return formatTime(iso)
+  const [, m, d] = key.split('-')
+  return `${d}/${m}`
+}

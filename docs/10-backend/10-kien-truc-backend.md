@@ -77,7 +77,7 @@ Job một module nằm ở `modules/<x>/jobs.py`; job điều phối nhiều mod
 | `search` | `memory`, `chat`, `inbox`, `trip`, `file` (chỉ đọc) |
 | `report` | `expense`, `task`, `calendar`, `inbox`, `file`, `setting`; gọi `ai.cost` |
 
-Sự kiện thiết bị điều phối ở `worker/jobs/device_events.py`: theo `kind` và `app_package` gọi `expense`, `inbox`, `task`, `calendar`; `device` không phụ thuộc module nào.
+Đồng bộ Google ở `integrations/google/` không import modules: `calendar`, `task` cài `CalendarStore`, `TaskStore` (khai ở `integrations/google/stores.py`) trong `google_store.py` của mình, `app.registry.register_integrations()` đăng ký lúc api và worker khởi động; module ghi sang Google qua `google.outbox.enqueue` cùng giao dịch. Sự kiện thiết bị điều phối ở `worker/jobs/device_events.py`: theo `kind` và `app_package` gọi `expense`, `inbox`, `task`, `calendar`; `device` không phụ thuộc module nào.
 
 ### 3.5 Sự kiện nội bộ
 
@@ -160,13 +160,12 @@ Vòng chạy: chờ `troly_wake` hoặc `WORKER_POLL_SECONDS`; chạy job hàng 
 | `process_device_events` | mỗi vòng, lô 200 | `notification` sang expense (kể cả ghép cặp chuyển nội bộ) hoặc inbox; `reminder_action` `done` đánh dấu việc xong | `worker/jobs/device_events.py` | V1.2 |
 | `run_queued_jobs` | mỗi vòng, lô 5 | `tab_job_queue`: `trip_import`, `trip_evaluate`, `google_initial_sync` | `worker/jobs/queue.py` | V1.4 |
 | `extract_file_text` | mỗi vòng, lô 5 | Tệp `extract_status = pending`: trích chữ vào `tab_file_text` (`11-co-so-du-lieu.md` mục 3.8) | `modules/file/jobs.py` | V1.1 |
-| `push_google_outbox` | mỗi vòng, lô 20 | Ghi lên Calendar, Tasks, Gmail, Drive, Sheets | `worker/jobs/google_outbox.py` | V1.4 |
-| `sync_google_calendar` | mỗi vòng xét `needs_sync` (webhook, gộp 10 giây) hoặc `next_sync_at` (15 phút ±25%) | Kéo thay đổi bằng `syncToken` | `modules/calendar/jobs.py` | V1.4 |
-| `renew_google_watch` | 03:00 hằng ngày | Gia hạn kênh còn dưới 48 giờ | `modules/calendar/jobs.py` | V1.4 |
-| `pull_google_tasks_status` | 15 phút | Đọc ngược xong, đã xóa (QĐ-21) | `modules/task/jobs.py` | V1.4 |
+| `push_google_outbox` | mỗi vòng, lô 20 | Ghi lên Calendar, Tasks, Gmail, Drive, Sheets | `integrations/google/jobs.py` | V1.4 |
+| `sync_google_calendar` | mỗi vòng xét `needs_sync` (webhook, gộp 10 giây) hoặc `next_sync_at` (15 phút ±25%) | Kéo thay đổi bằng `syncToken` | `integrations/google/jobs.py` | V1.4 |
+| `renew_google_watch` | 03:00 hằng ngày | Gia hạn kênh còn dưới 48 giờ | `integrations/google/jobs.py` | V1.4 |
+| `pull_google_tasks_status` | mỗi vòng xét `next_sync_at` (15 phút ±25%) | Đọc ngược xong, đã xóa (QĐ-21) | `integrations/google/jobs.py` | V1.4 |
 | `sync_gmail` | 5 phút | `history.list` vào hộp tin | `modules/inbox/jobs.py` | V1.8 |
 | `sync_google_contacts` | 04:00 hằng ngày | Danh bạ | `modules/inbox/jobs.py` | V1.8 |
-| `cleanup_google_oauth_state` | mỗi giờ | Xóa trạng thái OAuth quá hạn | `worker/jobs/cleanup.py` | V1.4 |
 | `summarize_previous_day` | 04:05 hằng ngày | Tóm tắt phiên hôm trước | `modules/chat/jobs.py` | V1.0 |
 | `expire_pending_actions` | 5 phút | `pending` quá hạn thành `expired` | `modules/chat/jobs.py` | V1.0 |
 | `check_silent_devices` | mỗi giờ | Thiết bị `listener_connected` mà 24 giờ không có sự kiện: cảnh báo ở `/system/status` | `modules/device/jobs.py` | V1.2 |
@@ -235,7 +234,7 @@ Chỉ phần dễ sai (QĐ-27 mục 8), chạy trên `db-test` (PostgreSQL 16, t
 
 | Agent | Việc |
 |---|---|
-| điều phối | `02`: thêm `modules/search/`, `worker/jobs/{device_events,queue,google_outbox,backup,cleanup,disk}.py`, `app/cli.py`, `core/clock.py`, `ai/models.py` |
+| điều phối | `02`: thêm `modules/search/`, `worker/jobs/{device_events,queue,backup,cleanup,disk}.py`, `app/cli.py`, `core/clock.py`, `ai/models.py` |
 | agent AI | 20: `UserContext` không còn `role`; tên job `summarize_previous_day` |
 | agent Google | 40: tên job theo mục 3.9; thử lại hai mức mục 3.9; `GOOGLE_REDIRECT_URI` |
 | agent hạ tầng | 50: `.env.example` đúng bảng mục 3.6; bỏ `age`, mã CI. 60: bỏ phần đã gọn theo QĐ-27 |

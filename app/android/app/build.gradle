@@ -27,6 +27,10 @@ android {
         // Bộ mẫu OTP chung ở gốc kho (testdata/otp-samples.yaml), JUnit đọc cùng tệp với bài kiểm Python.
         unitTests.all {
             systemProperty 'troly.testdata', file("${rootDir}/../../testdata").absolutePath
+            testLogging {
+                events "passed", "failed"
+                exceptionFormat "full"
+            }
         }
     }
     buildTypes {

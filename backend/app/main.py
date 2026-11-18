@@ -15,7 +15,7 @@ from app.core.errors import error_body, install_error_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 from app.core.router import router as core_router
-from app.registry import import_all_models, iter_module_parts
+from app.registry import import_all_models, iter_integration_parts, iter_module_parts, register_integrations
 
 settings = get_settings()
 setup_logging(settings.log_level)
@@ -65,7 +65,10 @@ for _name, module in iter_module_parts("router"):
     api.include_router(module.router)
     if hasattr(module, "public_router"):
         app.include_router(module.public_router)
+for _name, integration in iter_integration_parts("router"):
+    api.include_router(integration.router)
 app.include_router(api)
+register_integrations()
 
 
 def _register_tools() -> None:

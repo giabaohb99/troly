@@ -406,7 +406,7 @@ Nhắc trên máy không có bảng riêng: tính từ `tab_event` có `remind_s
 
 **`tab_google_account`** (một dòng): (cột chung, `user_id` UQ); `google_sub NN UQ`; `email citext NN`; `granted_scopes text[] NN`; `enabled_packs text[] NN default '{base}'` (`base`, `calendar`, `tasks`, `gmail`, `contacts`, `drive`); `refresh_token_enc bytea NN`; `access_token_enc bytea`; `access_expires_at`; `key_version smallint NN`; `status` CK `active`, `reauth_required`, `revoked`; `last_error`; `invalid_grant_count int NN default 0`; `connected_at NN`. Token mã hóa Fernet, bản rõ `{user_id, provider, token}`.
 
-**`tab_google_oauth_state`** (K2, giữ bảng): (cột chung); `state_hash text NN UQ`; `packs text[] NN`; `code_verifier_enc bytea NN`; `expires_at NN` (10 phút); `used_at` (dùng một lần, chống phát lại).
+**`tab_google_oauth_state`** (K2, giữ bảng): (cột chung); `state_hash text NN UQ`; `packs text[] NN`; `code_verifier_enc bytea NN`; `key_version smallint NN` (giải mã được sau khi xoay khóa); `expires_at NN` (10 phút); `used_at` (dùng một lần, chống phát lại).
 
 **`tab_google_sync_state`**
 
@@ -489,7 +489,7 @@ Job `cleanup_old_data` chạy 03:30 hằng ngày, lô 1.000 dòng.
 | `tab_pending_action` | Quá hạn thành `expired`; xóa sau 30 ngày |
 | `tab_ai_run` | 13 tháng |
 | `tab_auth_session` | 30 ngày sau hết hạn hoặc thu hồi |
-| `tab_google_oauth_state` | 1 giờ sau hết hạn |
+| `tab_google_oauth_state` | 1 giờ sau hết hạn (job `cleanup_old_data` hằng ngày) |
 | `tab_job_queue` | 30 ngày (`failed` 90 ngày); `tab_job_run` 30 ngày |
 | `tab_client_log` | 30 ngày |
 | `tab_google_outbox` | `done` 7 ngày; `failed`, `conflict` 30 ngày |

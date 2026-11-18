@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { App as CapApp } from '@capacitor/app'
-import { CalendarDays, ChartColumn, Inbox, Route as RouteIcon } from 'lucide-react'
+import { CalendarDays, ChartColumn, Route as RouteIcon } from 'lucide-react'
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { ApiError } from '@/core/api/api-error'
@@ -18,6 +18,9 @@ import { Toaster } from '@/shared/ui/sonner'
 const ExpensePage = lazyPage(() => import('@/modules/expense/pages/expense-page').then((m) => m.ExpensePage))
 const SearchPage = lazyPage(() => import('@/modules/search/pages/search-page').then((m) => m.SearchPage))
 const SettingsPage = lazyPage(() => import('@/modules/setting/pages/settings-page').then((m) => m.SettingsPage))
+const InboxPage = lazyPage(() => import('@/modules/inbox/pages/inbox-page').then((m) => m.InboxPage))
+const ConversationPage = lazyPage(() => import('@/modules/inbox/pages/conversation-page').then((m) => m.ConversationPage))
+const DeviceSetupPage = lazyPage(() => import('@/modules/device/pages/device-setup-page').then((m) => m.DeviceSetupPage))
 
 const isAuthError = (error: unknown) => error instanceof ApiError && error.status === 401
 
@@ -71,7 +74,9 @@ export function App() {
                 <Route path="tim" element={<SearchPage />} />
                 <Route path="chi-tieu" element={<ExpensePage />} />
                 <Route path="cai-dat" element={<SettingsPage />} />
-                <Route path="hop-tin" element={<ComingSoon title="Hộp tin" icon={Inbox} phase={2} text="Tin Zalo, Telegram, Messenger, SMS sẽ gom ở đây." />} />
+                <Route path="hop-tin" element={<InboxPage />} />
+                <Route path="hop-tin/:conversationKey" element={<ConversationPage />} />
+                <Route path="thiet-lap" element={<DeviceSetupPage />} />
                 <Route path="lich" element={<ComingSoon title="Lịch" icon={CalendarDays} phase={3} text="Lịch Google, việc và nhắc trên máy sẽ ở đây." />} />
                 <Route path="lich-trinh" element={<ComingSoon title="Lịch trình" icon={RouteIcon} phase={4} text="Nhập lịch trình, đánh giá rủi ro và mở Google Maps." />} />
                 <Route path="bao-cao" element={<ComingSoon title="Báo cáo" icon={ChartColumn} phase={4} text="Bảng số liệu chi tiêu, lịch, hộp tin, chi phí AI." />} />

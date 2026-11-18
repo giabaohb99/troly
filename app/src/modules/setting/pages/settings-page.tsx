@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, Coins, Download, FileText, Loader2, LogOut, RefreshCw, Smartphone } from 'lucide-react'
+import { ChevronRight, Coins, Download, FileText, Loader2, LogOut, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getAppVersion } from '@/core/config'
 import { canInstallApk, startApkDownload } from '@/core/native/update'
@@ -28,6 +29,7 @@ function Section({ icon: Icon, title, children }: { icon: typeof Coins; title: s
 
 // Cài đặt Phase 1 (31 mục 3.5): hồ sơ lõi, chi phí AI, phiên bản, thiết bị, đăng xuất.
 export function SettingsPage() {
+  const navigate = useNavigate()
   const session = useSession()
   const logout = useLogout()
   const profile = useQuery({ queryKey: queryKeys.memory.profile, queryFn: getProfile })
@@ -46,6 +48,15 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-4 pb-8">
       <PageHeader title="Cài đặt" subtitle={session.data ? `${session.data.name} · ${session.data.email}` : undefined} />
+
+      <button type="button" onClick={() => navigate('/thiet-lap')} className="flex items-center gap-3 rounded-2xl border bg-card p-4 text-left">
+        <ShieldCheck className="size-5 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Thiết lập máy</span>
+          <span className="block text-sm text-muted-foreground">Quyền đọc thông báo, pin, Samsung, app được nghe</span>
+        </span>
+        <ChevronRight className="size-4 text-muted-foreground" />
+      </button>
 
       <Section icon={FileText} title="Hồ sơ lõi">
         <button type="button" disabled={!profile.data} onClick={() => setProfileOpen(true)} className="flex w-full items-center gap-2 text-left text-sm">
