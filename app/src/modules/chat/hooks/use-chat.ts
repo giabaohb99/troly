@@ -9,8 +9,9 @@ import type { ChatMessage, ChatMode, ChatToday } from '@/modules/chat/types/chat
 import { applyTurnEvent, finishTurnWithoutCompletion, startTurn, type ChatTurn } from '@/modules/chat/utils/turn-reducer'
 import { queryKeys } from '@/shared/constants/query-keys'
 
+// Chuyển tab rồi quay lại: dùng ngay dữ liệu đã có, không tải lại nếu vừa tải trong 1 phút (sau lượt chat vẫn tải).
 export function useChatToday() {
-  return useQuery({ queryKey: queryKeys.chat.today, queryFn: getChatToday })
+  return useQuery({ queryKey: queryKeys.chat.today, queryFn: getChatToday, staleTime: 60_000 })
 }
 
 export function useChatStatus() {

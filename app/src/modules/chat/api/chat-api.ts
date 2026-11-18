@@ -1,8 +1,11 @@
-import { apiDelete, apiGet, apiPost } from '@/core/api/http-client'
-import type { ChatAction, ChatStatus, ChatToday } from '@/modules/chat/types/chat'
+import { apiDelete, apiGet, apiPost, toQuery } from '@/core/api/http-client'
+import type { ChatAction, ChatMessage, ChatStatus, ChatToday } from '@/modules/chat/types/chat'
 
 export const getChatToday = () => apiGet<ChatToday>('/chat/today')
 export const getChatStatus = () => apiGet<ChatStatus>('/chat/status')
+// Một trang tin của phiên, cũ trước; next_cursor là id tin cũ nhất của trang, null khi hết.
+export const listConversationMessages = (conversationId: number, cursor: string | null, limit: number) =>
+  apiGet<{ items: ChatMessage[]; next_cursor: string | null }>(`/chat/conversations/${conversationId}/messages${toQuery({ cursor, limit })}`)
 export const deleteConversation = (id: number) => apiDelete<null>(`/chat/conversations/${id}`)
 
 const RESTORE_PATHS = { expense: '/expenses', task: '/tasks', event: '/calendar/events' } as const

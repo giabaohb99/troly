@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Bot, Info, Loader2, RefreshCw, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -19,6 +19,11 @@ import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { formatUsd } from '@/shared/utils/format'
 import { openFileById } from '@/shared/utils/open-file'
+import { useOlderMessages } from '@/modules/chat/hooks/use-older-messages'
+import { mergeOlder } from '@/modules/chat/utils/older-messages'
+
+// Mở từ thông báo tới tin cũ: tải thêm tối đa chừng này trang (50 tin mỗi trang) để tìm.
+const MAX_SEEK_PAGES = 20
 
 const SUGGESTIONS = ['cơm trưa 45k', 'Tháng này tiêu bao nhiêu rồi?', 'Tìm ghi chú về hợp đồng nhà', 'Giá vàng hôm nay']
 
@@ -32,7 +37,28 @@ export function ChatPage() {
   const [params, setParams] = useSearchParams()
   const [draft, setDraft] = useState(() => params.get('hoi') ?? '')
   const bottomRef = useRef<HTMLDivElement>(null)
-  const messages = today.data?.messages ?? []
+  const listRef = useRef<HTMLDivElement>(null)
+  const latest = today.data?.messages ?? []
+  // Chỉ tải 50 tin mới nhất; kéo lên gần đầu thì tải trang cũ hơn, giữ nguyên chỗ đang đọc.
+  const olderPages = useOlderMessages(today.data?.conversation?.id ?? null, today.data?.next_cursor ?? null)
+  const messages = mergeOlder(olderPages.older, latest)
+  const lastId = latest[latest.length - 1]?.id ?? null
+  const keepFromBottomRef = useRef<number | null>(null)
+
+  const loadOlder = async () => {
+    const el = listRef.current
+    if (!el || olderPages.loading || !olderPages.hasMore) return []
+    keepFromBottomRef.current = el.scrollHeight - el.scrollTop
+    return olderPages.loadOlder()
+  }
+
+  // Sau khi chèn tin cũ lên đầu: giữ khoảng cách tới đáy như trước khi tải để màn không nhảy.
+  useLayoutEffect(() => {
+    const el = listRef.current
+    if (!el || keepFromBottomRef.current === null) return
+    el.scrollTop = el.scrollHeight - keepFromBottomRef.current
+    keepFromBottomRef.current = null
+  }, [olderPages.older.length])
 
   // Từ màn Tìm: "Hỏi trợ lý" đưa câu vào ô nhập (/?hoi=...).
   useEffect(() => {
@@ -49,12 +75,32 @@ export function ChatPage() {
     void send({ text: prompt, mode: 'summary', fileIds: [] })
   }, [params, setParams, send])
 
+  // Mở màn chat: đứng ngay ở tin cuối, không có hiệu ứng cuộn (đặt scrollTop trước khi vẽ). Sau đó chỉ cuộn mượt
+  // khi có tin mới mà người dùng đang ở cuối; tự gửi tin thì luôn xuống cuối. Mở tới một tin cụ thể thì không đụng.
+  const seekingRef = useRef(false)
+  seekingRef.current = !!params.get('tin')
+  const positionedRef = useRef(false)
+  const atBottomRef = useRef(true)
+  useLayoutEffect(() => {
+    const el = listRef.current
+    if (!el || positionedRef.current || !lastId || seekingRef.current) return
+    el.scrollTop = el.scrollHeight
+    positionedRef.current = true
+  }, [lastId])
   useEffect(() => {
+    if (!positionedRef.current || seekingRef.current || !atBottomRef.current) return
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages.length, turn?.text, turn?.actions.length, turn?.status])
+  }, [lastId, turn?.text, turn?.actions.length, turn?.status])
+  useEffect(() => {
+    if (!turn?.clientMessageId) return
+    atBottomRef.current = true
+    positionedRef.current = true
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [turn?.clientMessageId])
 
   // Từ thông báo trợ lý trả lời (QĐ-41): cuộn tới đúng tin, tin có tệp thì mở tệp khi bấm Mở tệp.
   const targetMessage = Number(params.get('tin')) || null
+  const seekPagesRef = useRef(0)
   const fileToOpen = Number(params.get('mo-tep')) || null
   useEffect(() => {
     if (!targetMessage && !fileToOpen) return
@@ -70,8 +116,19 @@ export function ChatPage() {
         )
       return
     }
+    const found = messages.some((m) => m.id === targetMessage)
+    if (!found && olderPages.hasMore) {
+      if (!olderPages.loading && seekPagesRef.current < MAX_SEEK_PAGES) {
+        seekPagesRef.current += 1
+        void loadOlder()
+      }
+      return
+    }
     const timer = setTimeout(() => {
-      document.getElementById(`tin-${targetMessage}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      seekPagesRef.current = 0
+      document.getElementById(`tin-${targetMessage}`)?.scrollIntoView({ block: 'start' })
+      positionedRef.current = true
+      atBottomRef.current = false
       setParams(
         (prev) => {
           prev.delete('tin')
@@ -82,7 +139,8 @@ export function ChatPage() {
       )
     }, 400)
     return () => clearTimeout(timer)
-  }, [targetMessage, fileToOpen, today.isSuccess, setParams])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadOlder đổi mỗi lần vẽ; chạy lại theo số tin là đủ
+  }, [targetMessage, fileToOpen, today.isSuccess, setParams, messages.length, olderPages.hasMore, olderPages.loading])
 
   const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[] }) => {
     setDraft('')
@@ -133,7 +191,20 @@ export function ChatPage() {
         </div>
       </div>
 
-      <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-4">
+      <div
+        ref={listRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+          if (el.scrollTop < 240) void loadOlder()
+        }}
+        className="-mx-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-4"
+      >
+        {olderPages.loading && (
+          <div className="flex justify-center py-1 text-muted-foreground" role="status" aria-label="Đang tải tin cũ">
+            <Loader2 className="size-4 animate-spin" />
+          </div>
+        )}
         <OfflineBanner />
         <UpdateBanner />
         {status.data?.over_monthly_warning && (

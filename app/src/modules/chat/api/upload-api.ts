@@ -17,7 +17,7 @@ async function sha256Hex(file: File): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-export async function uploadFile(file: File, purpose = 'chat'): Promise<UploadedFile> {
+export async function uploadFile(file: File, purpose = 'chat_attachment'): Promise<UploadedFile> {
   if (file.size > MAX_FILE_BYTES) throw new ApiError(413, 'Tệp quá 25 MB.', 'PAYLOAD_TOO_LARGE')
   const mime = file.type || 'application/octet-stream'
   const target = await apiPost<{ file_id: number; upload_url: string; upload_headers: Record<string, string> | null }>('/files/upload-url', {

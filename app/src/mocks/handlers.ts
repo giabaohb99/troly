@@ -178,7 +178,18 @@ export const handlers = [
     return ok({ accepted: body.items.length })
   }),
 
-  http.get(`${API}/chat/today`, () => ok({ conversation: { id: 52, local_date: new Date().toISOString().slice(0, 10) }, messages: mockDb.messages, next_cursor: null, pending_actions: mockDb.pending })),
+  http.get(`${API}/chat/today`, () => {
+    const latest = mockDb.messages.slice(-50)
+    return ok({ conversation: { id: 52, local_date: new Date().toISOString().slice(0, 10) }, messages: latest, next_cursor: mockDb.messages.length > 50 ? String(latest[0].id) : null, pending_actions: mockDb.pending })
+  }),
+  http.get(`${API}/chat/conversations/:id/messages`, ({ request }) => {
+    const url = new URL(request.url)
+    const cursor = Number(url.searchParams.get('cursor')) || Infinity
+    const limit = Number(url.searchParams.get('limit')) || 50
+    const before = mockDb.messages.filter((m) => m.id < cursor)
+    const items = before.slice(-limit)
+    return ok({ items, next_cursor: before.length > limit && items.length ? String(items[0].id) : null })
+  }),
   http.get(`${API}/chat/status`, () => ok({ models: null, today_usd: 0.04, month_usd: 1.84, monthly_warn_usd: 200, over_monthly_warning: false, cache_read_ratio_7d: 0.8 })),
   http.delete(`${API}/chat/conversations/:id`, () => {
     mockDb.messages = []
@@ -238,7 +249,13 @@ export const handlers = [
     return ok({ ...mockDb.profile, updated_by: 'user', updated_at: new Date().toISOString() })
   }),
 
-  http.post(`${API}/files/upload-url`, () => ok({ file_id: nextId(), upload_url: '/mock-r2/upload', upload_headers: null, expires_at: new Date(Date.now() + 300_000).toISOString() })),
+  // Kiểm purpose như máy chủ thật (file/models.py PURPOSES); lệch là 400 giống thật.
+  http.post(`${API}/files/upload-url`, async ({ request }) => {
+    const body = (await request.json()) as { purpose?: string }
+    const purposes = ['chat_attachment', 'voice', 'document', 'trip_source', 'trip_export', 'report_export', 'other']
+    if (body.purpose !== undefined && !purposes.includes(body.purpose)) return fail(400, 'VALIDATION_ERROR', 'Dữ liệu không hợp lệ.')
+    return ok({ file_id: nextId(), upload_url: '/mock-r2/upload', upload_headers: null, expires_at: new Date(Date.now() + 300_000).toISOString() })
+  }),
   http.put('/mock-r2/upload', () => new HttpResponse(null, { status: 200 })),
   http.get(`${API}/files/:id`, ({ params }) => {
     const file = mockFiles.get(Number(params.id))
@@ -351,3 +368,12 @@ export const handlers = [
     return ok({ update_available: current < latest.version_code, required: false, latest })
   }),
 ]
+
+// Chế độ giả: window.__trolySeedChat(120) thêm tin cũ để thử tải trang cũ hơn.
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __trolySeedChat: (n: number) => void }).__trolySeedChat = (n: number) => {
+    const old: ChatMessage[] = []
+    for (let i = 0; i < n; i++) old.push(message(i % 2 ? 'assistant' : 'user', `Tin cũ số ${i + 1}`, { id: 100 + i }))
+    mockDb.messages = [...old, ...mockDb.messages]
+  }
+}
