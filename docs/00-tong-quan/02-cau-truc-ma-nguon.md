@@ -114,7 +114,7 @@ app/
       alarm/                    nhắc lịch bằng AlarmManager
       update/                   kiểm, tải, hỏi cài bản mới
       maps/                     mở Google Maps
-      secure/                   kho khóa Android, vân tay
+      secure/                   kho khóa Android (cất mã thiết bị, mã làm mới)
       system/                   kiểm quyền, tối ưu pin, chế độ ngủ của One UI
       voice/                    nhận dạng giọng nói
       health/                   (V2) Health Connect

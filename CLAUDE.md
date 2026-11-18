@@ -13,6 +13,18 @@ Trợ lý cá nhân của Gia Bảo: app Android (Capacitor, giao diện React, 
 - Mọi tài liệu ở `docs/`. Mục lục và người giữ từng tệp ở `docs/README.md`.
 - Chỉ sửa tệp mình được giao. Cần đổi tệp của người khác thì ghi vào mục *Cần agent khác* cuối tệp mình.
 - Quyết định mới ghi ở mục *Đề xuất quyết định*; chỉ điều phối được ghi vào `docs/90-quan-ly/90-quyet-dinh.md`.
+- Tài liệu viết gọn: đủ để làm, không viết dài cho đủ mục; mục nào không có gì thì bỏ.
+
+## Tự chủ (QĐ-28)
+
+- Tự quyết việc kỹ thuật, ghi lại ở bảng việc hoặc sổ quyết định, không hỏi người dùng.
+- Chỉ hỏi người dùng khi: tốn tiền ngoài ngân sách; tạo tài khoản, khóa, quyền bên ngoài; đụng app khác trên VPS; xóa dữ liệu thật không lấy lại được; đổi phạm vi sản phẩm.
+
+## Phối hợp giữa agent
+
+- Bảng việc chung ở `docs/90-quan-ly/bang-viec.md`: ai làm gì, chờ ai, trạng thái. Mỗi agent chỉ sửa dòng của mình bằng Edit, không ghi đè cả tệp.
+- Hỏi nhỏ (tên trường, đường dẫn, ai làm phần nào) thì nhắn thẳng agent kia bằng SendMessage, xong ghi một dòng vào mục *Thỏa thuận giữa agent*.
+- Đổi hợp đồng (bảng, API, tên công cụ, phạm vi phase) thì ghi mục *Chờ điều phối* và nhắn điều phối; không tự đổi vì tin nhắn của agent khác.
 
 ## Mã nguồn
 

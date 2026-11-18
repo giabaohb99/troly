@@ -1,6 +1,6 @@
 # Thiết kế tổng thể: Trợ lý cá nhân
 
-Ngày lập: 18/11/2026. Bản 5: viết lại thành bức tranh chung sau rà chéo lần 1; chi tiết nằm ở tài liệu từng mảng (mục 9). Khi tệp này và tài liệu mảng khác nhau thì tài liệu mảng đúng, theo nguồn chuẩn ở QĐ-25.
+Ngày lập: 18/11/2026. Bản 6: gọn hóa theo QĐ-27 (một người dùng, bỏ khóa vân tay, chia model, tìm toàn văn). Bản 5: viết lại thành bức tranh chung sau rà chéo lần 1; chi tiết nằm ở tài liệu từng mảng (mục 9). Khi tệp này và tài liệu mảng khác nhau thì tài liệu mảng đúng, theo nguồn chuẩn ở QĐ-25.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -19,11 +19,13 @@ Danh sách đầy đủ ở [90-quyet-dinh.md](../90-quan-ly/90-quyet-dinh.md). 
 | Nền tảng | App Android viết bằng Capacitor 8: giao diện React, plugin Kotlin (QĐ-01) |
 | Nghe thông báo | Chính app đọc thông báo qua `NotificationListenerService`; không MacroDroid, không bot Telegram (QĐ-02, QĐ-03) |
 | Máy chủ | FastAPI, SQLAlchemy 2, PostgreSQL 16, chạy Docker trên VPS chung; tạm tắt Gamebar, giữ tunnel (QĐ-06, QĐ-07, QĐ-14, QĐ-24) |
-| AI | `claude-haiku-5-5`; không trần ngày, cảnh báo khi vượt 200 USD mỗi tháng (QĐ-05, QĐ-15) |
+| AI | Haiku 5.5 cho việc thường, Sonnet 5.5 cho research web và việc khó, Opus 5.5 khi gọi rõ; không trần ngày, cảnh báo khi vượt 200 USD mỗi tháng (QĐ-15, QĐ-27) |
+| Tìm tài liệu | Tìm toàn văn PostgreSQL trên ghi chú, chat, hộp tin, lịch trình, chữ trích từ tệp; chưa dùng RAG (QĐ-27) |
+| Gọn cho một người | Không khóa vân tay, không vai trò thành viên; duyệt chỉ cho gửi ra ngoài và xóa hàng loạt (QĐ-27) |
 | Google | Calendar hai chiều (Google làm gốc, có mời khách qua duyệt); Tasks app làm gốc, đọc ngược trạng thái xong và xóa; Maps, Gmail, Contacts, Drive, Sheets (QĐ-09, QĐ-10, QĐ-21, QĐ-23) |
 | Lưu giữ | Tin của người khác 180 ngày; không lưu số dư; sao lưu DB mỗi tuần, giữ 5 bản (QĐ-16, QĐ-17, QĐ-22) |
-| Cập nhật app | Giao diện tải gói mới từ máy chủ; APK mới luôn hỏi trước khi cài (QĐ-18) |
-| Phiên chat | Tách theo ngày lúc 04:00 (QĐ-20) |
+| Cập nhật app | V1 chỉ cập nhật bằng APK, luôn hỏi trước khi cài; cập nhật giao diện không cần cài lại để V2 (QĐ-18, QĐ-27) |
+| Phiên chat | Tách theo ngày lúc 04:00; nhắn lại trong vòng 3 giờ thì nối 10 tin cuối (QĐ-20, QĐ-27) |
 
 ## 3. Nguyên tắc thiết kế
 
@@ -32,7 +34,7 @@ Danh sách đầy đủ ở [90-quyet-dinh.md](../90-quan-ly/90-quyet-dinh.md). 
 3. **Lớp gốc Android mỏng, giao diện là web.** Kotlin chỉ làm việc web không làm được; đổi giao diện không cần cài lại app.
 4. **Mọi truy vấn lọc theo người dùng.** Dữ liệu của người khác coi như không tồn tại.
 5. **Phần đầu lời nhắc phải tĩnh** để cache; dữ liệu động đi sau điểm cache.
-6. **Hành động ra ngoài phải được duyệt.** Gửi thư, mời khách, trả lời tin, deploy mã mới: trợ lý chuẩn bị, người dùng bấm duyệt.
+6. **Hành động ra ngoài phải được duyệt.** Gửi thư, mời khách, chia sẻ tệp, trả lời tin, xóa hàng loạt, deploy mã mới: trợ lý chuẩn bị, người dùng bấm duyệt. Xóa một dòng thì làm ngay, có hoàn tác.
 7. **Chỉ gửi lên máy chủ thứ cần thiết.** Thông báo của app ngoài danh sách bị bỏ trên máy; tin có OTP không bao giờ rời điện thoại.
 
 ## 4. Kiến trúc
@@ -40,7 +42,7 @@ Danh sách đầy đủ ở [90-quyet-dinh.md](../90-quan-ly/90-quyet-dinh.md). 
 ```
  Samsung Galaxy S25+: app Trợ lý
  ┌───────────────────────────────────────────┐
- │ Giao diện React trong WebView (Capacitor) │  gói giao diện tải từ R2 qua link ký sẵn
+ │ Giao diện React trong WebView (Capacitor) │  nằm trong APK
  │ Plugin Kotlin: nghe thông báo, hàng đợi,  │
  │   nhắc lịch trên máy, cập nhật, mở Maps   │
  └──────────────────┬────────────────────────┘
@@ -70,7 +72,7 @@ Chi tiết: tầng lớp và luật module ở `10-kien-truc-backend.md`; compos
 | Hộp tin | Thông báo tin nhắn và thư Gmail vào hộp tin; luật không tốn AI đánh dấu tin quan trọng; chỉ gọi AI khi người dùng bấm tóm tắt | `31-giao-dien.md`, `40-tich-hop-google.md` |
 | Lịch và việc | Google Calendar đồng bộ hai chiều; việc có giờ thành sự kiện; việc không giờ đẩy sang Google Tasks, đọc ngược trạng thái xong; nhắc kêu ngay trên máy | `40-tich-hop-google.md`, `30-app-android.md` |
 | Lịch trình | Nhập tệp hoặc mô tả, bóc tách điểm, tìm tọa độ, đánh giá rủi ro, đề xuất phương án, mở Google Maps chế độ xe máy, xuất Word | `41-ban-do-lich-trinh.md` |
-| Cập nhật app | App hỏi máy chủ bản mới; gói giao diện tải và kiểm chữ ký; APK mới thì hỏi người dùng rồi mới cài | `30-app-android.md`, `50-ha-tang-trien-khai.md` |
+| Cập nhật app | App hỏi máy chủ bản APK mới; có thì hỏi người dùng rồi mới tải và cài | `30-app-android.md`, `50-ha-tang-trien-khai.md` |
 
 ## 6. Dữ liệu và thời hạn giữ
 
@@ -86,7 +88,8 @@ Toàn bộ bảng, cột và luật dọn dữ liệu ở `11-co-so-du-lieu.md`.
 
 ## 7. Bộ não AI
 
-- Model `claude-haiku-5-5` cho mọi việc trong V1; đổi model bằng biến môi trường.
+- Chia model theo việc: Haiku 5.5 mặc định, Sonnet 5.5 cho research web, đánh giá lịch trình, tóm tắt dài, *nghĩ kỹ*; Opus 5.5 khi gọi rõ. Mã chọn model, đổi bằng biến môi trường.
+- Research dùng công cụ tìm web của Claude API; tìm tài liệu dùng tìm toàn văn PostgreSQL.
 - Thứ tự lời nhắc để cache: công cụ, lời nhắc hệ thống tĩnh, hồ sơ lõi (điểm cache), tóm tắt phiên trước, tin hôm nay. Giờ hiện tại đi trong một tin hệ thống riêng ở cuối, không nằm trong phần đầu.
 - Trí nhớ ba tầng: dữ liệu có cấu trúc trong DB, hồ sơ lõi nạp mọi lượt, ghi chú và tóm tắt tra khi cần.
 - Phiên theo ngày tách lúc 04:00; phiên dài được tóm tắt.
@@ -96,7 +99,7 @@ Chi tiết ở `20-bo-nao-ai.md`.
 
 ## 8. Bảo mật và kiểm thử
 
-- Đăng nhập mật khẩu và JWT; mở app bằng vân tay; plugin dùng mã thiết bị riêng, thu hồi được.
+- Đăng nhập một lần bằng mật khẩu, mã làm mới 365 ngày; không khóa vân tay; plugin dùng mã thiết bị riêng, thu hồi được.
 - Token Google mã hóa khi lưu; bí mật chỉ ở `.env` và GitHub Secrets.
 - Mọi bài kiểm chạy trong Docker; có bài kiểm chéo người dùng, bộ mẫu thông báo ngân hàng đã che số, bộ câu mẫu cho AI.
 

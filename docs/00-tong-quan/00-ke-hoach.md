@@ -36,22 +36,20 @@ Hiện chỉ có **một người dùng** là Gia Bảo (QĐ-15). Khung nhiều 
 
 **Đăng nhập Google:** một dự án Google Cloud dùng chung cho OAuth và Maps. Màn đồng ý OAuth ở trạng thái *Testing* thì mã làm mới hết hạn sau 7 ngày, nên chuyển sang *In production*. Chưa qua xác minh thì người dùng bấm qua màn cảnh báo *ứng dụng chưa được xác minh*; điều kiện cụ thể với từng nhóm quyền (nhạy cảm, hạn chế) ghi ở `40-tich-hop-google.md`, cần thử thật trước khi coi là chắc chắn.
 
-## 3. Lộ trình
+## 3. Lộ trình theo phase
 
-| Giai đoạn | Nội dung | Xong khi |
-|---|---|---|
-| **A. Tài liệu** | Kế hoạch, thiết kế tổng thể, tài liệu kỹ thuật từng mảng | Đủ các tệp ở [docs/README.md](../README.md), đã rà chéo, người dùng duyệt |
-| **V1.0** | Backend nền (core, ai, memory, chat) + vỏ app Capacitor có màn Chat + CI build APK | Cài APK, đăng nhập, chat được, hồ sơ lõi được nạp |
-| **V1.1** | Chi tiêu qua chat | Nhắn "cơm trưa 45k" là ghi đúng; hỏi tổng tháng trả đúng |
-| **V1.2** | Plugin nghe thông báo + chi tiêu từ Vietcombank, Techcombank, MoMo | Giao dịch thật tự thành một dòng chi tiêu, chuyển sang MoMo không bị tính hai lần |
-| **V1.3** | Hộp tin từ thông báo + tổng hợp | Hỏi "hôm nay có tin gì quan trọng" trả đúng, không lộ OTP |
-| **V1.4** | Lịch, việc, nhắc trên máy + Google Calendar, Google Tasks | Thêm lịch trong app thấy trên Google Calendar và ngược lại |
-| **V1.5** | Tự cập nhật app | Đăng bản mới thì app báo và cài được |
-| **V1.6** | Lịch trình và bản đồ | Tệp Phước Hải – Trà Vinh vào thì ra đủ 3 ngày, chỉ ra rủi ro, bấm điểm là Maps mở chế độ xe máy |
-| **V1.7** | Báo cáo, thông số, cài đặt đầy đủ | Bảng điều khiển hiện đủ các số ở mục 1 |
-| **V1.8** | Gmail, Contacts, Drive, Sheets | Thư quan trọng vào hộp tin; xuất báo cáo chi tiêu ra Sheets |
-| **V2** | Trả lời tin qua thông báo (có duyệt), máy chủ MCP, module gym, Health Connect | |
-| **V3** | Tự phát triển bằng Claude CLI có cửa duyệt | |
+Mỗi phase gom vài bản V1.x, xong phase là có thứ dùng được thật trên Galaxy S25+. Bản V1.5 (tự cập nhật giao diện) bỏ theo QĐ-27; kiểm bản APK mới gộp vào V1.0.
+
+| Phase | Bản | Nội dung | Agent chính | Xong khi | Người dùng làm |
+|---|---|---|---|---|---|
+| **A. Tài liệu** | | Kế hoạch, thiết kế, tài liệu từng mảng, gọn hóa (QĐ-27) | cả năm | Rà nhanh sau vòng 3 không còn chỗ vênh nặng | Duyệt |
+| **0. Chuẩn bị** | | Tên miền `troly.baohuynh.io.vn`, kiểm VPS, khóa Anthropic, bucket R2, khóa ký APK, secret GitHub, tạm dừng `core-game` | hạ tầng | VPS sẵn chỗ, CI chạy được | Chạy 3 lệnh kiểm VPS, tạo khóa và bucket, xác nhận dừng `core-game` |
+| **1. Nền và chat** | V1.0, V1.1 | Backend nền, đăng nhập, chat SSE, hồ sơ lõi, chia model, research web, tìm tài liệu toàn văn, chi tiêu qua chat; vỏ app, màn Chat, Chi tiêu, Cài đặt cơ bản; CI build APK; deploy | kiến trúc, AI, app Android, hạ tầng | Cài APK, đăng nhập, chat được; nhắn *cơm trưa 45k* là ghi đúng; hỏi research có nguồn; tìm được tệp đã tải lên | Cài APK, dùng thử vài ngày |
+| **2. Nghe thông báo** | V1.2, V1.3 | Plugin nghe thông báo, lọc OTP, chi tiêu tự động Vietcombank, Techcombank, MoMo; hộp tin Zalo, Telegram, Messenger, SMS | app Android, kiến trúc, AI | Giao dịch thật tự thành một dòng, chuyển sang MoMo không tính hai lần; hỏi *hôm nay có tin gì quan trọng* trả đúng, không lộ OTP | Gửi ảnh 5 tới 10 thông báo mỗi ví, làm bước thiết lập máy Samsung |
+| **3. Lịch và việc** | V1.4 | Lịch, việc, nhắc trên máy, Google Calendar hai chiều, Google Tasks, mời khách qua duyệt | Google, app Android | Thêm lịch trong app thấy trên Google Calendar và ngược lại; nhắc kêu đúng giờ khi mất mạng | Làm các bước trên Google Cloud Console |
+| **4. Lịch trình và báo cáo** | V1.6, V1.7 | Lịch trình, Google Maps, xuất Word; báo cáo, thông số, cài đặt đầy đủ | Google, app Android, AI | Tệp Phước Hải – Trà Vinh ra đủ 3 ngày, chỉ ra rủi ro, bấm điểm là Maps mở chế độ xe máy; bảng điều khiển đủ số | Tạo khóa Maps, đặt quota |
+| **5. Gmail và Drive** | V1.8 | Gmail, Contacts, Drive, Sheets | Google | Thư quan trọng vào hộp tin; xuất chi tiêu ra Sheets | Nối thêm quyền Google |
+| **Sau V1** | V2, V3 | Trả lời tin qua thông báo (có duyệt), máy chủ MCP, module gym, Health Connect, cập nhật giao diện không cần cài lại; tự phát triển bằng Claude CLI | | | Cân nhắc VPS mạnh hơn |
 
 ## 4. Cách làm: một điều phối, nhiều agent
 
@@ -78,15 +76,32 @@ Mỗi agent là một phiên Claude Code riêng, gom trong nhóm **agent trợ l
 5. Quyết định mới hoặc khác với thiết kế tổng thể thì ghi ở mục *Đề xuất quyết định* cuối tệp, kèm lý do. Điều phối đưa vào `90-quyet-dinh.md` khi người dùng duyệt.
 6. Mỗi tài liệu có đủ các mục: Mục tiêu, Phạm vi, Thiết kế, Dữ liệu cần, API hoặc giao tiếp, Kiểm thử, Rủi ro, Câu hỏi mở, Cần agent khác, Đề xuất quyết định.
 
-### 4.3 Giai đoạn mã
+### 4.3 Cách làm mỗi phase mã
 
-Sau khi tài liệu được duyệt, mỗi bản V1.x giao cho agent giữ mảng đó; điều phối rà và commit. Hai agent không sửa cùng một tệp trong cùng lúc.
+0. **Bảng việc chung** ở `docs/90-quan-ly/bang-viec.md`: mọi việc, người giữ, chờ ai, trạng thái; hỏi nhỏ thì agent nhắn thẳng nhau rồi ghi lại, đổi hợp đồng thì qua điều phối.
+1. **Chốt hợp đồng trước.** Điều phối chốt schema, API và tên công cụ của phase theo 11, 12, 20; agent không tự đổi giữa chừng.
+2. **Chia theo vùng mã, mỗi agent một nhánh riêng** (git worktree), không hai agent sửa cùng một tệp:
+
+| Agent | Vùng mã |
+|---|---|
+| agent kiến trúc | `backend/app/core/`, `backend/app/modules/*/` (trừ `tools.py`), `backend/alembic/`, `backend/worker/` |
+| agent AI | `backend/app/ai/`, mọi `tools.py`, `backend/tests/ai_eval/` |
+| agent app Android | `app/` (giao diện React và plugin Kotlin) |
+| agent Google | `backend/app/integrations/google/`, phần đồng bộ trong module `calendar`, `task`, `trip`, `inbox` khi tới phase của mình (báo trước cho agent kiến trúc) |
+| agent hạ tầng | `docker-compose*.yml`, `backend/Dockerfile`, `infra/`, `scripts/`, `.github/workflows/` |
+
+3. **Thứ tự trong phase:** backend và hạ tầng đi trước; agent AI viết `tools.py` khi `service.py` đã có; app chạy song song bằng API giả rồi nối thật.
+4. **Kiểm trong Docker:** mỗi agent chạy bài kiểm phần mình sửa; CI chạy đủ và build APK.
+5. **Điều phối rà và gộp** từng nhánh vào `main`, chạy lại bài kiểm, commit, đẩy.
+6. **Deploy:** điều phối chạy `scripts/deploy.sh`; lần đầu và mỗi lần đụng VPS (dừng `core-game`, đổi Cloudflare) đều hỏi người dùng trước.
+7. **Người dùng thử trên S25+** theo danh sách thử tay của phase; lỗi thì sửa vòng nhỏ rồi mới sang phase sau.
+8. **Ghi lại:** nhật ký việc, và sửa tài liệu nếu mã khác thiết kế.
 
 ## 5. Ngân sách
 
 | Khoản | Mức |
 |---|---|
-| Claude API cho bộ não | Không đặt trần ngày (QĐ-15). Mức cảnh báo tháng 200 USD, vượt thì báo, không chặn. Ước dưới 10 USD mỗi tháng với Haiku 5.5 |
+| Claude API cho bộ não | Không đặt trần ngày (QĐ-15). Mức cảnh báo tháng 200 USD, vượt thì báo, không chặn. Haiku 5.5 cho việc thường, Sonnet 5.5 cho research và việc khó, Opus 5.5 khi gọi rõ (QĐ-27); ước vài USD tới khoảng 20 USD mỗi tháng |
 | Claude CLI cho phát triển | Gói đăng ký |
 | Google Maps Platform | Trong mức miễn phí hằng tháng. Đặt cảnh báo ngân sách trên Google Cloud (cảnh báo không tự chặn chi) và giới hạn số lần gọi mỗi ngày cho từng API |
 | VPS, R2, tên miền | Dùng chung hạ tầng sẵn có; tạm tắt Gamebar để nhường tài nguyên (QĐ-24) |
