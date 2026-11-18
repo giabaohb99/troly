@@ -292,7 +292,8 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 
 - `Expense`: `{id, amount_vnd, kind, account, account_last4, to_account, to_account_last4, category, merchant, place, note, spent_at, source, parser, parse_confidence, needs_review}`. Không có số dư (QĐ-22). `total_expense_vnd` không tính `transfer`.
 - `Conversation`: `{conversation_key, app, title, is_group, last_sender, last_text, last_posted_at, unread_count, importance, is_private}`; còn tin `important` chưa xử lý đứng đầu.
-- Riêng tư: `POST /inbox/rules` với `kind = private_conversation`, `value = <conversation_key>`.
+- Riêng tư: `POST /inbox/rules` với `kind = private_conversation`, `value = <conversation_key>`. Tin riêng tư hiện trong app và `GET /search`, không bao giờ ra công cụ AI (`search_everything`, công cụ hộp tin).
+- Danh sách hộp tin, tin trong cuộc trò chuyện phân trang bằng `cursor`, trả `next_cursor`.
 - Gửi Gmail chỉ qua thẻ duyệt (`tool_name = send_gmail_draft`); trước khi gửi so nội dung với `body_hash`, khác thì `ACTION_PAYLOAD_CHANGED`.
 
 ### 5.5 Việc và lịch
@@ -319,10 +320,10 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 
 ### 5.8 Thiết bị
 
-- `/device/events`: máy chủ chỉ lưu `tab_device_event` rồi trả ngay, `NOTIFY troly_wake`. `payload` theo `11-co-so-du-lieu.md` mục 3.5. Từ chối từng sự kiện (app không được nghe, khớp luật OTP lần hai, thiếu trường, `posted_at` cũ hơn 7 ngày hoặc sớm hơn giờ máy chủ quá 10 phút), không hỏng cả lô. `accepted + duplicates + số rejected` bằng số đã gửi; plugin xóa cả lô, chỉ giữ khi lỗi mạng hoặc 5xx.
-- `/device/config`: `{revision, listened_apps: [{package_name, purpose, enabled}], otp_rules_version, sms_brand_senders[], upload: {batch_max, min_interval_seconds}}`. Giữ nguyên `sms_default`; bỏ `com.google.android.gm` khi gói `gmail` của Google đã nối.
+- `/device/events`: máy chủ chỉ lưu `tab_device_event` rồi trả ngay, `NOTIFY troly_wake`. `payload` theo `11-co-so-du-lieu.md` mục 3.5. Từ chối từng sự kiện (app không được nghe, khớp luật OTP lần hai, thiếu trường, `posted_at` cũ hơn 7 ngày hoặc sớm hơn giờ máy chủ quá 10 phút), không hỏng cả lô. `accepted + duplicates + số rejected` bằng số đã gửi; plugin xóa cả lô, chỉ giữ khi lỗi mạng hoặc 5xx. `messages[].at` là ISO 8601 có múi giờ hoặc mili giây epoch; trường lạ trong `payload` bị bỏ.
+- `/device/config`: `{revision, listened_apps: [{package_name, purpose, parser, enabled}], otp_rules_version, sms_brand_senders[], upload: {batch_max, min_interval_seconds}}`; trả `ETag` là `revision`, `If-None-Match` khớp thì 304. Giữ nguyên `sms_default`; bỏ `com.google.android.gm` khi gói `gmail` của Google đã nối.
 - `/device/heartbeat` nhận: `app_version_code`, `app_version_name`, `manufacturer`, `default_sms_package`, `notification_access`, `listener_connected`, `notifications_enabled`, `exact_alarm_allowed`, `battery_optimization_ignored`, `queue_size`, `otp_blocked_today`.
-- `/device/release`: đọc `releases/latest.json` trên bucket `troly-release` (đệm 5 phút, `50-ha-tang-trien-khai.md` chốt); trả `latest = {version_code, version_name, download_url (300 giây), sha256, size_bytes, notes, min_supported_version_code}`; `required = true` khi bản đang chạy thấp hơn `min_supported_version_code`. App luôn hỏi trước khi cài (QĐ-18).
+- `/device/release`: đọc `releases/latest.json` trên bucket `assistant` (tiền tố `releases/`) (đệm 5 phút, `50-ha-tang-trien-khai.md` chốt); trả `latest = {version_code, version_name, download_url (300 giây), sha256, size_bytes, notes, min_supported_version_code}`; `required = true` khi bản đang chạy thấp hơn `min_supported_version_code`. App luôn hỏi trước khi cài (QĐ-18).
 
 ### 5.9 Trạng thái hệ thống
 

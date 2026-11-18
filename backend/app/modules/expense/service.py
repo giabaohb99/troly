@@ -1,14 +1,16 @@
 """Chi tiêu (11 mục 3.9, 12 mục 5.4). Hàm công khai dùng chung cho API và công cụ AI."""
 
+import hashlib
 import unicodedata
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import Select, case, func, select
+from sqlalchemy import Select, case, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core import clock
 from app.core.context import UserContext
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.expense import bank as bank_parse
 from app.modules.expense.amount import parse_amount_vnd
 from app.modules.expense.models import Expense, ExpenseCategory
 
@@ -391,3 +393,180 @@ def summarize(
 def parse_amount(text: str) -> int | None:
     """Cho công cụ AI và màn nhập nhanh: đọc *45k*, *1tr2*..."""
     return parse_amount_vnd(text)
+
+
+# ---------- Thông báo ngân hàng, ví (11 mục 3.9; worker/jobs/device_events.py gọi) ----------
+
+PAIR_WINDOW = timedelta(minutes=10)
+REVIEW_BELOW = 0.7
+BANKS = ("vcb", "tcb")
+
+
+def _ai_extract(user_id: int, bank: str, title: str, text: str, posted_at: datetime):
+    from app.ai.bank_extract import extract_bank_notification
+
+    return extract_bank_notification(user_id, bank, title, text, posted_at)
+
+
+def _notification_ref(package: str, title: str, body: str, at: datetime) -> str:
+    """Khóa chống trùng: cùng nội dung, cùng giờ giao dịch (hoặc cùng phút hiện thông báo)."""
+    digest = hashlib.sha256(f"{title}\n{body}\n{at:%Y%m%d%H%M%S}".encode()).hexdigest()[:32]
+    return f"{package}:{digest}"
+
+
+def _from_ai(result, posted_at: datetime):
+    from app.ai.bank_extract import classify
+
+    if classify(result) == "ignore":
+        return None
+    return bank_parse.BankTxn(
+        direction=result.direction,
+        amount_vnd=result.amount_vnd,
+        txn_type=result.txn_type,
+        account_last4=result.account_last4,
+        counterparty=result.counterparty,
+        note=result.description,
+        occurred_at=bank_parse.sane_time(result.occurred_at, posted_at),
+        confidence=result.confidence,
+    )
+
+
+def _pair(session: Session, user_id: int, fields: dict, bank: str, txn, ref: str) -> Expense | None:
+    """Ghép tiền ra ngân hàng với nạp ví MoMo (hoặc rút ví với tiền vào ngân hàng): cùng số tiền,
+    cách nhau tối đa 10 phút, chưa ghép. Hai giao dịch MoMo không bao giờ ghép với nhau."""
+    at = fields["spent_at"]
+    stmt = (
+        select(Expense)
+        .where(
+            Expense.user_id == user_id,
+            Expense.deleted_at.is_(None),
+            Expense.transfer_peer_ref.is_(None),
+            Expense.source == "bank_notification",
+            Expense.amount_vnd == fields["amount_vnd"],
+            Expense.spent_at.between(at - PAIR_WINDOW, at + PAIR_WINDOW),
+        )
+        .order_by(func.abs(func.extract("epoch", Expense.spent_at - at)))
+        .limit(1)
+        .with_for_update()
+    )
+    peers = [txn.peer_bank] if txn.peer_bank else list(BANKS)
+    if bank in BANKS and fields["kind"] == "expense":
+        row = session.scalar(
+            stmt.where(
+                Expense.kind == "transfer", Expense.to_account == "momo", Expense.account.in_([bank, "other"])
+            )
+        )
+        if row:
+            row.account, row.account_last4 = bank, fields["account_last4"]
+    elif bank in BANKS and fields["kind"] == "income":
+        row = session.scalar(
+            stmt.where(
+                Expense.kind == "transfer", Expense.account == "momo", Expense.to_account.in_([bank, "other"])
+            )
+        )
+        if row:
+            row.to_account, row.to_account_last4 = bank, fields["account_last4"]
+    elif bank == "momo" and txn.txn_type == "wallet_topup":
+        row = session.scalar(stmt.where(Expense.kind == "expense", Expense.account.in_(peers)))
+        if row:
+            row.kind, row.to_account = "transfer", "momo"
+    elif bank == "momo" and txn.txn_type == "wallet_withdraw":
+        row = session.scalar(stmt.where(Expense.kind == "income", Expense.account.in_(peers)))
+        if row:
+            row.to_account, row.to_account_last4 = row.account, row.account_last4
+            row.kind, row.account, row.account_last4 = "transfer", "momo", None
+    else:
+        return None
+    if row is None:
+        return None
+    row.transfer_peer_ref = ref
+    row.category_id, row.needs_review = None, False
+    session.flush()
+    return row
+
+
+def ingest_bank_notification(
+    session: Session,
+    user: UserContext,
+    *,
+    bank: str,
+    package: str,
+    title: str,
+    text: str,
+    posted_at: datetime,
+    device_event_id: int | None = None,
+    ai_extract=None,
+) -> dict:
+    """Đọc một thông báo ngân hàng, ví thành khoản chi. Trả `{status (done, ignored), result_kind
+    (expense, transfer_merged, none), result_id, reason}` cho tab_device_event."""
+    title, text = title or "", text or ""
+    txn = bank_parse.parse_notification(bank, title, text, posted_at, user.timezone)
+    parser, confidence = f"regex:{bank}", None
+    if txn is None:
+        extract = ai_extract or _ai_extract
+        txn = _from_ai(
+            extract(
+                user.user_id, bank, bank_parse.mask_for_ai(title), bank_parse.mask_for_ai(text), posted_at
+            ),
+            posted_at,
+        )
+        if txn is None:
+            return {"status": "ignored", "result_kind": "none", "result_id": None, "reason": "Không đọc được"}
+        parser, confidence = "ai", round(txn.confidence, 2)
+    if txn == bank_parse.IGNORE:
+        return {
+            "status": "ignored",
+            "result_kind": "none",
+            "result_id": None,
+            "reason": "Không phải giao dịch",
+        }
+
+    fields = bank_parse.to_expense_fields(txn, bank, posted_at)
+    ref = _notification_ref(
+        package, title, text, txn.occurred_at or posted_at.replace(second=0, microsecond=0)
+    )
+    existing = session.scalar(
+        select(Expense.id).where(
+            Expense.user_id == user.user_id, or_(Expense.source_ref == ref, Expense.transfer_peer_ref == ref)
+        )
+    )
+    if existing:
+        return {
+            "status": "ignored",
+            "result_kind": "none",
+            "result_id": existing,
+            "reason": "Thông báo trùng",
+        }
+    merged = _pair(session, user.user_id, fields, bank, txn, ref)
+    if merged is not None:
+        return {"status": "done", "result_kind": "transfer_merged", "result_id": merged.id, "reason": None}
+
+    fields.update(
+        parser=parser,
+        parse_confidence=confidence,
+        needs_review=confidence is not None and confidence < REVIEW_BELOW,
+    )
+    created = create_expense(session, user, fields, source="bank_notification")
+    row = session.get(Expense, created["id"])
+    row.source_ref, row.device_event_id = ref, device_event_id
+    session.flush()
+    return {"status": "done", "result_kind": "expense", "result_id": row.id, "reason": None}
+
+
+def get_expense_source(session: Session, user: UserContext, expense_id: int) -> dict:
+    """Thông báo gốc của khoản đọc từ ngân hàng; tab_device_event giữ 180 ngày rồi xóa."""
+    e = _get(session, user.user_id, expense_id)
+    row = None
+    if e.device_event_id is not None:
+        row = session.execute(
+            text(
+                "SELECT app_package, payload->>'title' AS title, payload->>'text' AS text, posted_at "
+                "FROM tab_device_event WHERE id = :id AND user_id = :u"
+            ),
+            {"id": e.device_event_id, "u": user.user_id},
+        ).first()
+    if row is None:
+        raise NotFoundError(
+            "Không còn thông báo gốc (chỉ giữ 180 ngày) hoặc khoản này không đọc từ thông báo."
+        )
+    return {"app_package": row.app_package, "title": row.title, "text": row.text, "posted_at": row.posted_at}

@@ -316,12 +316,12 @@ Tìm toàn văn PostgreSQL, **không RAG ở V1**. Cấu hình `troly_vn` (`simp
 - **Chỉ ở lượt `mode = research`** (Sonnet 5.5 hoặc Opus 5.5). Thêm vào cuối `tools`:
 
   ```json
-  {"type": "web_search_20260209", "name": "web_search", "max_uses": 5,
-   "user_location": {"type": "approximate", "country": "VN", "timezone": "Asia/Ho_Chi_Minh"}}
-  {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3}
+  {"type": "web_search_20260209", "name": "web_search", "max_uses": 5, "allowed_callers": ["direct"],
+   "user_location": {"type": "approximate", "timezone": "Asia/Ho_Chi_Minh"}}
+  {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3, "allowed_callers": ["direct"]}
   ```
 
-  Bản `_20260209` có lọc kết quả bằng mã chạy sẵn phía máy chủ: không khai thêm `code_execution`, không cần beta. `web_fetch` chỉ đọc được URL đã có trong hội thoại. Đối chiếu cấu trúc `user_location` với trang tài liệu web search khi viết mã.
+  Thử thật ngày 18/11/2026: `country: "VN"` bị API từ chối (lỗi 400 *Country code VN is not supported*), nên chỉ gửi múi giờ. Đường lọc kết quả bằng code execution (mặc định của bản `_20260209`) không trả `citations` và tốn gấp đôi token, nên đặt `allowed_callers: ["direct"]`. Vẫn không có `citations` thì lấy tối đa 5 trang đã tìm làm nguồn. `web_fetch` chỉ đọc được URL đã có trong hội thoại.
 - **Giới hạn:** tối đa 5 lần tìm và 3 lần đọc trang mỗi lần gọi. Mỗi lượt research tối đa 3 lần gọi có tìm web (vòng công cụ app không tính).
 - **Tin hệ thống của lượt research** (mục 3.3), theo khuyến nghị của skill: *Dữ liệu huấn luyện của bạn kết thúc trước hôm nay khá lâu. Giá, lịch, quy định, người giữ chức vụ và mọi thứ "mới nhất" có thể đã đổi, nên hãy tìm trước khi trả lời, kể cả khi thấy chắc. Điều không thể đổi thì không cần tìm. Câu trả lời phụ thuộc nơi chốn thì đưa Việt Nam hoặc tỉnh thành vào câu tìm. Trả lời gọn, mỗi ý dựa trên nguồn đã tìm.*
 - **Trích nguồn:**

@@ -1,0 +1,89 @@
+# Bộ mẫu thông báo ngân hàng, ví cho extract_bank_notification (QĐ-35). Chạy tay: pytest -m ai_eval.
+# Mẫu TỰ SOẠN theo dạng thường gặp, số tài khoản và tên đều giả; thay bằng mẫu thật đã che khi có (việc 2-04).
+# expect.classify: record | review | ignore (theo app.ai.bank_extract.classify).
+# expect.txn_type_in: chấp nhận một trong các loại (model có thể đọc purchase hay transfer_out đều hợp lý).
+# expect.no_claude: true nghĩa là không được gọi Claude (OTP).
+
+- id: vcb-chi-qr
+  bank: vcb
+  title: "Vietcombank"
+  text: "So du TK VCB 0011004567890 -120,000 VND luc 18-11-2026 08:15:02. So du 5,432,100 VND. Ref MBVCB.8812345.Thanh toan QR GrabFood"
+  expect: {classify: record, direction: out, amount_vnd: 120000, account_last4: "7890", txn_type_in: [purchase, transfer_out]}
+
+- id: vcb-nhan-chuyen-khoan
+  bank: vcb
+  title: "Vietcombank"
+  text: "So du TK VCB 0011004567890 +2,500,000 VND luc 18-11-2026 09:00:11. So du 7,932,100 VND. Ref 9876543.NGUYEN VAN AN chuyen tien tra no"
+  expect: {classify: record, direction: in, amount_vnd: 2500000, txn_type_in: [transfer_in]}
+
+- id: vcb-phi-sms
+  bank: vcb
+  title: "Vietcombank"
+  text: "So du TK VCB 0011004567890 -11,000 VND luc 01-11-2026 02:10:00. So du 3,210,000 VND. Ref Thu phi dich vu SMS Banking T10"
+  expect: {classify: record, direction: out, amount_vnd: 11000, txn_type_in: [fee]}
+
+- id: tcb-chi-hoa-don
+  bank: tcb
+  title: "Techcombank"
+  text: "TK 19034567891011 | -350,000 VND | 18/11/26 10:20 | SD: 1,000,000 VND | ND: thanh toan hoa don dien EVN thang 11"
+  expect: {classify: record, direction: out, amount_vnd: 350000, account_last4: "1011", txn_type_in: [purchase, transfer_out]}
+
+- id: tcb-luong
+  bank: tcb
+  title: "Techcombank"
+  text: "TK 19034567891011 | +15,000,000 VND | 18/11/26 10:00 | SD: 16,000,000 VND | ND: CONG TY TNHH ABC TRA LUONG T11/2026"
+  expect: {classify: record, direction: in, amount_vnd: 15000000, txn_type_in: [salary, transfer_in]}
+
+- id: tcb-rut-ve-momo
+  bank: tcb
+  title: "Techcombank"
+  text: "TK 19034567891011 | -500,000 VND | 18/11/26 11:05 | SD: 500,000 VND | ND: MOMO NAP TIEN VI 0901234567"
+  expect: {classify: record, direction: out, amount_vnd: 500000, txn_type_in: [wallet_topup, transfer_out]}
+
+- id: momo-thanh-toan
+  bank: momo
+  title: "Thanh toán thành công"
+  text: "Bạn đã thanh toán thành công 45.000đ cho Highlands Coffee."
+  expect: {classify: record, direction: out, amount_vnd: 45000, txn_type_in: [purchase]}
+
+- id: momo-nhan-tien
+  bank: momo
+  title: "Nhận tiền thành công"
+  text: "Bạn vừa nhận 200.000đ từ TRAN THI BICH. Lời nhắn: tra tien an trua"
+  expect: {classify: record, direction: in, amount_vnd: 200000, txn_type_in: [transfer_in]}
+
+- id: momo-nap-tu-ngan-hang
+  bank: momo
+  title: "Nạp tiền thành công"
+  text: "Nạp tiền thành công 500.000đ từ Techcombank vào Ví MoMo."
+  expect: {classify: record, direction: in, amount_vnd: 500000, txn_type_in: [wallet_topup]}
+
+- id: vcb-quang-cao
+  bank: vcb
+  title: "Vietcombank"
+  text: "Ưu đãi hoàn tiền 20% khi thanh toán QR tại Highlands Coffee đến hết 30/11. Chi tiết xem trên VCB Digibank."
+  expect: {classify: ignore, is_transaction: false}
+
+- id: tcb-giao-dich-that-bai
+  bank: tcb
+  title: "Techcombank"
+  text: "Giao dich chuyen tien 1,000,000 VND toi NGUYEN VAN CUONG khong thanh cong. Vui long thu lai."
+  expect: {classify: ignore, is_transaction: false}
+
+- id: momo-nhac-thanh-toan
+  bank: momo
+  title: "Nhắc thanh toán"
+  text: "Hóa đơn Internet 220.000đ sẽ đến hạn ngày 25/11. Thanh toán ngay để tránh gián đoạn."
+  expect: {classify: ignore, is_transaction: false}
+
+- id: otp-lot-loc
+  bank: vcb
+  title: "Vietcombank"
+  text: "Ma OTP de xac thuc giao dich 2,000,000 VND la 834512. Khong cung cap ma cho bat ky ai."
+  expect: {classify: ignore, is_transaction: false, no_claude: true}
+
+- id: vcb-cut-noi-dung
+  bank: vcb
+  title: "Vietcombank"
+  text: "So du TK VCB 0011004567890 bien dong. Chi tiet tren VCB Digibank."
+  expect: {classify: ignore}

@@ -1,14 +1,17 @@
 from html import escape
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_device, get_current_user, get_device_or_user
+from app.core.config import get_settings
 from app.core.context import DeviceContext, UserContext
 from app.core.db import get_session
 from app.core.errors import ok
+from app.core.ratelimit import limiter
 from app.modules.device import service
 
 router = APIRouter()
@@ -40,6 +43,87 @@ class HeartbeatIn(BaseModel):
     battery_optimization_ignored: bool | None = None
     queue_size: int | None = Field(default=None, ge=0)
     otp_blocked_today: int | None = Field(default=None, ge=0)
+
+
+class ListenedAppIn(BaseModel):
+    package_name: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.]+$")
+    label: str = Field(min_length=1, max_length=80)
+    purpose: Literal["expense", "inbox"]
+    parser: Literal["vcb", "tcb", "momo", "zalo", "telegram", "messenger", "sms", "generic"]
+    enabled: bool = True
+
+
+class ListenedAppPatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    purpose: Literal["expense", "inbox"] | None = None
+    parser: Literal["vcb", "tcb", "momo", "zalo", "telegram", "messenger", "sms", "generic"] | None = None
+    enabled: bool | None = None
+
+
+class EventsIn(BaseModel):
+    # Từng sự kiện kiểm riêng ở service để một sự kiện hỏng không làm hỏng cả lô.
+    events: list = Field(min_length=1, max_length=50)
+
+
+@router.get("/devices/listened-apps")
+def list_listened_apps(
+    user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok({"items": service.list_listened_apps(session, user.user_id)})
+
+
+@router.post("/devices/listened-apps", status_code=201)
+def create_listened_app(
+    body: ListenedAppIn,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(service.create_listened_app(session, user.user_id, body.model_dump()))
+
+
+@router.patch("/devices/listened-apps/{app_id}")
+def update_listened_app(
+    app_id: int,
+    body: ListenedAppPatch,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(service.update_listened_app(session, user.user_id, app_id, body.model_dump(exclude_unset=True)))
+
+
+@router.delete("/devices/listened-apps/{app_id}")
+def delete_listened_app(
+    app_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    service.delete_listened_app(session, user.user_id, app_id)
+    return ok(None)
+
+
+@router.post("/device/events")
+def post_events(
+    body: EventsIn,
+    device: DeviceContext = Depends(get_current_device),
+    session: Session = Depends(get_session),
+) -> dict:
+    limiter.hit(
+        f"device_events:{device.device_id}", get_settings().rate_device_events_per_min, 60, len(body.events)
+    )
+    return ok(service.ingest_events(session, device, body.events))
+
+
+@router.get("/device/config")
+def get_config(
+    response: Response,
+    if_none_match: str | None = Header(default=None),
+    device: DeviceContext = Depends(get_current_device),
+    session: Session = Depends(get_session),
+):
+    config = service.device_config(session, device.user_id)
+    etag = f'"{config["revision"]}"'
+    if if_none_match and if_none_match.removeprefix("W/").strip() == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    response.headers["ETag"] = etag
+    return ok(config)
 
 
 @router.get("/devices")

@@ -15,5 +15,7 @@ if [ ! -d android ]; then
   GENERATED=1
 fi
 npx cap sync android
+# gradlew tạo trên Windows có thể mang CRLF; đổi về LF trên bản chép rồi mới chạy.
+tr -d '\015' < android/gradlew > android/gradlew.lf && mv android/gradlew.lf android/gradlew
 chmod +x android/gradlew
 export GENERATED

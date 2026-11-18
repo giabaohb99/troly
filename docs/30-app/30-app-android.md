@@ -134,8 +134,8 @@ Sau đó cắt `text` tối đa 2.000 ký tự, gắn `client_event_id` (UUID), 
 | Luật | Nội dung |
 |---|---|
 | Từ khóa (không phân biệt hoa thường, so cả bản bỏ dấu) | `OTP`, `mã xác thực`, `mã xác nhận`, `mã xác minh`, `mã kích hoạt`, `mật khẩu một lần`, `Smart OTP`, `không cung cấp mã`, `không chia sẻ mã`, `verification code`, `passcode`, `one-time`, `security code`, `login code`, `2FA` |
-| Mẫu số | Chuỗi 4 tới 8 chữ số đứng riêng cùng câu với một từ khóa; hoặc dạng `G-123456`, `123-456` ở bất cứ đâu |
-| Theo nguồn | Thông báo của app mục đích *Chi tiêu* không khớp mẫu giao dịch thì bỏ. Mẫu giao dịch: số tiền dạng `[+-]?[0-9.,]+ ?(VND\|đ\|d)` cùng một dấu hiệu biến động (`+`/`-` trước số tiền, *GD*, *giao dịch*, *nhận*, *chuyển*) |
+| Mẫu số | Chuỗi 4 tới 8 chữ số đứng riêng cùng câu với một từ khóa, hoặc dạng `123-456`; `G-123456` luôn chặn. Không tính là mã khi dính ngày, giờ, số tiền có dấu ngăn, hay mã tham chiếu có dấu chấm (chỉ loại khi dấu chấm, dấu phẩy nối tiếp chữ số; `445566,` vẫn là mã) |
+| Theo nguồn | Thông báo của app mục đích *Chi tiêu* không có dấu hiệu số tiền thì bỏ cả tin, có mã hay không. Dấu hiệu số tiền: số có dấu ngăn nghìn `\d{1,3}([.,]\d{3})+`, hoặc số kèm *vnd*, *dong*, *d* (theo `backend/app/modules/device/otp.py` bản 2026-11-18.3). Mục đích lấy theo 7 app mặc định |
 | Theo người gửi SMS | Tiêu đề là tên thương hiệu ngân hàng, ví, sàn thương mại điện tử, dịch vụ đăng nhập và nội dung có chuỗi 4 tới 8 chữ số. Danh sách tên nằm trong bộ luật gửi qua `/device/config` |
 
 Android 15 tự che nội dung thông báo có OTP với app nghe thông báo [N12]; máy đích luôn có lớp này, thông báo bị che coi như rỗng. Bộ mẫu chung `testdata/otp-samples.yaml` dùng cho cả JUnit và bài kiểm Python.

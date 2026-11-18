@@ -1,7 +1,8 @@
 """Tìm chung toàn văn (QĐ-27 mục 11, 12 mục 5.3). Dùng chung cho GET /search và công cụ search_everything.
 
-Phase 1 có nguồn note, chat, file. Nguồn inbox (Phase 2), trip (Phase 4) thêm khi bảng có;
-gọi với nguồn chưa có thì trả rỗng để định nghĩa công cụ không đổi.
+Nguồn note, chat, file, inbox; trip (Phase 4) thêm khi bảng có, gọi với nguồn chưa có thì trả rỗng.
+Cuộc trò chuyện riêng tư (luật private_conversation) chỉ ra khi `include_private` (API của app),
+không bao giờ ra cho công cụ AI (60 mục 3.6).
 """
 
 from datetime import datetime
@@ -47,6 +48,20 @@ _QUERIES = {
           AND (CAST(:from_ AS timestamptz) IS NULL OR f.created_at >= :from_)
           AND (CAST(:to_ AS timestamptz) IS NULL OR f.created_at < :to_)
         ORDER BY rank DESC, f.created_at DESC LIMIT :limit
+    """,
+    "inbox": """
+        SELECT 'inbox' AS source, i.id, coalesce(i.conversation_title, i.sender, 'Tin nhắn') AS title,
+               i.posted_at AS date, ts_rank(i.search_vector, q) AS rank,
+               ts_headline('troly_vn', i.text, q, :hl) AS snippet, NULL::bigint AS conversation_id,
+               i.conversation_key
+        FROM tab_inbox_message i, websearch_to_tsquery('troly_vn', :q) q
+        WHERE i.user_id = :uid AND i.search_vector @@ q
+          AND (:include_private OR NOT EXISTS (
+              SELECT 1 FROM tab_inbox_rule r WHERE r.user_id = i.user_id
+                AND r.kind = 'private_conversation' AND r.value = i.conversation_key))
+          AND (CAST(:from_ AS timestamptz) IS NULL OR i.posted_at >= :from_)
+          AND (CAST(:to_ AS timestamptz) IS NULL OR i.posted_at < :to_)
+        ORDER BY rank DESC, i.posted_at DESC LIMIT :limit
     """,
 }
 
@@ -95,6 +110,7 @@ def search(
     start: datetime | None = None,
     end: datetime | None = None,
     limit: int = 20,
+    include_private: bool = False,
 ) -> list[dict]:
     q = (q or "").strip()
     if not q:
@@ -103,7 +119,15 @@ def search(
     unknown = [t for t in wanted if t not in SOURCES]
     if unknown:
         raise ValidationError(fields={"types": f"Không có loại: {', '.join(unknown)}."})
-    params = {"q": q, "uid": user_id, "from_": start, "to_": end, "limit": limit, "hl": HEADLINE}
+    params = {
+        "q": q,
+        "uid": user_id,
+        "from_": start,
+        "to_": end,
+        "limit": limit,
+        "hl": HEADLINE,
+        "include_private": include_private,
+    }
     hits: list[dict] = []
     for source in wanted:
         sql = _QUERIES.get(source)

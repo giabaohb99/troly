@@ -28,7 +28,7 @@ export function PastConversation({ conversationId, onBack }: { conversationId: n
       </div>
       {messages.isPending && <SkeletonList rows={4} />}
       {messages.isError && <ErrorState error={messages.error} onRetry={() => void messages.refetch()} />}
-      {/* Máy chủ trả tin mới trước; đảo lại để đọc từ trên xuống. */}
+      {/* Máy chủ trả cũ trước trong một trang (200 tin mới nhất); vẫn sắp theo created_at cho chắc. */}
       {[...(messages.data?.items ?? [])]
         .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
         .map((message) => (

@@ -180,6 +180,26 @@ def _apply_citations(text_blocks: list[dict], sources: list[dict]) -> str:
     return "".join(out)
 
 
+def _search_results(content: list[dict]) -> list[dict]:
+    """Kết quả tìm web trong một lần trả lời (kể cả khi tìm qua code execution)."""
+    hits = []
+    for block in content:
+        if block.get("type") == "web_search_tool_result" and isinstance(block.get("content"), list):
+            hits.extend(r for r in block["content"] if r.get("type") == "web_search_result" and r.get("url"))
+    return hits
+
+
+def _fallback_sources(hits: list[dict]) -> list[dict]:
+    """Không có citations thì lấy tối đa 5 trang đã tìm làm nguồn, gộp URL trùng."""
+    out: list[dict] = []
+    for r in hits:
+        if r["url"] not in (s["url"] for s in out):
+            out.append({"title": r.get("title") or r["url"], "url": r["url"]})
+        if len(out) == MAX_CITATIONS:
+            break
+    return out
+
+
 def _call(client: ClaudeClient, params: dict, plan: TurnPlan, ctx: ToolContext) -> Iterator[TurnEvent]:
     """Stream một lần gọi; phát text.delta; kết quả cuối nằm ở StopIteration.value."""
     gen = client.stream_text(
@@ -228,6 +248,7 @@ def run_turn(
     totals = _Totals()
     actions: list[dict] = []
     sources: list[dict] = []
+    search_hits: list[dict] = []
     turn_texts: list[str] = []
     model_used = plan.model
     max_tokens = plan.max_tokens
@@ -282,6 +303,7 @@ def run_turn(
             continue
 
         round_text = _apply_citations(_texts(content), sources)
+        search_hits.extend(_search_results(content))
         if round_text.strip():
             turn_texts.append(round_text.strip())
         pausing = res.stop_reason == "pause_turn" and pauses < MAX_PAUSE_CONTINUES
@@ -290,6 +312,8 @@ def run_turn(
             if res.stop_reason == "max_tokens":
                 turn_texts.append(TEXT_CUT)
             final_text = PARA.join(turn_texts) or TEXT_EMPTY
+            if not sources:
+                sources = _fallback_sources(search_hits)
             if tool_uses:  # bị cắt giữa lúc gọi công cụ: không để tool_use thiếu kết quả trong lịch sử
                 content = [b for b in content if b.get("type") != "tool_use"]
                 content = content if _texts(content) else [*content, {"type": "text", "text": final_text}]

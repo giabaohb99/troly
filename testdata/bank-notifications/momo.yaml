@@ -1,0 +1,49 @@
+# Mẫu MoMo tự soạn theo định dạng phổ biến (QĐ-35); tên người, cửa hàng là bịa.
+- id: momo-tt-001
+  package: com.mservice.momotransfer
+  title: "Thanh toán thành công"
+  text: "Bạn đã thanh toán thành công 35.000đ cho Highlands Coffee."
+  posted_at: "2026-11-18T15:20:00+07:00"
+  expect: { kind: expense, amount_vnd: 35000, account: momo, merchant: "Highlands Coffee", spent_at: "2026-11-18T15:20:00+07:00" }
+
+- id: momo-nhan-001
+  package: com.mservice.momotransfer
+  title: "Nhận tiền thành công"
+  text: "Bạn vừa nhận được 200.000đ từ TRAN THI BICH. Lời nhắn: tra tien ca phe"
+  posted_at: "2026-11-18T16:00:00+07:00"
+  expect: { kind: income, amount_vnd: 200000, account: momo, merchant: "TRAN THI BICH", note: "tra tien ca phe" }
+
+- id: momo-nap-001
+  package: com.mservice.momotransfer
+  title: "Nạp tiền thành công"
+  text: "Nạp tiền thành công 500.000đ từ Vietcombank vào Ví MoMo."
+  posted_at: "2026-11-18T08:02:30+07:00"
+  expect: { kind: transfer, amount_vnd: 500000, account: vcb, to_account: momo }
+
+- id: momo-rut-001
+  package: com.mservice.momotransfer
+  title: "Rút tiền thành công"
+  text: "Rút tiền thành công 300.000đ từ Ví MoMo về Techcombank."
+  posted_at: "2026-11-18T21:03:10+07:00"
+  expect: { kind: transfer, amount_vnd: 300000, account: momo, to_account: tcb }
+
+- id: momo-chuyen-001
+  package: com.mservice.momotransfer
+  title: "Chuyển tiền thành công"
+  text: "Chuyển tiền thành công 150.000đ tới LE VAN CUONG."
+  posted_at: "2026-11-18T17:45:00+07:00"
+  expect: { kind: expense, amount_vnd: 150000, account: momo, merchant: "LE VAN CUONG" }
+
+- id: momo-hoan-001
+  package: com.mservice.momotransfer
+  title: "Hoàn tiền"
+  text: "Hoàn tiền thành công 20.000đ cho giao dịch tại Shopee."
+  posted_at: "2026-11-18T18:00:00+07:00"
+  expect: { kind: income, amount_vnd: 20000, account: momo }
+
+- id: momo-km-001
+  package: com.mservice.momotransfer
+  title: "Ưu đãi cho bạn"
+  text: "Nhận ngay voucher 50.000đ khi thanh toán hóa đơn điện trên MoMo. Áp dụng tới 30/11."
+  posted_at: "2026-11-18T09:30:00+07:00"
+  expect: { kind: ignore }

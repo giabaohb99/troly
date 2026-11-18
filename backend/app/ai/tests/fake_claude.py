@@ -14,6 +14,9 @@ from typing import Any
 from app.ai.registry import MAX_OPTIONAL_PARAMS, MAX_STRICT_TOOLS, MAX_UNION_PARAMS, count_complexity
 from app.ai.schemas import AiRequestError
 
+# Mã nước web search đã biết là nhận; "VN" bị API từ chối (lỗi thật 18/11/2026). Chỉ thêm mã đã thử được.
+SUPPORTED_SEARCH_COUNTRIES = {"US"}
+
 
 def _blocks(content) -> list[dict]:
     if isinstance(content, str):
@@ -71,6 +74,17 @@ def validate_request(kwargs: dict) -> str | None:
         if not tail or tail[0].get("type") != "server_tool_use":
             return "This model does not support assistant message prefill"
     tools = kwargs.get("tools") or []
+    for tool in tools:
+        loc = tool.get("user_location")
+        if loc is not None:
+            if loc.get("type") != "approximate" or not any(
+                loc.get(k) for k in ("city", "region", "country", "timezone")
+            ):
+                return (
+                    "tools: user_location needs type approximate and one of city, region, country, timezone"
+                )
+            if loc.get("country") and loc["country"] not in SUPPORTED_SEARCH_COUNTRIES:
+                return f"Country code {loc['country']} is not supported"
     strict = [t for t in tools if t.get("strict")]
     optional = union = 0
     for tool in strict:

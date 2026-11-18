@@ -72,9 +72,12 @@ WEB_TOOLS = [
         "type": "web_search_20260209",
         "name": "web_search",
         "max_uses": 5,
-        "user_location": {"type": "approximate", "country": "VN", "timezone": "Asia/Ho_Chi_Minh"},
+        # API từ chối country "VN" (400 Country code VN is not supported); chỉ gửi múi giờ.
+        "user_location": {"type": "approximate", "timezone": "Asia/Ho_Chi_Minh"},
+        # Gọi thẳng, không qua lọc bằng code execution: đường lọc không trả citations (thử thật 18/11/2026).
+        "allowed_callers": ["direct"],
     },
-    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3},
+    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3, "allowed_callers": ["direct"]},
 ]
 
 

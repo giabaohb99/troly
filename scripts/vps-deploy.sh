@@ -45,9 +45,9 @@ if [ -f backend/alembic.ini ]; then
   HEAD=$(echo "$STATE" | sed -n 's/^head=//p')
   if [ "$CURRENT" != "$HEAD" ]; then
     if [ -n "$CURRENT" ]; then
-      # Sao lưu lên R2 bằng job của worker (backups/<thời điểm>-predeploy.dump, tính trong BACKUP_KEEP bản).
+      # Sao lưu lên R2 bằng job của worker (backups/premigrate/<thời điểm>-<sha>.dump, tính trong BACKUP_KEEP bản).
       echo "Có migration mới ($CURRENT -> $HEAD): sao lưu trước migration."
-      TROLY_IMAGE_TAG="$SHA" docker compose run --rm -T worker python -m worker.jobs.backup --reason predeploy
+      TROLY_IMAGE_TAG="$SHA" docker compose run --rm -T worker python -m worker.jobs.backup --reason predeploy --label "$SHA"
     else
       echo "DB còn trống (lần deploy đầu): bỏ qua sao lưu trước migration."
     fi

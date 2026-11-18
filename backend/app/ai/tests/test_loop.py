@@ -264,3 +264,43 @@ def test_pause_turn_resends(ctx, store, make_client, settings):
     _, done = _run(ctx, store, make_client(fake), settings, mode="research")
     assert len(fake.requests) == 2 and fake.requests[1]["messages"][-1]["role"] == "assistant"
     assert done.data["text"] == "Xong."
+
+
+def test_research_without_citations_falls_back_to_search_results(ctx, store, make_client, settings):
+    reply = {
+        "content": [
+            {"type": "server_tool_use", "id": "srv_1", "name": "web_search", "input": {"query": "phà"}},
+            {
+                "type": "web_search_tool_result",
+                "tool_use_id": "srv_1",
+                "content": [
+                    {
+                        "type": "web_search_result",
+                        "url": "https://a.vn/x",
+                        "title": "Trang A",
+                        "encrypted_content": "e",
+                    },
+                    {
+                        "type": "web_search_result",
+                        "url": "https://a.vn/x",
+                        "title": "Trang A",
+                        "encrypted_content": "e",
+                    },
+                    {
+                        "type": "web_search_result",
+                        "url": "https://b.vn",
+                        "title": "B",
+                        "encrypted_content": "e",
+                    },
+                ],
+            },
+            {"type": "text", "text": "Phà chạy từ 6:00."},
+        ],
+        "model": "claude-sonnet-5-5",
+    }
+    _, done = _run(ctx, store, make_client(FakeClaude([reply])), settings, text="giờ phà", mode="research")
+    assert done.data["citations"] == [
+        {"title": "Trang A", "url": "https://a.vn/x"},
+        {"title": "B", "url": "https://b.vn"},
+    ]
+    assert done.data["text"] == "Phà chạy từ 6:00."

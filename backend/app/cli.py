@@ -2,6 +2,7 @@
 
 import argparse
 import getpass
+import pathlib
 import sys
 
 from app.core import clock
@@ -83,6 +84,70 @@ def cmd_reencrypt_tokens(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_bank_samples(args: argparse.Namespace) -> int:
+    """Xuất thông báo ngân hàng, ví thật đã che thành tệp mẫu đúng định dạng testdata/ (QĐ-35, 70 mục 3.3).
+
+    Tự che số tài khoản, thẻ (xxxx + 4 số cuối), số điện thoại, số dư, cụm tên viết hoa; `expect` điền
+    sẵn theo kết quả hiện tại để người duyệt sửa. Ghi YAML bằng chuỗi JSON để ảnh chạy không cần pyyaml.
+    """
+    import json
+    from datetime import timedelta
+
+    from sqlalchemy import text
+
+    from app.modules.expense.bank import mask_for_ai, mask_names
+
+    since = clock.now() - timedelta(days=args.days)
+    with SessionLocal() as session:
+        rows = session.execute(
+            text(
+                "SELECT e.id, e.app_package, e.payload->>'title' AS title, e.payload->>'text' AS text, "
+                "e.posted_at, e.status, x.kind, x.amount_vnd, x.account, x.account_last4, x.to_account, "
+                "x.spent_at, x.parser "
+                "FROM tab_device_event e "
+                "JOIN tab_listened_app a ON a.user_id = e.user_id AND a.package_name = e.app_package "
+                "LEFT JOIN tab_expense x ON x.device_event_id = e.id "
+                "WHERE a.purpose = 'expense' AND e.kind = 'notification' AND e.received_at >= :since "
+                "AND e.error IS DISTINCT FROM 'OTP_DETECTED' ORDER BY e.app_package, e.posted_at"
+            ),
+            {"since": since},
+        ).all()
+
+    def clean(value: str | None) -> str:
+        return json.dumps(mask_names(mask_for_ai(value or "")), ensure_ascii=False)
+
+    lines = ["# Mẫu thật đã che tự động. Rà lại tên, mã tham chiếu và expect trước khi chép vào testdata/."]
+    for r in rows:
+        if r.kind is None:
+            expect = {"kind": "ignore"} if r.status == "ignored" else {}
+        else:
+            expect = {
+                k: v
+                for k, v in {
+                    "kind": r.kind,
+                    "amount_vnd": r.amount_vnd,
+                    "account": r.account,
+                    "account_last4": r.account_last4,
+                    "to_account": r.to_account,
+                    "spent_at": r.spent_at.isoformat() if r.spent_at else None,
+                }.items()
+                if v is not None
+            }
+        lines += [
+            f"- id: real-{r.app_package.rsplit('.', 1)[-1].lower()}-{r.id}",
+            f"  package: {json.dumps(r.app_package)}",
+            f"  title: {clean(r.title)}",
+            f"  text: {clean(r.text)}",
+            f"  posted_at: {json.dumps(r.posted_at.isoformat())}",
+            f"  parser: {json.dumps(r.parser)}",
+            f"  expect: {json.dumps(expect, ensure_ascii=False)}",
+            "",
+        ]
+    pathlib.Path(args.out).write_text("\n".join(lines), encoding="utf-8")
+    print(f"Đã xuất {len(rows)} thông báo vào {args.out}.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import_all_models()
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -101,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("reencrypt-tokens", help="Mã hóa lại token bằng khóa mới nhất")
     p.set_defaults(func=cmd_reencrypt_tokens)
+
+    p = sub.add_parser("export-bank-samples", help="Xuất thông báo ngân hàng thật đã che làm mẫu")
+    p.add_argument("--days", type=int, default=30)
+    p.add_argument("--out", default="bank-samples.yaml")
+    p.set_defaults(func=cmd_export_bank_samples)
 
     args = parser.parse_args(argv)
     return args.func(args)

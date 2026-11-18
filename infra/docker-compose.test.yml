@@ -30,9 +30,12 @@ services:
     working_dir: /app
     volumes:
       - ../backend:/app
+      # Bộ mẫu dùng chung Python và Kotlin (70 mục 3.3, 3.4).
+      - ../testdata:/testdata:ro
     environment:
       ENV: test
       TZ: UTC
+      TESTDATA_DIR: /testdata
       TEST_DATABASE_URL: postgresql+psycopg://troly:troly@db-test:5432/troly_test
       DATABASE_URL: postgresql+psycopg://troly:troly@db-test:5432/troly_test
     depends_on:
@@ -67,6 +70,8 @@ services:
     image: troly-android-builder:latest
     volumes:
       - ../app:/src:ro
+      # app/ được chép ra /work, nên ../../testdata tính từ app/android trỏ đúng /testdata như trong kho.
+      - ../testdata:/testdata:ro
       - ./android-builder/build:/out
       - android-gradle:/root/.gradle
     profiles: ["android"]

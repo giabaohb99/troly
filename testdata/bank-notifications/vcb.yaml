@@ -1,0 +1,57 @@
+# Mẫu Vietcombank tự soạn theo định dạng phổ biến (QĐ-35); mọi số tài khoản, mã tham chiếu, tên người là bịa.
+# Thay bằng mẫu thật rút từ `python -m app.cli export-bank-samples` sau khi cài app.
+- id: vcb-chi-001
+  package: com.VCB
+  title: "Thông báo VCB"
+  text: "So du TK VCB 0011xxxx9876 -45,000 VND luc 18-11-2026 12:05:11. So du 2,345,000 VND. Ref MBVCB.12345678.AB12.Com trua"
+  posted_at: "2026-11-18T12:05:13+07:00"
+  expect: { kind: expense, amount_vnd: 45000, account: vcb, account_last4: "9876", note: "Com trua", spent_at: "2026-11-18T12:05:11+07:00" }
+
+- id: vcb-chi-002
+  package: com.VCB
+  title: "Biến động số dư"
+  text: "TK 0011xxxx9876 -120.000VND luc 18/11/2026 19:30. SD: 2.225.000VND. ND: Thanh toan QR CIRCLE K"
+  posted_at: "2026-11-18T19:30:20+07:00"
+  expect: { kind: expense, amount_vnd: 120000, account: vcb, account_last4: "9876", note: "Thanh toan QR CIRCLE K", spent_at: "2026-11-18T19:30:00+07:00" }
+
+- id: vcb-thu-001
+  package: com.VCB
+  title: "Thông báo VCB"
+  text: "So du TK VCB 0011xxxx9876 +2,000,000 VND luc 17-11-2026 09:12:40. So du 4,345,000 VND. Ref 9KD21.88776655.NGUYEN VAN AN chuyen tien an cuoi"
+  posted_at: "2026-11-17T09:12:45+07:00"
+  expect: { kind: income, amount_vnd: 2000000, account: vcb, account_last4: "9876", spent_at: "2026-11-17T09:12:40+07:00" }
+
+- id: vcb-thu-002
+  package: com.VCB
+  title: "Thông báo VCB"
+  text: "So du TK VCB 0011xxxx9876 +1.000.000 VND luc 16-11-2026 20:00:00. So du 2.345.000 VND. Ref IBFT.55443322.Tra tien ve"
+  posted_at: "2026-11-16T20:00:04+07:00"
+  expect: { kind: income, amount_vnd: 1000000, account: vcb, account_last4: "9876", note: "Tra tien ve", spent_at: "2026-11-16T20:00:00+07:00" }
+
+- id: vcb-momo-001
+  package: com.VCB
+  title: "Thông báo VCB"
+  text: "So du TK VCB 0011xxxx9876 -500,000 VND luc 18-11-2026 08:00:05. So du 1,845,000 VND. Ref MBVCB.23456789.CD34.Nap tien vi MoMo"
+  posted_at: "2026-11-18T08:00:07+07:00"
+  expect: { kind: expense, amount_vnd: 500000, account: vcb, account_last4: "9876", note: "Nap tien vi MoMo", spent_at: "2026-11-18T08:00:05+07:00" }
+
+- id: vcb-cuoithang-001
+  package: com.VCB
+  title: "Thông báo VCB"
+  text: "So du TK VCB 0011xxxx9876 -65,000 VND luc 30-11-2026 23:59:30. So du 1,780,000 VND. Ref MBVCB.34567890.EF56.Pho dem"
+  posted_at: "2026-12-01T00:01:02+07:00"
+  expect: { kind: expense, amount_vnd: 65000, account: vcb, account_last4: "9876", note: "Pho dem", spent_at: "2026-11-30T23:59:30+07:00" }
+
+- id: vcb-km-001
+  package: com.VCB
+  title: "Ưu đãi tháng 11"
+  text: "Vietcombank uu dai giam 50.000d khi thanh toan hoa don dien qua VCB Digibank tu nay den 30/11/2026."
+  posted_at: "2026-11-18T10:00:00+07:00"
+  expect: { kind: ignore }
+
+- id: vcb-dangnhap-001
+  package: com.VCB
+  title: "VCB Digibank"
+  text: "Quy khach vua dang nhap VCB Digibank tren thiet bi moi luc 18-11-2026 07:00:12. Neu khong phai Quy khach, vui long goi tong dai."
+  posted_at: "2026-11-18T07:00:15+07:00"
+  expect: { kind: ignore }

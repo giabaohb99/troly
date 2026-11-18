@@ -116,7 +116,7 @@ Cấu hình chỉ đọc từ biến môi trường của container (compose `en
 | | `AI_INBOX_MAX_ITEMS` | `200` | |
 | R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | bắt buộc | |
 | | `R2_ENDPOINT` | dựng từ `R2_ACCOUNT_ID` | Máy cá nhân trỏ S3 giả |
-| | `R2_BUCKET_FILES`, `R2_BUCKET_BACKUP`, `R2_BUCKET_RELEASE` | `troly-files`, `troly-backup`, `troly-release` | api chỉ đọc `troly-release` |
+| | `R2_BUCKET` | `assistant` | Một bucket, tiền tố `files/`, `backups/weekly/`, `backups/premigrate/`, `releases/` (QĐ-31) |
 | | `R2_PRESIGN_SECONDS` | `300` | |
 | Sao lưu | `BACKUP_WEEKDAY` | `6` (chủ nhật; 0 là thứ Hai) | QĐ-16 |
 | | `BACKUP_HOUR`, `BACKUP_MINUTE` | `2`, `0` | Giờ Việt Nam |
@@ -170,7 +170,7 @@ Vòng chạy: chờ `troly_wake` hoặc `WORKER_POLL_SECONDS`; chạy job hàng 
 | `summarize_previous_day` | 04:05 hằng ngày | Tóm tắt phiên hôm trước | `modules/chat/jobs.py` | V1.0 |
 | `expire_pending_actions` | 5 phút | `pending` quá hạn thành `expired` | `modules/chat/jobs.py` | V1.0 |
 | `check_silent_devices` | mỗi giờ | Thiết bị `listener_connected` mà 24 giờ không có sự kiện: cảnh báo ở `/system/status` | `modules/device/jobs.py` | V1.2 |
-| `backup_database` | chủ nhật 02:00 | `pg_dump` lên `troly-backup`, giữ 5 bản, ghi `tab_job_run.detail` | `worker/jobs/backup.py` | V1.0 |
+| `backup_database` | chủ nhật 02:00 | `pg_dump` lên `backups/weekly/`; giữ 5 bản cả bản `premigrate`, xóa bản không phải weekly trước, luôn còn 1 bản weekly; ghi `tab_job_run.detail` | `worker/jobs/backup.py` | V1.0 |
 | `cleanup_old_data` | 03:30 hằng ngày | Theo `11-co-so-du-lieu.md` mục 3.15, gồm cả đặt rỗng tọa độ Google quá 30 ngày ở `tab_place_cache` và `tab_trip_stop` (K19) | `worker/jobs/cleanup.py` | V1.0 |
 | `disk_check` | 15 phút | Dưới 15% cảnh báo; dưới 8% tạm dừng `sync_gmail`, `extract_file_text` | `worker/jobs/disk.py` | V1.0 |
 | `recover_stuck_items` | 5 phút | Dòng kẹt ở `processing` quá 10 phút trả về `pending` | `worker/jobs/queue.py` | V1.0 |

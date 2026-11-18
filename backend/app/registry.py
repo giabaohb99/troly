@@ -3,7 +3,7 @@
 import importlib
 import importlib.util
 
-ENABLED_MODULES = ["setting", "memory", "chat", "file", "device", "expense", "search", "system"]
+ENABLED_MODULES = ["setting", "memory", "chat", "file", "device", "expense", "inbox", "search", "system"]
 
 
 def _import_if_exists(name: str):

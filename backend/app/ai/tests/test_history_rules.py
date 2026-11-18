@@ -96,3 +96,13 @@ def test_strict_limits_are_enforced():
     with pytest.raises(ValueError, match="union"):
         check_strict_limits(defs)
     assert validate_request({"messages": [u("x")], "tools": defs})
+
+
+def test_web_search_location_has_no_unsupported_country():
+    from app.ai.prompt import WEB_TOOLS
+
+    search = next(t for t in WEB_TOOLS if t["name"] == "web_search")
+    assert "country" not in search["user_location"]
+    assert validate_request({"messages": [u("x")], "tools": WEB_TOOLS}) is None
+    bad = [{**search, "user_location": {"type": "approximate", "country": "VN"}}]
+    assert validate_request({"messages": [u("x")], "tools": bad}) == "Country code VN is not supported"

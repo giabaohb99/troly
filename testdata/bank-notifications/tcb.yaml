@@ -1,0 +1,42 @@
+# Mẫu Techcombank tự soạn theo định dạng phổ biến (QĐ-35); mọi số là bịa.
+- id: tcb-chi-001
+  package: vn.com.techcombank.bb.app
+  title: "Techcombank"
+  text: "TK 19xxxx4321\nSo tien: -85,000 VND\nSo du: 10,250,000 VND\nND: GRAB thanh toan chuyen xe\nThoi gian: 18/11/2026 09:15"
+  posted_at: "2026-11-18T09:15:30+07:00"
+  expect: { kind: expense, amount_vnd: 85000, account: tcb, account_last4: "4321", note: "GRAB thanh toan chuyen xe", spent_at: "2026-11-18T09:15:00+07:00" }
+
+- id: tcb-chi-002
+  package: vn.com.techcombank.bb.app
+  title: "Biến động số dư"
+  text: "Tai khoan 19xxxx4321 vua giam 250.000 VND vao 18/11/2026 13:40. So du kha dung: 10.000.000 VND. Noi dung: Mua sach Fahasa"
+  posted_at: "2026-11-18T13:40:09+07:00"
+  expect: { kind: expense, amount_vnd: 250000, account: tcb, account_last4: "4321", note: "Mua sach Fahasa", spent_at: "2026-11-18T13:40:00+07:00" }
+
+- id: tcb-thu-001
+  package: vn.com.techcombank.bb.app
+  title: "Biến động số dư"
+  text: "Tai khoan 19xxxx4321 vua tang 15,000,000 VND vao 10/11/2026 08:30. So du kha dung: 25,250,000 VND. Noi dung: LUONG THANG 10"
+  posted_at: "2026-11-10T08:30:05+07:00"
+  expect: { kind: income, amount_vnd: 15000000, account: tcb, account_last4: "4321", note: "LUONG THANG 10", spent_at: "2026-11-10T08:30:00+07:00" }
+
+- id: tcb-momo-001
+  package: vn.com.techcombank.bb.app
+  title: "Techcombank"
+  text: "TK 19xxxx4321\nSo tien: +300,000 VND\nSo du: 10,300,000 VND\nND: MOMO rut tien ve TK\nThoi gian: 18/11/2026 21:05"
+  posted_at: "2026-11-18T21:05:40+07:00"
+  expect: { kind: income, amount_vnd: 300000, account: tcb, account_last4: "4321", note: "MOMO rut tien ve TK", spent_at: "2026-11-18T21:05:00+07:00" }
+
+- id: tcb-nhacno-001
+  package: vn.com.techcombank.bb.app
+  title: "Nhắc thanh toán thẻ"
+  text: "The tin dung ...4321 den han thanh toan 2,500,000 VND ngay 25/11/2026. Vui long thanh toan dung han."
+  posted_at: "2026-11-18T09:00:00+07:00"
+  expect: { kind: ignore }
+
+- id: tcb-km-001
+  package: vn.com.techcombank.bb.app
+  title: "Techcombank"
+  text: "Hoan tien len den 200.000 VND khi chi tieu bang the Techcombank Visa. Khuyen mai den het 31/12/2026."
+  posted_at: "2026-11-18T11:00:00+07:00"
+  expect: { kind: ignore }

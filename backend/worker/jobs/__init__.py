@@ -9,7 +9,7 @@ from app.core.scheduler import DailyAt, Every, Job
 def build_jobs() -> list[Job]:
     from app.modules.chat import jobs as chat_jobs
     from app.modules.file import jobs as file_jobs
-    from worker.jobs import backup, cleanup, disk, queue
+    from worker.jobs import backup, cleanup, device_events, disk, queue
 
     s = get_settings()
 
@@ -19,6 +19,7 @@ def build_jobs() -> list[Job]:
     return [
         Job("run_queued_jobs", 7001, None, queue.run_queued_jobs),
         Job("extract_file_text", 7002, None, extract_unless_disk_full),
+        Job("process_device_events", 7003, None, device_events.process_device_events),
         Job("summarize_previous_day", 7101, DailyAt(4, 5), chat_jobs.summarize_previous_day),
         Job("expire_pending_actions", 7102, Every(timedelta(minutes=5)), chat_jobs.expire_pending_actions),
         Job(

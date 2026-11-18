@@ -18,7 +18,7 @@ export interface ClientLogInput {
 // Thân theo backend/app/core/router.py ClientLogIn (agent kiến trúc chốt 18/11).
 interface ClientLog {
   level: 'error' | 'warn' | 'info'
-  kind: 'ui_error' | 'api_error'
+  kind: 'ui' | 'api'
   screen: string
   message: string
   detail: Record<string, string | number | null>
@@ -53,7 +53,7 @@ export function reportClientLog(input: ClientLogInput): void {
   const version = getAppVersion()
   queue.push({
     level: input.level ?? 'error',
-    kind: input.kind === 'api' ? 'api_error' : 'ui_error',
+    kind: input.kind,
     screen: window.location.pathname.slice(0, 100),
     message,
     detail: {
@@ -62,10 +62,11 @@ export function reportClientLog(input: ClientLogInput): void {
       error_code: input.errorCode ?? null,
       request_id: input.requestId ?? null,
       stack: input.stack ? redactSecrets(input.stack).slice(0, 8000) : null,
+      app_version_code: version.code,
       platform,
       user_agent: navigator.userAgent.slice(0, 300),
     },
-    app_version: `${version.name} (${version.code})`.slice(0, 40),
+    app_version: version.name.slice(0, 40),
     occurred_at: new Date().toISOString(),
   })
   if (queue.length >= BATCH_MAX) void flushClientLogs()

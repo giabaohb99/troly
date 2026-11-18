@@ -84,7 +84,7 @@ Bỏ theo QĐ-27: `tab_audit_log`, `tab_consent`, `tab_app_release` (bản APK �
 | error | text | Câu tiếng Việt |
 | dedupe_key | text | UQ một phần `(user_id, dedupe_key) WHERE status IN ('pending','processing')` |
 
-Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`.
+Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`. Sự kiện máy chủ chặn vì OTP lưu `payload = {}`, `status = ignored`, `error = OTP_DETECTED` để đếm `otp_blocked_server`, không giữ nội dung.
 
 **`tab_job_schedule`**: `name text PK`; `next_run_at NN`; `last_started_at`, `last_finished_at`; `last_status` CK `ok`, `error`, `skipped`; `last_error`; `last_duration_ms`; `updated_at`.
 
@@ -262,7 +262,7 @@ Chỉ mục `(user_id, created_at)`; `(created_at)` cho cảnh báo `AI_MONTHLY_
 | Cột | Kiểu, ràng buộc | Ghi chú |
 |---|---|---|
 | (cột chung) | | |
-| r2_key | text NN UQ | Bucket `troly-files`, khóa `u/<user_id>/<năm>/<tháng>/<uuid>` |
+| r2_key | text NN UQ | Bucket `assistant`, khóa `files/u/<user_id>/<năm>/<tháng>/<uuid>` |
 | original_name | text | |
 | mime | text NN | |
 | size_bytes | bigint NN CK `> 0` | |
@@ -305,7 +305,7 @@ Chỉ mục `(user_id, purpose, created_at DESC) WHERE status = 'ready'`; `(extr
 
 Chỉ mục `(user_id, spent_at DESC) WHERE deleted_at IS NULL`; `(user_id) WHERE needs_review AND deleted_at IS NULL`.
 
-**Ghép cặp chuyển nội bộ**: tiền ra ngân hàng và tiền vào MoMo (hoặc ngược lại) cùng số tiền, cách nhau tối đa 10 phút, chưa ghép: dòng có sẵn đổi thành `transfer`, điền `to_account`, `transfer_peer_ref`; sự kiện thứ hai ghi `result_kind = transfer_merged`.
+**Ghép cặp chuyển nội bộ**: tiền ra ngân hàng và tiền vào MoMo (hoặc ngược lại) cùng số tiền, cách nhau tối đa 10 phút, chưa ghép: dòng có sẵn đổi thành `transfer`, điền `to_account`, `transfer_peer_ref`; sự kiện thứ hai ghi `result_kind = transfer_merged`. Nạp ví MoMo từ ngân hàng, rút ví về ngân hàng luôn là `transfer` kể cả khi chưa thấy thông báo bên kia; hai giao dịch MoMo không ghép với nhau. Chống trùng: `source_ref = <gói>:<băm tiêu đề, nội dung, giờ giao dịch trong nội dung (hoặc phút hiện thông báo)>`; thông báo thứ hai của cặp lưu ở `transfer_peer_ref`. Mẫu cố định ở `modules/expense/bank.py`, `parser = regex:<vcb|tcb|momo>`; mẫu lạ gửi Haiku sau khi che (`parser = ai`, `parse_confidence < 0.7` vào *Cần xem lại*).
 
 ### 3.10 Inbox, danh bạ, nháp Gmail
 

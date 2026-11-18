@@ -1,0 +1,218 @@
+# Bộ mẫu OTP dùng chung cho lớp lọc trên máy (Kotlin) và lưới ở máy chủ (app/modules/device/otp.py).
+# 60 mục 3.5, 70 mục 3.4. Mẫu TỰ SOẠN theo dạng thường gặp, số và tên đều giả; thêm mẫu thật đã che khi có.
+# expect: block (phải chặn, lọt một mẫu là hỏng) | pass (không được chặn; chặn nhầm tối đa 10 phần trăm).
+# package: tên gói app gửi thông báo. SMS dùng com.samsung.android.messaging (S25+, QĐ-19).
+
+# ---------- Phải chặn ----------
+
+- id: vcb-otp-sms
+  package: com.samsung.android.messaging
+  title: "Vietcombank"
+  text: "Ma OTP cua Quy khach la 834512. Ma co hieu luc trong 3 phut. Tuyet doi KHONG cung cap ma cho bat ky ai."
+  expect: block
+
+- id: vcb-smart-otp-app
+  package: com.VCB
+  title: "VCB Digibank"
+  text: "Smart OTP xac thuc giao dich chuyen tien 2,000,000 VND: 556677"
+  expect: block
+
+- id: tcb-otp-app
+  package: vn.com.techcombank.bb.app
+  title: "Techcombank"
+  text: "Mã xác thực giao dịch của Quý khách là 902341. Không chia sẻ mã này với bất kỳ ai."
+  expect: block
+
+- id: tcb-ma-dang-nhap
+  package: vn.com.techcombank.bb.app
+  title: "Techcombank Mobile"
+  text: "Ma dang nhap thiet bi moi: 4471. Neu khong phai Quy khach, vui long goi 1800588822."
+  expect: block
+
+- id: momo-otp
+  package: com.mservice.momotransfer
+  title: "MoMo"
+  text: "Mã OTP của bạn là 1234. Không cung cấp mã cho bất kỳ ai, kể cả nhân viên MoMo."
+  expect: block
+
+- id: momo-ma-xac-nhan-khong-tu-khoa-tien
+  package: com.mservice.momotransfer
+  title: "MoMo"
+  text: "Mã của bạn: 738201"
+  expect: block
+
+- id: bank-app-code-no-amount
+  package: com.VCB
+  title: "Vietcombank"
+  text: "Nhap 64 vao ung dung de xac nhan dang nhap. Ma 581230 het han sau 2 phut."
+  expect: block
+
+- id: sms-google-g-code
+  package: com.samsung.android.messaging
+  title: "Google"
+  text: "G-482913 là mã xác minh Google của bạn."
+  expect: block
+
+- id: sms-google-english
+  package: com.samsung.android.messaging
+  title: "Google"
+  text: "G-102938 is your Google verification code."
+  expect: block
+
+- id: sms-facebook-code
+  package: com.samsung.android.messaging
+  title: "Facebook"
+  text: "38291 is your Facebook confirmation code"
+  expect: block
+
+- id: sms-zalo-kich-hoat
+  package: com.samsung.android.messaging
+  title: "Zalo"
+  text: "Ma kich hoat Zalo cua ban la 5521"
+  expect: block
+
+- id: sms-shopee-otp
+  package: com.samsung.android.messaging
+  title: "Shopee"
+  text: "[Shopee] Ma xac minh cua ban la 662109. Vui long khong chia se ma nay."
+  expect: block
+
+- id: sms-grab-code-split
+  package: com.samsung.android.messaging
+  title: "Grab"
+  text: "Your Grab code is 123-456. Do not share it."
+  expect: block
+
+- id: sms-unknown-brand-otp-word
+  package: com.samsung.android.messaging
+  title: "+84901234567"
+  text: "OTP 7788 de dang ky dich vu. Khong chia se."
+  expect: block
+
+- id: sms-login-code-english
+  package: com.samsung.android.messaging
+  title: "Netflix"
+  text: "Your login code is 4021 9876. It expires in 15 minutes."
+  expect: block
+
+- id: sms-passcode
+  package: com.samsung.android.messaging
+  title: "Apple"
+  text: "Your Apple ID passcode is 991122. Don't share it with anyone."
+  expect: block
+
+- id: zalo-forwarded-otp
+  package: com.zing.zalo
+  title: "Anh Hai"
+  text: "Em ơi mã OTP nó gửi là 445566, đọc giúp anh với"
+  expect: block
+
+- id: telegram-login-code
+  package: org.telegram.messenger
+  title: "Telegram"
+  text: "Login code: 52819. Do not give this code to anyone, even if they say they are from Telegram!"
+  expect: block
+
+- id: sms-vcb-2fa
+  package: com.samsung.android.messaging
+  title: "VCB"
+  text: "VCB: Ma 2FA cua ban la 300400"
+  expect: block
+
+- id: sms-one-time-password
+  package: com.samsung.android.messaging
+  title: "VNPAY"
+  text: "Mat khau mot lan (OTP) thanh toan don hang 250,000d la 109283"
+  expect: block
+
+# ---------- Không được chặn ----------
+
+- id: vcb-giao-dich-chi
+  package: com.VCB
+  title: "Vietcombank"
+  text: "So du TK VCB xxxx7890 -120,000 VND luc 18-11-2026 08:15:02. So du 5,432,100 VND. Ref MBVCB.8812345.GrabFood"
+  expect: pass
+
+- id: vcb-giao-dich-nhan
+  package: com.VCB
+  title: "Vietcombank"
+  text: "So du TK VCB xxxx7890 +2,500,000 VND luc 18-11-2026 09:00:11. So du 7,932,100 VND. Ref 9876543.NGUYEN VAN AN chuyen tien"
+  expect: pass
+
+- id: tcb-giao-dich
+  package: vn.com.techcombank.bb.app
+  title: "Techcombank"
+  text: "TK xxxx1011 | -350,000 VND | 18/11/26 10:20 | SD: 1,000,000 VND | ND: thanh toan hoa don dien"
+  expect: pass
+
+- id: momo-thanh-toan
+  package: com.mservice.momotransfer
+  title: "Thanh toán thành công"
+  text: "Bạn đã thanh toán thành công 45.000đ cho Highlands Coffee."
+  expect: pass
+
+- id: momo-nhan-tien
+  package: com.mservice.momotransfer
+  title: "Nhận tiền thành công"
+  text: "Bạn vừa nhận 200.000đ từ TRAN THI BICH. Lời nhắn: tra tien an trua"
+  expect: pass
+
+- id: zalo-hen-gio
+  package: com.zing.zalo
+  title: "Lan"
+  text: "Chiều 3h30 gặp ở quán cũ nhé, phòng 1205 tầng 12"
+  expect: pass
+
+- id: zalo-so-dien-thoai
+  package: com.zing.zalo
+  title: "Mẹ"
+  text: "Con gọi cô Tư số 0912345678 hỏi chuyện nhà nhé"
+  expect: pass
+
+- id: zalo-nhom-ngay-thang
+  package: com.zing.zalo
+  title: "Nhóm công ty"
+  text: "Sếp: Báo cáo quý gửi trước 20/11/2026, họp lúc 09:00 phòng 2026"
+  expect: pass
+
+- id: messenger-dia-chi
+  package: com.facebook.orca
+  title: "Minh"
+  text: "Nhà mình ở 1234 Lê Lợi, mã cổng là chuông số 3 nha"
+  expect: pass
+
+- id: telegram-so-tien
+  package: org.telegram.messenger
+  title: "Bảo"
+  text: "Tháng này tiền điện 1,250,000 đồng, chia đôi mỗi người 625000"
+  expect: pass
+
+- id: sms-giao-hang
+  package: com.samsung.android.messaging
+  title: "GHN"
+  text: "Don hang GHN8812345 se duoc giao hom nay tu 14:00 den 16:00. Lien he shipper 0987654321."
+  expect: pass
+
+- id: sms-nha-mang
+  package: com.samsung.android.messaging
+  title: "Viettel"
+  text: "Quy khach da nap thanh cong 100,000d vao thue bao. Han su dung den 18/12/2026."
+  expect: pass
+
+- id: sms-ban-be
+  package: com.samsung.android.messaging
+  title: "+84903334455"
+  text: "Mai đi cà phê 7h nhé, quán số 28"
+  expect: pass
+
+- id: zalo-ma-don-hang
+  package: com.zing.zalo
+  title: "Shop Hoa"
+  text: "Đơn của chị mã DH2026 đã gửi, phí ship 30.000đ"
+  expect: pass
+
+- id: telegram-nam-sinh
+  package: org.telegram.messenger
+  title: "Tuấn"
+  text: "Lớp mình họp lớp khóa 2015 vào thứ Bảy, đóng 500k"
+  expect: pass

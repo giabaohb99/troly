@@ -212,9 +212,9 @@ Migration phải tương thích ngược với bản trước (thêm cột cho p
 
 ### 3.9 Sao lưu và khôi phục (QĐ-16, QĐ-27)
 
-- Job `backup_database` (`10` mục 3.9), chủ nhật 02:00 giờ Việt Nam, chạy bù nếu lỡ giờ: `pg_dump --format=custom` (đã nén) đẩy thẳng lên `backups/YYYYMMDD-HHMMSS-weekly.dump` trong bucket `assistant`. **Không mã hóa bằng `age`**; bucket riêng tư, chỉ người có mã R2 của Gamebar đọc được. Token Google trong bản sao lưu vẫn là bản mã Fernet, khóa không nằm trong DB.
-- Bản trước migration: `scripts/vps-deploy.sh` chạy `python -m worker.jobs.backup --reason predeploy` trong container worker, ra `backups/<thời điểm>-predeploy.dump` (lần deploy đầu DB còn trống thì bỏ qua).
-- Giữ tối đa 5 bản cả hai loại; xóa bản `predeploy` cũ trước để luôn còn ít nhất 1 bản tuần (job hiện xóa theo thời gian, cần thêm luật này).
+- Job `backup_database` (`10` mục 3.9), chủ nhật 02:00 giờ Việt Nam, chạy bù nếu lỡ giờ: `pg_dump --format=custom` (đã nén) đẩy thẳng lên `backups/weekly/` trong bucket `assistant`. **Không mã hóa bằng `age`**; bucket riêng tư, chỉ người có mã R2 của Gamebar đọc được. Token Google trong bản sao lưu vẫn là bản mã Fernet, khóa không nằm trong DB.
+- Bản trước migration: `scripts/vps-deploy.sh` chạy `python -m worker.jobs.backup --reason predeploy --label <sha>` trong container worker, ra `backups/premigrate/<thời điểm>-<sha>.dump`. Nút *Sao lưu ngay* ra `backups/manual/`.
+- Giữ tối đa 5 bản mọi loại; xóa bản không phải `weekly` cũ trước, không bao giờ xóa bản `weekly` mới nhất (bài kiểm `worker/tests/test_backup.py`).
 - Ghi khóa R2, kích thước, `sha256`, số dòng các bảng chính vào `tab_job_run.detail`. Quá 8 ngày không có bản thành công thì báo đỏ ở màn Máy chủ.
 - Nút *Sao lưu ngay* gọi `POST /api/v1/system/jobs/backup_database/run` (`12` mục 5.9), dùng trước việc lớn vì sao lưu tuần có thể mất tới 7 ngày dữ liệu.
 

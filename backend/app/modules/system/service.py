@@ -114,7 +114,12 @@ def system_status(session: Session, user: UserContext) -> dict:
             "state": (disk.detail or {}).get("state") if disk else None,
         },
         "ai": ai_cost(session, user),
-        "otp_blocked_server": None,
+        # OTP lọt qua điện thoại mà máy chủ chặn trong 24 giờ; phải bằng 0 (60 mục 3.5).
+        "otp_blocked_server": _count(
+            session,
+            "tab_device_event",
+            "error = 'OTP_DETECTED' AND received_at >= now() - interval '24 hours'",
+        ),
         "silent_devices": silent,
         "client_errors_24h": client_errors,
     }

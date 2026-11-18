@@ -90,7 +90,9 @@ class Expense(UserOwnedMixin, Base):
     source: Mapped[str] = mapped_column(Text)
     source_ref: Mapped[str | None] = mapped_column(Text)
     transfer_peer_ref: Mapped[str | None] = mapped_column(Text)
-    device_event_id: Mapped[int | None] = mapped_column(BigInteger)
+    device_event_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("tab_device_event.id", ondelete="SET NULL")
+    )
     parser: Mapped[str | None] = mapped_column(Text)
     parse_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
     needs_review: Mapped[bool] = mapped_column(Boolean, server_default="false")

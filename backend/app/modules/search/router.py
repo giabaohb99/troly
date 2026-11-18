@@ -22,4 +22,6 @@ def get_search(
     session: Session = Depends(get_session),
 ) -> dict:
     wanted = [t.strip() for t in types.split(",") if t.strip()] if types else None
-    return ok({"items": service.search(session, user.user_id, q, wanted, from_, to, limit)})
+    return ok(
+        {"items": service.search(session, user.user_id, q, wanted, from_, to, limit, include_private=True)}
+    )

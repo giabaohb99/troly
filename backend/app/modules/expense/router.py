@@ -154,6 +154,13 @@ def get_expense(
     return ok(service.get_expense(session, user, expense_id))
 
 
+@router.get("/expenses/{expense_id}/source")
+def get_expense_source(
+    expense_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(service.get_expense_source(session, user, expense_id))
+
+
 @router.patch("/expenses/{expense_id}")
 def patch_expense(
     expense_id: int,
