@@ -4,6 +4,8 @@ Mỗi mục ghi một việc đã xong, viết cho người không đọc mã c�
 
 ## 18/11/2026
 
+- Thử thật trên S25+: kết nối Google thành công (5 quyền, webhook Calendar tới 25/11, danh sách Tasks *Trợ lý*), kéo về sự kiện có sẵn; nhắn trợ lý *thêm lịch 9h sáng mai họp nhóm* thì sự kiện lên Google Calendar (outbox `done`). Chat, Hộp tin, Lịch, Chi tiêu, Báo cáo, Lịch trình đều chạy trên máy thật. Lỗi tìm thấy: bản thử hiện dải cập nhật của bản chính thức, chi phí AI làm tròn 0,00, tin Zalo cũ chưa bóc tách lại, khóa ký debug đổi mỗi lần build (đã sửa).
+
 - Thử thật trên Galaxy S25+: thông báo MoMo *Nhận tiền* tự thành khoản thu 35.000 đ; tin Zalo, Telegram vào hộp tin. Sửa lỗi worker (kết nối LISTEN autocommit lọt vào pool làm `begin_nested` lỗi trên VPS, bài kiểm cũ không bắt được). Deploy 7d8ab23. Phase 4 phần mã xong (lịch trình bóc tách thật tệp Phước Hải – Trà Vinh: 3 ngày, 31 điểm), còn chờ khóa Maps để chạy tìm địa điểm và thời gian chạy thật.
 
 - **Xong Phase 1 (v0.1).** Chat với Claude thật (Haiku cho việc thường, Sonnet cho research có nguồn), ghi và hỏi chi tiêu qua chat, tìm toàn văn, hồ sơ lõi. Chạy trên VPS ở `assistant.baohuynh.io.vn` (bản 721480a), game và gym không ảnh hưởng. Sao lưu thật lên R2 bằng `pg_dump` 16. APK 1.0.0 đã đăng lên R2, trang `/tai-app` có bản. 267 bài kiểm backend xanh. Lỗi chỉ lộ khi chạy thật đã sửa: tin hệ thống sai chỗ, quá nhiều tham số kiểu hợp, mã quốc gia VN của tìm web, tìm web không trả nguồn, `pg_dump` 17 không khôi phục được vào Postgres 16.
