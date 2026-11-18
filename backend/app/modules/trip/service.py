@@ -4,6 +4,7 @@ import logging
 import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, or_, select, text
@@ -531,12 +532,27 @@ def refresh_google_coords(session: Session, stops: list[TripStop]) -> None:
             s.lat, s.lng, s.coord_fetched_at = info.lat, info.lng, clock.now()
 
 
+def search_candidate(query: str, near: str | None) -> dict:
+    """Không có khóa Maps (QĐ-36): một mục chưa kiểm, link tìm kiếm Google Maps theo tên.
+    Dán link này vào import_trip thì bộ đọc lấy tên tìm làm điểm dừng, chặng do AI ước tính."""
+    text = " ".join(x.strip() for x in (query, near or "") if x and x.strip())
+    return {
+        "name": query.strip(),
+        "address": near,
+        "place_id": None,
+        "lat": None,
+        "lng": None,
+        "link": f"{links.MAPS_SEARCH}?api=1&query={quote_plus(text)}",
+        "verified": False,
+    }
+
+
 def find_place(session: Session, user: UserContext, query: str, near: str | None = None) -> list[dict]:
     """Công cụ find_place: tối đa 3 điểm có tên (SKU Pro cho displayName, 41 mục 4)."""
     if not query.strip():
         raise ValidationError(fields={"query": "Nhập tên địa điểm."})
     if not maps.configured():
-        raise maps.MapsUnavailable()
+        return [search_candidate(query, near)]
     bias = None
     if near:
         ids = maps.text_search_ids(near, None, page_size=1)
@@ -544,7 +560,7 @@ def find_place(session: Session, user: UserContext, query: str, near: str | None
             center = places.details_cached(session, ids[0])
             bias = (center.lat, center.lng) if center.lat is not None else None
     ids = maps.text_search_ids(query, bias)
-    return [places.candidate(maps.place_with_name(pid)) for pid in ids[:3]]
+    return [{**places.candidate(maps.place_with_name(pid)), "verified": True} for pid in ids[:3]]
 
 
 def resolve_candidates(
@@ -552,7 +568,9 @@ def resolve_candidates(
 ) -> dict:
     stop = _stop(session, user.user_id, trip_id, stop_id)
     if not maps.configured():
-        raise maps.MapsUnavailable()
+        # QĐ-36: không tra được điểm thật, ghi tên tìm để link và ước tính chặng đi theo tên.
+        stop.place_query = place_query
+        return {"candidates": [search_candidate(place_query, None)]}
     stops = _stops(session, trip_id)
     prev = next(
         (

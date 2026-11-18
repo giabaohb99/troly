@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.ai import actions as act
 from app.ai.schemas import AiError, ApprovalDraft, ToolContext, ToolOutput, ToolSpec
+from app.core.errors import AppError
 from app.modules.trip import service
 
 MAX_STOPS_PER_DAY = 25
@@ -208,22 +209,48 @@ def run_get(ctx: ToolContext, data: GetTripInput) -> ToolOutput:
 
 
 def _maps_link(p: dict) -> str:
-    url = (
-        "https://www.google.com/maps/search/?api=1"
-        f"&query={quote_plus(p['name'] or '')}&query_place_id={quote_plus(p['place_id'])}"
-    )
+    """Link tìm Google Maps dán được vào lịch trình; có place_id thì trỏ đúng điểm, không thì tìm theo tên."""
+    if p.get("place_id"):
+        query = quote_plus(p["name"] or "")
+        url = f"https://www.google.com/maps/search/?api=1&query={query}&query_place_id={quote_plus(p['place_id'])}"
+    elif str(p.get("link") or "").startswith("https://"):
+        url = p["link"]  # service dựng sẵn khi không có khóa Maps (QĐ-36)
+    else:
+        query = quote_plus(", ".join(x for x in (p.get("name"), p.get("address")) if x))
+        url = f"https://www.google.com/maps/search/?api=1&query={query}"
     return f"[{p['name']}]({url})"
 
 
 def run_find_place(ctx: ToolContext, data: FindPlaceInput) -> ToolOutput:
-    found = service.find_place(ctx.session, ctx.user, data.query, data.near)
+    try:
+        found = service.find_place(ctx.session, ctx.user, data.query, data.near)
+    except AppError as exc:
+        if getattr(exc, "code", None) != "MAPS_UNAVAILABLE":
+            raise
+        # QĐ-36: V1 không có khóa Maps; vẫn trả link tìm theo tên để dựng chuyến.
+        found = [{"name": data.query.strip(), "address": data.near, "place_id": None, "verified": False}]
     if not found:
         return ToolOutput(result={"items": [], "ghi_chu": "Không tìm thấy; hỏi người dùng tên khác."})
     items = [
-        {"name": p["name"], "address": p.get("address"), "place_id": p["place_id"], "link": _maps_link(p)}
+        {
+            "name": p["name"],
+            "address": p.get("address"),
+            "place_id": p.get("place_id"),
+            "verified": p.get("verified", bool(p.get("place_id"))),
+            "link": _maps_link(p),
+        }
         for p in found[:3]
     ]
-    actions = [act.open_map_place(f"Xem {p['name']}", p["name"], p["place_id"]) for p in found[:3]]
+    actions = [act.open_map_place(f"Xem {p['name']}", p["name"], p.get("place_id")) for p in found[:3]]
+    if not any(i["verified"] for i in items):
+        return ToolOutput(
+            result={
+                "items": items,
+                "ghi_chu": "Chưa có Google Maps để xác minh: link là link tìm theo tên. Tên điểm phải lấy từ nguồn "
+                "web hoặc lời người dùng, không tự nghĩ.",
+            },
+            actions=actions,
+        )
     if len(found) > 1:
         actions.append(
             act.choices("Chọn đúng điểm", [(p["name"][:40], f"Chọn {p['name']}") for p in found[:3]])
@@ -278,8 +305,9 @@ TOOLS = [
         label="Đang đọc lịch trình",
         description=(
             "Nhập lịch trình từ tệp người dùng gửi (file_id), đoạn chữ, link, hoặc câu mô tả chuyến đi. "
-            "Từ câu mô tả: hỏi tối đa 2 câu (ngày đi, nơi xuất phát), dùng find_place chọn điểm có thật, rồi gửi "
-            "text dạng Ngày 1, giờ, việc, kèm nguyên link find_place trả. Không tự nghĩ tên quán."
+            "Từ câu mô tả: thiếu ngày đi hoặc nơi xuất phát thì hỏi (tối đa 2 câu một lần); dùng web_search tìm "
+            "điểm có thật trong vùng (tên đúng, khu vực, giờ mở cửa nếu nguồn ghi), find_place lấy link từng điểm, "
+            "rồi gửi text dạng Ngày 1, giờ, việc, kèm nguyên link. Không có nguồn thì không đưa tên quán."
         ),
         input_model=ImportTripInput,
         run=run_import,
@@ -323,7 +351,11 @@ TOOLS = [
     ToolSpec(
         name="find_place",
         label="Đang tìm địa điểm",
-        description="Tìm địa điểm có thật trên Google Maps (tối đa 3). Không chắc điểm nào đúng thì hỏi người dùng.",
+        description=(
+            "Lấy link Google Maps cho một điểm có thật (tối đa 3). Có Maps thì xác minh (verified true); không có thì "
+            "trả link tìm theo tên (verified false), tên phải lấy từ kết quả web_search hoặc lời người dùng. "
+            "Không chắc điểm nào đúng thì hỏi người dùng."
+        ),
         input_model=FindPlaceInput,
         run=run_find_place,
         phase=4,

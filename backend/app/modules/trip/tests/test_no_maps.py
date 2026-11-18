@@ -166,3 +166,59 @@ def test_export_docx_save_to_drive_queues_upload(db, user, trip, stored_files, m
 def test_export_docx_drive_not_connected_still_exports(db, user, trip, stored_files):
     result = service.export_docx(db, user, trip.id, save_to_drive=True)
     assert result["drive_queued"] is False and result["file_id"] in stored_files
+
+
+# ---------- Dựng chuyến từ câu mô tả khi không có khóa Maps ----------
+
+
+def test_find_place_without_key_returns_search_link(db, user, no_maps):
+    [item] = service.find_place(db, user, "Bãi Sau", "Vũng Tàu")
+    assert item["place_id"] is None and item["verified"] is False and item["address"] == "Vũng Tàu"
+    link = parse_maps_url(item["link"])
+    assert link.kind == "search" and link.query == "Bãi Sau Vũng Tàu" and link.place_id is None
+    assert not no_maps
+
+
+def test_resolve_candidates_without_key_keeps_name(db, user, trip, no_maps):
+    stop = _stops(db, trip.id)[0]
+    out = service.resolve_candidates(db, user, trip.id, stop.id, "Chợ Bến Thành")
+    [c] = out["candidates"]
+    assert c["place_id"] is None and "Ch%E1%BB%A3+B%E1%BA%BFn+Th%C3%A0nh" in c["link"]
+    assert stop.place_query == "Chợ Bến Thành" and not no_maps
+
+
+def test_trip_from_description_without_key(db, user, no_maps, fake_ai, monkeypatch):
+    from app.modules.trip import bridge
+    from app.modules.trip.schemas import TripExtract
+
+    found = {q: service.find_place(db, user, q, "Vũng Tàu")[0] for q in ("Bãi Sau", "Hải đăng Vũng Tàu")}
+    text = (
+        "Đi Vũng Tàu 2 ngày, xuất phát từ TP.HCM.\n"
+        f"Ngày 1: 9h00 tắm biển [Bãi Sau]({found['Bãi Sau']['link']}).\n"
+        f"Ngày 2: 7h00 lên [Hải đăng Vũng Tàu]({found['Hải đăng Vũng Tàu']['link']})."
+    )
+
+    def extract(user_id, content, output_model, hint=None):
+        assert content == text
+        days = [
+            {"day_no": i + 1, "stops": [{"time_text": t, "title": title, "category": "tham_quan",
+             "places": [{"label": q, "url": found[q]["link"]}]}]}
+            for i, (t, title, q) in enumerate(
+                [("9h00", "Tắm biển Bãi Sau", "Bãi Sau"), ("7h00", "Lên hải đăng", "Hải đăng Vũng Tàu")]
+            )
+        ]  # fmt: skip
+        return TripExtract.model_validate({"title": "Vũng Tàu 2 ngày", "origin_text": "TP.HCM", "days": days})
+
+    monkeypatch.setattr(bridge, "extract_trip", extract)
+    data = service.import_trip(db, user, text=text, start_date=date(2026, 11, 28))
+    run_job(db, "trip_import", data["trip_id"])
+    trip = db.get(Trip, data["trip_id"])
+    assert trip.status == "draft", trip.error
+    stops = [s for s in _stops(db, trip.id) if s.source_url]
+    assert [s.place_query for s in stops] == ["Bãi Sau Vũng Tàu", "Hải đăng Vũng Tàu Vũng Tàu"]
+    assert all(s.place_id is None and s.lat is None for s in stops)
+
+    _evaluate(db, user, trip)
+    assert fake_ai["estimate"], "chặng phải qua estimate_legs"
+    assert db.scalars(select(TripOption).where(TripOption.trip_id == trip.id)).first() is not None
+    assert not no_maps

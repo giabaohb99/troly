@@ -11,6 +11,11 @@ MODES = ("chat", "think", "research", "summary")
 _THINK = ("nghi ky",)
 _RESEARCH = ("tim tren mang", "tra tren mang", "tra mang", "tim web", "search web", "research")
 _OPUS = ("dung opus",)
+# Dựng chuyến từ câu mô tả (QĐ-36: không có Maps) cần Sonnet tìm web điểm có thật.
+_TRIP_PLAN = re.compile(
+    r"(?<![a-z])(tao|lap|len|xep|soan|dung|goi y|thiet ke|plan)(?![a-z]).{0,40}"
+    r"(lich trinh|ke hoach (di|du lich|chuyen)|chuyen di)(?![a-z])"
+)
 
 
 def normalize(text: str) -> str:
@@ -23,6 +28,11 @@ def normalize(text: str) -> str:
 
 def _has(text: str, phrases: tuple[str, ...]) -> bool:
     return any(re.search(rf"(?<![a-z]){re.escape(p)}(?![a-z])", text) for p in phrases)
+
+
+def is_trip_plan(text: str) -> bool:
+    """Câu xin dựng lịch trình mới từ mô tả: *tạo lịch trình đi Vũng Tàu 2 ngày*."""
+    return bool(_TRIP_PLAN.search(normalize(text)))
 
 
 def detect_mode(turn: TurnInput) -> str:
@@ -39,6 +49,18 @@ def detect_mode(turn: TurnInput) -> str:
 def plan_turn(turn: TurnInput, settings: AiSettings) -> TurnPlan:
     mode = detect_mode(turn)
     use_opus = _has(normalize(turn.text), _OPUS)
+    trip_plan = mode == "chat" and is_trip_plan(turn.text)
+    if trip_plan:
+        return TurnPlan(
+            mode="think",
+            model=settings.ai_model_max if use_opus else settings.ai_model_smart,
+            effort="medium",
+            max_tokens=16000,
+            web_tools=True,
+            prefix_ttl="5m",
+            use_opus=use_opus,
+            task="trip_plan",
+        )
     if mode == "chat" and not use_opus:
         return TurnPlan(
             mode="chat",

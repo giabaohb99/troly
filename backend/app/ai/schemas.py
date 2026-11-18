@@ -44,6 +44,7 @@ class TurnPlan:
     web_tools: bool
     prefix_ttl: str  # "1h" | "5m"
     use_opus: bool = False
+    task: str | None = None  # trip_plan: dựng chuyến từ câu mô tả, có tìm web
 
 
 @dataclass(frozen=True)

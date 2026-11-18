@@ -92,3 +92,30 @@ def test_choose_cut_stops_at_user_turn():
     cut = choose_cut(h, keep=6)
     assert h[cut]["role"] == "user" and h[cut]["content"] == "1"
     assert choose_cut(h[:3], keep=6) == 0
+
+
+@pytest.mark.parametrize(
+    "text, trip_plan",
+    [
+        ("tạo lịch trình đi Vũng Tàu 2 ngày, xuất phát Cần Thơ", True),
+        ("Lên kế hoạch đi Đà Lạt cuối tuần", True),
+        ("gợi ý giúp em lịch trình Côn Đảo 3 ngày", True),
+        ("lịch trình Phước Hải ngày 2 đi đâu", False),
+        ("xem lịch trình chuyến Trà Vinh", False),
+        ("tạo lịch họp với anh Tuấn", False),
+    ],
+)
+def test_trip_plan_goes_to_sonnet_with_web(text, trip_plan, settings):
+    from app.ai.prompt import TRIP_PLAN_RULES, build_turn_system_text
+
+    plan = plan_turn(TurnInput(text), settings)
+    assert (plan.task == "trip_plan") is trip_plan
+    if trip_plan:
+        assert plan.model == settings.ai_model_smart and plan.web_tools and plan.mode == "think"
+        from datetime import UTC, datetime
+
+        assert TRIP_PLAN_RULES in build_turn_system_text(
+            datetime(2026, 11, 18, tzinfo=UTC), "Asia/Ho_Chi_Minh", plan
+        )
+    else:
+        assert plan.model == settings.ai_model_chat and not plan.web_tools

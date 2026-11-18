@@ -25,7 +25,7 @@ STATIC_PROMPT = """Bạn là trợ lý cá nhân trong app Trợ lý trên đi�
 - Thời điểm hiện tại nằm trong tin hệ thống gần nhất; tính "hôm nay", "hôm qua", "mai 3 giờ" theo đó, giờ Việt Nam.
 - Câu ghi chi tiêu như "cơm trưa 45k" thì ghi ngay bằng add_expense; chỉ hỏi lại khi thiếu số tiền.
 - Người dùng hỏi lại điều đã lưu, đã nói, đã nhận (ghi chú, tin nhắn, tệp, chuyến đi) thì dùng search_everything trước.
-- Không tự nghĩ ra tên quán, địa điểm; địa điểm phải lấy từ tệp của người dùng hoặc từ find_place.
+- Không tự nghĩ ra tên quán, địa điểm; địa điểm phải lấy từ tệp, lời người dùng, kết quả tìm web có nguồn hoặc find_place.
 - Một câu có nhiều việc thì gọi đủ công cụ, gọi song song khi không phụ thuộc nhau. Công cụ báo lỗi thì sửa đầu vào thử lại một lần, vẫn lỗi thì nói ngắn lý do.
 
 # Xóa và gửi ra ngoài
@@ -64,6 +64,12 @@ RESEARCH_RULES = (
 SUMMARY_RULES = (
     "Lượt này là tóm tắt dài: nêu các ý chính theo nhóm, mỗi ý một dòng, tối đa khoảng 12 dòng; "
     "không chép nguyên văn tin của người khác."
+)
+TRIP_PLAN_RULES = (
+    "Lượt này dựng lịch trình từ câu mô tả. Thiếu ngày đi hoặc nơi xuất phát thì hỏi, tối đa 2 câu trong một tin, "
+    "rồi làm. Dùng web_search tìm điểm có thật trong vùng (tên đúng, khu vực, giờ mở cửa nếu nguồn ghi), "
+    "find_place lấy link cho từng điểm; không đưa tên quán, tên điểm không có nguồn. Mặc định đi xe máy. "
+    "Soạn lịch trình theo ngày (giờ, việc, điểm kèm link) rồi gọi import_trip với text đó và start_date nếu đã biết."
 )
 THINK_RULES = (
     "Lượt này người dùng muốn nghĩ kỹ: tra đủ số liệu, cân nhắc phương án, trả lời tối đa khoảng 8 câu."
@@ -132,13 +138,16 @@ def build_turn_system_text(now: datetime, tz: str, plan: TurnPlan) -> str:
     """Tin `role: system` nối sau tin người dùng mỗi lượt: giờ hiện tại và luật riêng của loại việc."""
     parts = [format_now(now, tz)]
     extra = {"research": RESEARCH_RULES, "summary": SUMMARY_RULES, "think": THINK_RULES}.get(plan.mode)
+    if getattr(plan, "task", None) == "trip_plan":
+        extra = TRIP_PLAN_RULES
     if extra:
         parts.append(extra)
     return "\n".join(parts)
 
 
 def build_tools(app_tools: list[dict], plan: TurnPlan) -> list[dict]:
-    """Công cụ app (đã sắp theo tên) có điểm cache 1 ở cái cuối; lượt research thêm hai công cụ web sau đó."""
+    """Công cụ app (đã sắp theo tên) có điểm cache 1 ở cái cuối; lượt có tìm web (research, dựng chuyến) thêm hai
+    công cụ web sau đó."""
     tools = [dict(t) for t in app_tools]
     if tools:
         tools[-1]["cache_control"] = _cache(plan.prefix_ttl)

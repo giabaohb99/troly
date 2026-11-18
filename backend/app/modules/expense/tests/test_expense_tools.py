@@ -185,9 +185,9 @@ def test_items_and_account_groups_use_readable_labels(ctx):
     _add(ctx, 500000, "chuyển", kind="transfer", account="vcb", to_account="momo")
     out = _query(ctx, group_by="account")
     by_note = {i["note"]: i for i in out.result["items"]}
-    assert by_note["ăn sáng"]["account"] == "momo" and by_note["ăn sáng"]["account_label"] == "MoMo"
-    assert (
-        by_note["chuyển"]["account_label"] == "Vietcombank"
-        and by_note["chuyển"]["to_account_label"] == "MoMo"
-    )
+    assert by_note["ăn sáng"]["account"] == "MoMo" and by_note["ăn sáng"]["account_code"] == "momo"
+    assert (by_note["chuyển"]["account"], by_note["chuyển"]["to_account"]) == ("Vietcombank", "MoMo")
+    assert by_note["chuyển"]["to_account_code"] == "momo"
+    shown = {k: v for k, v in by_note["ăn sáng"].items() if not k.endswith("_code")}
+    assert "momo" not in str(shown)
     assert out.result["groups"][0]["label"] == "MoMo"
