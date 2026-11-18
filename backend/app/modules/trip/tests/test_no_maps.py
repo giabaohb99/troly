@@ -222,3 +222,31 @@ def test_trip_from_description_without_key(db, user, no_maps, fake_ai, monkeypat
     assert fake_ai["estimate"], "chặng phải qua estimate_legs"
     assert db.scalars(select(TripOption).where(TripOption.trip_id == trip.id)).first() is not None
     assert not no_maps
+
+
+def test_run_job_now_imports_and_evaluates_in_same_transaction(db, user, no_maps, fake_ai, sample_file):
+    from app.core.errors import NotFoundError
+    from app.core.models import JobQueue
+
+    data = service.import_trip(db, user, file_id=sample_file, start_date=date(2026, 11, 21))
+    service.run_job_now(db, user, data["job_id"])
+    trip = db.get(Trip, data["trip_id"])
+    assert trip.status == "draft" and db.get(JobQueue, data["job_id"]).status == "done"
+    with pytest.raises(NotFoundError):  # đã xong thì không chạy lại
+        service.run_job_now(db, user, data["job_id"])
+
+    out = service.evaluate_trip(db, user, trip.id)
+    service.run_job_now(db, user, out["job_id"])
+    db.refresh(trip)
+    assert trip.evaluation["risks"] is not None and db.get(JobQueue, out["job_id"]).status == "done"
+
+
+def test_run_job_now_refuses_other_users_job(db, user, no_maps, fake_ai, sample_file):
+    from app.core.context import UserContext
+    from app.core.errors import NotFoundError
+
+    other_user = UserContext(user_id=user.user_id + 100000, timezone=user.timezone)
+
+    data = service.import_trip(db, user, file_id=sample_file)
+    with pytest.raises(NotFoundError):
+        service.run_job_now(db, other_user, data["job_id"])

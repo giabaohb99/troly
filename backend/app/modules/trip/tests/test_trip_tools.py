@@ -52,9 +52,8 @@ def test_get_trip_compact_by_query(ctx, trip_id):
 
 
 def test_evaluate_then_save_option(db, ctx, trip_id, maps_fake, fake_ai):
-    out = _call(ctx, "evaluate_trip", trip_id=trip_id)
-    assert out.result["status"] == "evaluating"
-    run_job(db, "trip_evaluate", trip_id)
+    out = _call(ctx, "evaluate_trip", trip_id=trip_id)  # chạy ngay trong lượt, trả luôn phương án
+    assert out.result["options"] and "phương án" in out.result["ghi_chu"]
     got = _call(ctx, "get_trip", trip_id=trip_id, query=None, day_no=None).result
     assert got["options"] and any(r["code"] == "R2" for r in got["risks"])
     saved = _call(ctx, "save_trip", trip_id=trip_id, option_id=got["options"][0]["id"])
@@ -102,43 +101,45 @@ def test_find_place_without_maps_returns_search_link(ctx, no_maps):
     assert "query_place_id" not in item["link"] and "nguồn web" in out.result["ghi_chu"]
 
 
-def test_chat_builds_trip_from_description_without_maps(auth_client, db, no_maps, monkeypatch):
-    """Câu mô tả -> Sonnet tìm web -> find_place (không Maps, link tìm) -> import_trip. Claude giả."""
+def test_chat_builds_trip_from_description_without_maps(auth_client, db, no_maps, fake_ai, monkeypatch):
+    """Câu mô tả -> Sonnet tìm web (ít lần) -> find_place không Maps -> import_trip một lần (đọc ngay)
+    -> evaluate_trip ngay -> trả phương án cùng lượt. Claude giả; bóc tách, ước tính, tóm tắt giả theo fake_ai."""
     import uuid
 
     from app.ai import client as ai_client
     from app.ai.models import DbRunRecorder
     from app.ai.registry import get_tool, register_tools
     from app.ai.tests.fake_claude import FakeClaude, text_reply, tool_call
+    from app.core.models import JobQueue
 
     if get_tool("import_trip") is None:
         register_tools(tools.TOOLS)
-    url = "https://vungtau.example.vn/bai-sau"
+    url = "https://baria-vungtau.example.vn/cho-phuoc-hai"
     search = {
         "content": [
             {
                 "type": "server_tool_use",
                 "id": "srvtoolu_1",
                 "name": "web_search",
-                "input": {"query": "điểm tham quan Vũng Tàu"},
+                "input": {"query": "điểm tham quan, quán ăn nổi tiếng Phước Hải Vũng Tàu"},
             },
             {
                 "type": "web_search_tool_result",
                 "tool_use_id": "srvtoolu_1",
-                "content": [{"type": "web_search_result", "url": url, "title": "Bãi Sau Vũng Tàu"}],
+                "content": [{"type": "web_search_result", "url": url, "title": "Chợ Phước Hải"}],
             },
             {
                 "type": "tool_use",
                 "id": "toolu_1",
                 "name": "find_place",
-                "input": {"query": "Bãi Sau Vũng Tàu", "near": None},
+                "input": {"query": "chợ Phước Hải", "near": None},
             },
         ],
         "stop_reason": "tool_use",
     }
     itinerary = (
-        "Ngày 1 (thứ 7)\n5h00 Xuất phát Cần Thơ\n"
-        "15h00 Tắm biển [Bãi Sau Vũng Tàu](https://www.google.com/maps/search/?api=1&query=B%C3%A3i+Sau)\n"
+        "Ngày 1 (thứ 7)\n6h00 Xuất phát Cần Thơ\n"
+        "16h00 Ăn hải sản [chợ Phước Hải](https://www.google.com/maps/search/?api=1&query=ch%E1%BB%A3+Ph%C6%B0%E1%BB%9Bc+H%E1%BA%A3i)\n"
     )
     fake = FakeClaude(
         [
@@ -149,39 +150,58 @@ def test_chat_builds_trip_from_description_without_maps(auth_client, db, no_maps
                     "file_id": None,
                     "text": itinerary,
                     "url": None,
-                    "title": "Vũng Tàu 2 ngày",
+                    "title": "Phước Hải 2 ngày",
                     "start_date": "2026-11-21",
                     "travel_mode": None,
                 },
                 tool_id="toolu_2",
             ),
-            text_reply("Em đã dựng chuyến Vũng Tàu 2 ngày, đang đọc lịch trình."),
+            None,  # thay bằng evaluate_trip khi biết trip_id
+            text_reply("Có 2 phương án, đại ca chọn giúp em."),
         ]
     )
+
+    def scripted(original):
+        def run(kwargs):
+            if fake.script and fake.script[0] is None:
+                trip = db.scalars(select(Trip)).one()
+                fake.script[0] = tool_call("evaluate_trip", {"trip_id": trip.id}, tool_id="toolu_3")
+            return original(kwargs)
+
+        return run
+
+    for api in (fake.messages, fake.beta.messages):  # Sonnet đi đường beta (fallbacks)
+        monkeypatch.setattr(api, "_next", scripted(api._next))
     monkeypatch.setattr(ai_client, "_client", ai_client.ClaudeClient(sdk=fake, recorder=DbRunRecorder()))
     resp = auth_client.post(
         "/api/v1/chat/messages",
         json={
             "client_message_id": str(uuid.uuid4()),
-            "text": "tạo lịch trình đi Vũng Tàu 2 ngày, xuất phát Cần Thơ",
+            "text": "Tạo lịch trình đi Phước Hải 2 ngày, xuất phát Cần Thơ 6h sáng thứ 7 21/11, đi xe máy",
         },
     )
     assert resp.status_code == 200, resp.text
     first = fake.requests[0]
     assert first["model"] == "claude-sonnet-5-5"
-    assert any(t.get("type") == "web_search_20260209" for t in first["tools"])
-    find_result = next(
-        b
-        for m in fake.requests[1]["messages"]
-        if isinstance(m["content"], list)
-        for b in m["content"]
-        if b.get("type") == "tool_result" and b.get("tool_use_id") == "toolu_1"
-    )
-    assert '"verified": false' in str(find_result["content"]).lower().replace("False", "false")
-    trip = db.scalars(select(Trip)).one()
-    assert trip.status == "importing" and trip.start_date == date(2026, 11, 21)
-    assert any(
-        a["screen"] == "trip_detail"
-        for a in resp.json()["data"]["assistant_message"]["actions"]
-        if a["type"] == "open_screen"
-    )
+    web = [t for t in first["tools"] if t.get("type", "").startswith("web_")]
+    assert [t["type"] for t in web] == ["web_search_20260209"] and web[0]["max_uses"] == 4
+
+    def tool_result(req, tool_id):
+        return next(
+            b
+            for m in req["messages"]
+            if isinstance(m["content"], list)
+            for b in m["content"]
+            if b.get("type") == "tool_result" and b.get("tool_use_id") == tool_id
+        )
+
+    assert "false" in str(tool_result(fake.requests[1], "toolu_1")["content"]).lower()
+    imported = str(tool_result(fake.requests[2], "toolu_2")["content"])
+    assert "evaluate_trip" in imported and "importing" not in imported
+    evaluated = str(tool_result(fake.requests[3], "toolu_3")["content"])
+    assert "options" in evaluated and "phương án" in evaluated
+    trips = list(db.scalars(select(Trip)))
+    assert len(trips) == 1 and trips[0].status == "draft" and trips[0].evaluation
+    jobs = list(db.scalars(select(JobQueue).where(JobQueue.kind.in_(["trip_import", "trip_evaluate"]))))
+    assert {j.status for j in jobs} == {"done"}  # worker không chạy lại
+    assert fake_ai["extract"] == 1 and fake_ai["summaries"]

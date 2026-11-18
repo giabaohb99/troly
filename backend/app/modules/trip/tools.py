@@ -155,6 +155,18 @@ class DeleteTripInput(BaseModel):
 # ---------- Hàm chạy ----------
 
 
+def _brief_import(t: dict) -> dict:
+    return {
+        "trip_id": t["id"],
+        "status": t["status"],
+        "error": t.get("error"),
+        "start_date": t.get("start_date"),
+        "days": len(t["days"]),
+        "stops": sum(len(d["stops"]) for d in t["days"]),
+        "can_xac_nhan": len(t.get("needs_confirmation") or []),
+    }
+
+
 def run_import(ctx: ToolContext, data: ImportTripInput) -> ToolOutput:
     out = service.import_trip(
         ctx.session,
@@ -166,25 +178,46 @@ def run_import(ctx: ToolContext, data: ImportTripInput) -> ToolOutput:
         start_date=data.start_date,
         travel_mode=data.travel_mode,
     )
-    return ToolOutput(
-        result={
-            **out,
-            "ghi_chu": "Đang đọc lịch trình, khoảng 1 phút. Xong thì người dùng xem nháp trên màn chuyến đi, "
-            "xác nhận điểm chưa chắc rồi đánh giá.",
-        },
-        actions=[_open_trip(out["trip_id"], "Xem chuyến đi")],
-    )
+    if data.file_id:  # tệp dài: đọc nền như cũ
+        return ToolOutput(
+            result={
+                **out,
+                "ghi_chu": "Đang đọc lịch trình, khoảng 1 phút. Xong thì người dùng xem nháp trên màn chuyến đi, "
+                "xác nhận điểm chưa chắc rồi đánh giá.",
+            },
+            actions=[_open_trip(out["trip_id"], "Xem chuyến đi")],
+        )
+    # Chữ, link: đọc ngay trong lượt để đánh giá luôn (QĐ-36, dựng chuyến từ câu mô tả).
+    service.run_job_now(ctx.session, ctx.user, out["job_id"])
+    t = service.get_trip(ctx.session, ctx.user, out["trip_id"])
+    result = _brief_import(t)
+    if t["status"] == "failed":
+        result["ghi_chu"] = (
+            "Không đọc được lịch trình (xem error). Không gọi import_trip lần nữa; báo người dùng lý do ngắn."
+        )
+    elif t.get("start_date"):
+        result["ghi_chu"] = (
+            "Đã nhập xong. Gọi evaluate_trip ngay với trip_id này trong lượt này; không tạo chuyến mới."
+        )
+    else:
+        result["ghi_chu"] = "Đã nhập xong nhưng chưa có ngày đi: hỏi ngày đi trước khi đánh giá."
+    return ToolOutput(result=result, actions=[_open_trip(out["trip_id"], "Xem chuyến đi")])
 
 
 def run_evaluate(ctx: ToolContext, data: TripIdInput) -> ToolOutput:
+    """Đánh giá ngay trong lượt và trả phương án để người dùng chọn cùng lúc."""
     out = service.evaluate_trip(ctx.session, ctx.user, data.trip_id)
-    return ToolOutput(
-        result={
-            **out,
-            "ghi_chu": "Đang tính đường, giờ mở cửa và rủi ro, khoảng 1 phút; xong có 2 tới 3 phương án.",
-        },
-        actions=[_open_trip(data.trip_id, "Xem đánh giá")],
-    )
+    service.run_job_now(ctx.session, ctx.user, out["job_id"])
+    t = service.find_trip(ctx.session, ctx.user, trip_id=data.trip_id, query=None, day_no=None)
+    result = _compact_trip(t)
+    if t.get("error"):
+        result["ghi_chu"] = f"Đánh giá chưa xong: {t['error']}"
+    else:
+        result["ghi_chu"] = (
+            "Đã đánh giá. Nêu ngắn 2 tới 3 phương án (tên, km, giờ chạy, rủi ro chính) và mời người dùng chọn; "
+            "chọn xong thì gọi save_trip."
+        )
+    return ToolOutput(result=result, actions=[_open_trip(data.trip_id, "Xem đánh giá")])
 
 
 def run_save(ctx: ToolContext, data: SaveTripInput) -> ToolOutput:
@@ -307,7 +340,8 @@ TOOLS = [
             "Nhập lịch trình từ tệp người dùng gửi (file_id), đoạn chữ, link, hoặc câu mô tả chuyến đi. "
             "Từ câu mô tả: thiếu ngày đi hoặc nơi xuất phát thì hỏi (tối đa 2 câu một lần); dùng web_search tìm "
             "điểm có thật trong vùng (tên đúng, khu vực, giờ mở cửa nếu nguồn ghi), find_place lấy link từng điểm, "
-            "rồi gửi text dạng Ngày 1, giờ, việc, kèm nguyên link. Không có nguồn thì không đưa tên quán."
+            "soạn xong đủ mọi ngày rồi mới gọi một lần, text dạng Ngày 1, giờ, việc, kèm nguyên link. Không có "
+            "nguồn thì không đưa tên quán. Đầu vào chữ được đọc ngay; xong thì gọi evaluate_trip."
         ),
         input_model=ImportTripInput,
         run=run_import,
@@ -316,7 +350,10 @@ TOOLS = [
     ToolSpec(
         name="evaluate_trip",
         label="Đang đánh giá lịch trình",
-        description="Kiểm thời gian chạy, giờ mở cửa, giờ phà, chạy đêm và đề xuất phương án cho một chuyến.",
+        description=(
+            "Kiểm thời gian chạy, giờ mở cửa, giờ phà, chạy đêm và đề xuất phương án cho một chuyến. Chạy xong "
+            "trong lượt (khoảng nửa phút), kết quả có phương án để người dùng chọn."
+        ),
         input_model=TripIdInput,
         run=run_evaluate,
         phase=4,

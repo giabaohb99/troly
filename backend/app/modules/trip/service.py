@@ -160,7 +160,7 @@ def serialize_trip(session: Session, trip: Trip) -> dict:
                 "candidates": s.alternatives or [],
             }
             for s in stops
-            if s.resolve_status in ("uncertain", "not_found") and s.role in ROUTED_ROLES and s.place_query
+            if _needs_confirmation(s)
         ],
         "facts": [
             {
@@ -195,11 +195,23 @@ def serialize_trip(session: Session, trip: Trip) -> dict:
     }
 
 
+def _needs_confirmation(s: TripStop) -> bool:
+    """Điểm cần người dùng chọn đúng chỗ. QĐ-36: không có khóa Maps thì không bao giờ có place_id;
+    điểm có tên (link tìm Google Maps theo tên) đã đủ để mở bản đồ và ước tính chặng, không tính.
+    Điểm không có tên lẫn link thì vốn là `manual`, không có gì để xác nhận."""
+    return (
+        maps.configured()
+        and s.resolve_status in ("uncertain", "not_found")
+        and s.role in ROUTED_ROLES
+        and bool(s.place_query)
+    )
+
+
 def _brief(session: Session, trip: Trip) -> dict:
     chosen = _chosen(session, trip)
     ev = trip.evaluation or {}
     risks = ev.get("risks", [])
-    pending = session.scalar(
+    pending = maps.configured() and session.scalar(
         select(func.count())
         .select_from(TripStop)
         .where(
@@ -341,6 +353,29 @@ def _content_for(session: Session, trip: Trip) -> tuple[object, str | None]:
     if trip.source_kind == "link":
         return f"Lịch trình từ link Google Maps: [{trip.source_text}]({trip.source_text})", trip.source_text
     return trip.source_text or "", trip.source_text
+
+
+def run_job_now(session: Session, user: UserContext, job_id: int) -> dict:
+    """Chạy ngay trong giao dịch hiện tại một việc trip vừa đặt (trip_import, trip_evaluate), dùng cho
+    lượt chat cần kết quả cùng lượt. Việc chưa commit nên worker chưa thấy; commit xong đã là done."""
+    job = session.scalar(
+        select(JobQueue)
+        .where(
+            JobQueue.id == job_id,
+            JobQueue.user_id == user.user_id,
+            JobQueue.kind.in_(("trip_import", "trip_evaluate")),
+            JobQueue.status == "pending",
+        )
+        .with_for_update()
+    )
+    if job is None:
+        raise NotFoundError("Không tìm thấy việc chờ của chuyến đi.")
+    job.status, job.attempts, job.started_at = "processing", job.attempts + 1, clock.now()
+    runner = run_import if job.kind == "trip_import" else run_evaluate
+    result = runner(session, job)
+    job.status, job.result, job.finished_at, job.error = "done", result, clock.now(), None
+    session.flush()
+    return result
 
 
 def run_import(session: Session, job) -> dict:

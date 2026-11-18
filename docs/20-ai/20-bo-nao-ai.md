@@ -50,7 +50,7 @@ Chung cho cả ba: cửa sổ 1M token, đầu ra tối đa 128K; thinking thíc
 | Chat thường, ghi chép | Mặc định | Haiku 5.5 | `AI_EFFORT_CHAT` (`low`) | Công cụ app |
 | *Nghĩ kỹ* | Nút *Nghĩ kỹ*, hoặc câu có *nghĩ kỹ* | Sonnet 5.5 | `medium` | Công cụ app |
 | Research web | Nút *Tìm web*, hoặc câu có *tìm trên mạng*, *tra mạng*, *search web*, *research* | Sonnet 5.5 | `medium` | Công cụ app + tìm web (mục 3.9) |
-| Dựng chuyến từ câu mô tả (QĐ-36) | Câu có động từ *tạo*, *lập*, *lên*, *xếp*, *soạn*, *dựng*, *gợi ý* đi với *lịch trình*, *kế hoạch đi*, *chuyến đi* | Sonnet 5.5 (`mode = think`, `task = trip_plan`) | `medium` | Công cụ app + tìm web; luật riêng: hỏi tối đa 2 câu, web_search tìm điểm có thật, find_place lấy link, rồi import_trip |
+| Dựng chuyến từ câu mô tả (QĐ-36) | Câu có động từ *tạo*, *lập*, *lên*, *xếp*, *soạn*, *dựng*, *gợi ý* đi với *lịch trình*, *kế hoạch đi*, *chuyến đi* | Sonnet 5.5 (`mode = think`, `task = trip_plan`) | `medium` | Công cụ app + chỉ `web_search`, `max_uses` 4; luật riêng: hỏi tối đa 2 câu, tìm gộp, find_place lấy link, soạn đủ mọi ngày rồi import_trip đúng một lần, evaluate_trip ngay, nêu 2 tới 3 phương án; không tạo chuyến thứ hai |
 | Tóm tắt dài | Nút *Tóm tắt* (hộp tin, chuỗi thư, tệp), hoặc câu xin tóm tắt kèm tệp trên 20 trang | Sonnet 5.5 | `low` | Công cụ app |
 | *Dùng Opus* | Câu có *dùng Opus* | Opus 5.5 | `medium` | Như loại việc của câu (có tìm web nếu câu cũng xin tìm web) |
 | Tóm tắt phiên (`compaction`) | Mã, mục 3.5 | Haiku 5.5 | `low` | Không |
@@ -260,8 +260,8 @@ Luật chung:
 | calendar | `list_events` | Hỏi lịch | `from`, `to`, `query` | Danh sách | Không | 3 |
 | calendar | `delete_event` | Xóa sự kiện | `event_ids`, `reason` | Như `delete_expense` | Từ 2 mục, hoặc có khách mời | 3 |
 | calendar | `set_reminder` | Nhắc vào giờ cụ thể | `text`, `remind_at`, `alarm` (chỉ true khi người dùng nói rõ báo thức, QĐ-39) | `{event_id}`; mặc định là thông báo thường | Không | 3 |
-| trip | `import_trip` | Gửi tệp lịch trình, hoặc đã dựng nháp từ câu mô tả | `file_id`, `text` (lịch trình theo ngày kèm link), `url`, `title`, `travel_mode`, `start_date` | Việc nền; `open_screen` `trip_detail` | Không | 4 |
-| trip | `evaluate_trip` | Kiểm rủi ro, đề xuất phương án | `trip_id` | Việc nền; rủi ro và phương án theo 41 | Không | 4 |
+| trip | `import_trip` | Gửi tệp lịch trình, hoặc đã dựng nháp từ câu mô tả | `file_id`, `text` (lịch trình theo ngày kèm link), `url`, `title`, `travel_mode`, `start_date` | Tệp: việc nền; chữ, link: đọc ngay trong lượt (việc đánh dấu `done`), trả tóm tắt chuyến; `open_screen` `trip_detail` | Không | 4 |
+| trip | `evaluate_trip` | Kiểm rủi ro, đề xuất phương án | `trip_id` | Chạy ngay trong lượt (khoảng nửa phút), trả rủi ro và phương án theo 41 | Không | 4 |
 | trip | `save_trip` | Chọn phương án | `trip_id`, `option_id` | `{status: planned}` | Không | 4 |
 | trip | `list_trips` | Hỏi các chuyến | `status`, `query` | Danh sách | Không | 4 |
 | trip | `get_trip` | Lấy một chuyến | `trip_id` hoặc `query`, `day_no` | Tóm tắt theo ngày + `open_screen` | Không | 4 |

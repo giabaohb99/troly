@@ -67,10 +67,13 @@ SUMMARY_RULES = (
 )
 TRIP_PLAN_RULES = (
     "Lượt này dựng lịch trình từ câu mô tả. Thiếu ngày đi hoặc nơi xuất phát thì hỏi, tối đa 2 câu trong một tin, "
-    "rồi làm. Dùng web_search tìm điểm có thật trong vùng (tên đúng, khu vực, giờ mở cửa nếu nguồn ghi), "
-    "find_place lấy link cho từng điểm; không đưa tên quán, tên điểm không có nguồn. Mặc định đi xe máy. "
-    "Soạn lịch trình theo ngày (giờ, việc, điểm kèm link) rồi gọi import_trip với text đó và start_date nếu đã biết."
+    "rồi làm. Tìm web ít lần, mỗi câu tìm gộp nhiều thứ (ví dụ: điểm tham quan và quán ăn nổi tiếng Vũng Tàu, "
+    "giờ mở cửa); chỉ dùng điểm có thật, có nguồn, không đưa tên không có nguồn. find_place lấy link cho từng điểm. "
+    "Mặc định đi xe máy. Thứ tự bắt buộc: (1) soạn xong đủ mọi ngày, mỗi điểm có giờ và link; (2) gọi import_trip "
+    "đúng một lần với text đó và start_date; (3) gọi evaluate_trip với trip_id vừa có; (4) nêu ngắn 2 tới 3 phương "
+    "án và mời chọn. Không tạo chuyến thứ hai, không xóa chuyến vừa tạo trong lượt này."
 )
+TRIP_PLAN_MAX_SEARCHES = 4
 THINK_RULES = (
     "Lượt này người dùng muốn nghĩ kỹ: tra đủ số liệu, cân nhắc phương án, trả lời tối đa khoảng 8 câu."
 )
@@ -152,7 +155,11 @@ def build_tools(app_tools: list[dict], plan: TurnPlan) -> list[dict]:
     if tools:
         tools[-1]["cache_control"] = _cache(plan.prefix_ttl)
     if plan.web_tools:
-        tools.extend(dict(t) for t in WEB_TOOLS)
+        web = [dict(t) for t in WEB_TOOLS]
+        if getattr(plan, "task", None) == "trip_plan":
+            # Dựng chuyến chỉ cần tìm, không đọc cả trang; ít lần tìm (thử thật 0,16 USD một lượt, 18/11/2026).
+            web = [{**t, "max_uses": TRIP_PLAN_MAX_SEARCHES} for t in web if t["name"] == "web_search"]
+        tools.extend(web)
     return tools
 
 

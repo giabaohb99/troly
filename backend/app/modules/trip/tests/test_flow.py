@@ -157,12 +157,15 @@ def test_change_start_date_shifts_times(db, user, imported):
     assert after - before == timedelta(days=7)
 
 
-def test_without_maps_key_import_keeps_points_to_confirm(db, user, no_maps, fake_ai, sample_file):
+def test_without_maps_key_named_points_need_no_confirmation(db, user, no_maps, fake_ai, sample_file):
+    """QĐ-36: không khóa Maps thì không có place_id; điểm có tên hoặc link tìm theo tên là đủ."""
     data = service.import_trip(db, user, file_id=sample_file)
     run_job(db, "trip_import", data["trip_id"])
     trip = service.get_trip(db, user, data["trip_id"])
     assert trip["status"] == "draft" and trip["start_date_suggested"] is True
-    assert trip["needs_confirmation"]
+    assert trip["needs_confirmation"] == []
+    [brief] = [t for t in service.list_trips(db, user) if t["id"] == data["trip_id"]]
+    assert brief["needs_confirmation_count"] == 0
 
 
 def test_failed_extraction_marks_trip_failed(db, user, maps_fake, sample_file, monkeypatch):
@@ -251,3 +254,14 @@ def test_ai_extract_converts_to_trip_schema():
 def test_find_trip_by_query_and_day(db, user, imported):
     data = service.find_trip(db, user, query="Phước Hải", day_no=2)
     assert data["id"] == imported.id and [d["day_no"] for d in data["days"]] == [2]
+
+
+def test_with_maps_key_unresolved_named_point_still_needs_confirmation(db, user, imported, maps_fake):
+    stop = next(s for s in _stops(db, imported.id) if s.role == "main" and s.place_query)
+    stop.resolve_status, stop.lat, stop.lng = "not_found", None, None
+    db.flush()
+    trip = service.get_trip(db, user, imported.id)
+    waiting = [c["stop_id"] for c in trip["needs_confirmation"]]
+    assert stop.id in waiting
+    [brief] = [t for t in service.list_trips(db, user) if t["id"] == imported.id]
+    assert brief["needs_confirmation_count"] == len(waiting)
