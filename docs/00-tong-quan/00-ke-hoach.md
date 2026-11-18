@@ -1,6 +1,8 @@
 # Kế hoạch tổng
 
-Ngày lập: 18/11/2026. Người duyệt: Gia Bảo.
+Ngày lập: 18/11/2026. Người duyệt: Gia Bảo. Cập nhật theo QĐ-15 tới QĐ-25 (`90-quyet-dinh.md`).
+
+Hiện chỉ có **một người dùng** là Gia Bảo (QĐ-15). Khung nhiều người dùng (tối đa 4) vẫn giữ trong thiết kế để mở sau.
 
 ## 1. Mục tiêu sản phẩm
 
@@ -20,8 +22,8 @@ Ngày lập: 18/11/2026. Người duyệt: Gia Bảo.
 
 | Dịch vụ | Dùng để | Chiều đồng bộ | Bản |
 |---|---|---|---|
-| Google Calendar | Lịch, sự kiện, việc có giờ | Hai chiều, Google làm gốc | V1.4 |
-| Google Tasks | Việc không có giờ | Một chiều từ app sang Google, app làm gốc | V1.4 |
+| Google Calendar | Lịch, sự kiện, việc có giờ, mời khách qua thẻ duyệt (QĐ-23) | Hai chiều, Google làm gốc | V1.4 |
+| Google Tasks | Việc không có giờ | App làm gốc, đẩy sang Google; đọc ngược trạng thái xong và đã xóa (QĐ-21) | V1.4 |
 | Google Maps (URL, lệnh Android) | Mở bản đồ, dẫn đường xe máy | Không cần khóa | V1.6 |
 | Google Maps Platform | Tọa độ, giờ mở cửa, thời gian di chuyển | Gọi từ máy chủ | V1.6 |
 | Gmail | Đọc thư, tóm tắt vào hộp tin; soạn nháp; gửi phải duyệt | Đọc, ghi nháp | V1.8 |
@@ -32,13 +34,13 @@ Ngày lập: 18/11/2026. Người duyệt: Gia Bảo.
 
 **Không làm:** Google Photos (API chỉ cho đọc ảnh do app tự tạo), Google Keep (API chỉ dành cho Workspace doanh nghiệp).
 
-**Đăng nhập Google:** một dự án Google Cloud dùng chung cho OAuth và Maps. Màn đồng ý OAuth chuyển sang trạng thái *In production* để token không hết hạn sau 7 ngày; dùng cá nhân không cần Google xác minh, chỉ bấm qua cảnh báo một lần.
+**Đăng nhập Google:** một dự án Google Cloud dùng chung cho OAuth và Maps. Màn đồng ý OAuth ở trạng thái *Testing* thì mã làm mới hết hạn sau 7 ngày, nên chuyển sang *In production*. Chưa qua xác minh thì người dùng bấm qua màn cảnh báo *ứng dụng chưa được xác minh*; điều kiện cụ thể với từng nhóm quyền (nhạy cảm, hạn chế) ghi ở `40-tich-hop-google.md`, cần thử thật trước khi coi là chắc chắn.
 
 ## 3. Lộ trình
 
 | Giai đoạn | Nội dung | Xong khi |
 |---|---|---|
-| **A. Tài liệu** | Kế hoạch, thiết kế tổng thể, tài liệu kỹ thuật từng mảng | Đủ các tệp ở [docs/README.md](README.md), đã rà chéo, người dùng duyệt |
+| **A. Tài liệu** | Kế hoạch, thiết kế tổng thể, tài liệu kỹ thuật từng mảng | Đủ các tệp ở [docs/README.md](../README.md), đã rà chéo, người dùng duyệt |
 | **V1.0** | Backend nền (core, ai, memory, chat) + vỏ app Capacitor có màn Chat + CI build APK | Cài APK, đăng nhập, chat được, hồ sơ lõi được nạp |
 | **V1.1** | Chi tiêu qua chat | Nhắn "cơm trưa 45k" là ghi đúng; hỏi tổng tháng trả đúng |
 | **V1.2** | Plugin nghe thông báo + chi tiêu từ Vietcombank, Techcombank, MoMo | Giao dịch thật tự thành một dòng chi tiêu, chuyển sang MoMo không bị tính hai lần |
@@ -69,7 +71,7 @@ Mỗi agent là một phiên Claude Code riêng, gom trong nhóm **agent trợ l
 
 ### 4.2 Luật cho agent
 
-1. Đọc `CLAUDE.md`, `docs/00-ke-hoach.md`, `docs/01-thiet-ke-tong-the.md`, `docs/02-cau-truc-ma-nguon.md` trước khi viết.
+1. Đọc `CLAUDE.md`, `docs/00-tong-quan/00-ke-hoach.md`, `docs/00-tong-quan/01-thiet-ke-tong-the.md`, `docs/00-tong-quan/02-cau-truc-ma-nguon.md` trước khi viết.
 2. **Chỉ sửa tệp mình giữ.** Cần đổi tệp của agent khác thì ghi vào mục *Cần agent khác* cuối tệp mình.
 3. **Không commit, không đổi nhánh.** Điều phối gộp và commit.
 4. Bảng do module của mình cần thì mô tả trong tệp mình ở mục *Dữ liệu cần*; agent kiến trúc gom vào `11-co-so-du-lieu.md`.
@@ -84,7 +86,7 @@ Sau khi tài liệu được duyệt, mỗi bản V1.x giao cho agent giữ mả
 
 | Khoản | Mức |
 |---|---|
-| Claude API cho bộ não | Tối đa 200 USD mỗi tháng, ước dưới 10 USD với Haiku 5.5 cho một người |
+| Claude API cho bộ não | Không đặt trần ngày (QĐ-15). Mức cảnh báo tháng 200 USD, vượt thì báo, không chặn. Ước dưới 10 USD mỗi tháng với Haiku 5.5 |
 | Claude CLI cho phát triển | Gói đăng ký |
-| Google Maps Platform | Trong mức miễn phí hằng tháng, đặt hạn mức chi thấp |
-| VPS, R2, tên miền | Dùng chung hạ tầng sẵn có |
+| Google Maps Platform | Trong mức miễn phí hằng tháng. Đặt cảnh báo ngân sách trên Google Cloud (cảnh báo không tự chặn chi) và giới hạn số lần gọi mỗi ngày cho từng API |
+| VPS, R2, tên miền | Dùng chung hạ tầng sẵn có; tạm tắt Gamebar để nhường tài nguyên (QĐ-24) |
