@@ -157,7 +157,7 @@ Chỉ ghi việc tệp đích chưa làm. Việc trùng một dòng ở mục A 
 
 | # | Câu | Nguồn | Đề xuất |
 |---|---|---|---|
-| 1 | Tên miền con cho api là gì? | 12-Q1, 50-Q1 | `troly.baohuynh.io.vn`. Cần trước lần deploy V1.0 |
+| 1 | Tên miền con cho api là gì? | 12-Q1, 50-Q1 | `assistant.baohuynh.io.vn`. Cần trước lần deploy V1.0 |
 | 2 | Mã làm mới 60 ngày, mã truy cập 30 phút có được không? | 10-Q1 | Giữ |
 | 3 | Có đăng nhập bằng Google thay mật khẩu không? | 10-Q2 | Không |
 | 4 | Lịch sử chat giữ 365 ngày rồi xóa, chỉ giữ tóm tắt? | 11-Q1 | Đồng ý |

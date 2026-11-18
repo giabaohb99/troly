@@ -37,10 +37,10 @@ Trạng thái: `chờ`, `đang làm`, `chờ rà`, `xong`, `chặn`. Mã việc:
 | A-05 | A | Vòng 3 gọn hóa 50, 60, 70 | agent hạ tầng | | xong | 50: 791 xuống 333 dòng; 60: 402 xuống 166; 70: 496 xuống 214. Hai đổi hợp đồng ở mục 4 |
 | A-06 | A | Rà nhanh, commit tài liệu | điều phối | | xong | Tài liệu còn khoảng 4.900 dòng (từ khoảng 8.600) |
 | 0-01 | 0 | Kiểm VPS: cổng, RAM, ổ, container | điều phối | | xong | 18/11: cổng 8200 trống; RAM 3,9 GB, còn dùng được 2,8 GB, swap 8 GB; ổ còn 15 GB trên 22 GB; core-game 51 MB, gymcanhan 40 MB, cloudflared 19 MB; bộ đệm build 1,3 GB |
-| 0-02 | 0 | Thêm Public Hostname `troly.baohuynh.io.vn` trỏ `http://localhost:8200` | người dùng | 0-01 | chờ | |
-| 0-03 | 0 | Tạo khóa API Anthropic cho troly, đặt hạn mức chi trên trang Anthropic | người dùng | | chờ | |
-| 0-04 | 0 | Tạo bucket R2 và mã truy cập | người dùng | | chờ | Số bucket theo 50 bản 3 |
-| 0-05 | 0 | Sinh khóa ký APK, cất hai bản, đặt secret GitHub | người dùng, agent hạ tầng | | chờ | |
+| 0-02 | 0 | Thêm Public Hostname `assistant.baohuynh.io.vn` trỏ `http://localhost:8200` trên tunnel của Gamebar | người dùng | | chờ | Hướng dẫn đã gửi người dùng 18/11 |
+| 0-03 | 0 | Khóa Anthropic: dùng chung khóa gym (QĐ-32); đặt hạn mức chi tháng trên trang Anthropic (không bắt buộc) | người dùng | | chờ | |
+| 0-04 | 0 | R2: bucket `assistant`, dùng chung mã R2 của Gamebar (QĐ-31) | điều phối | | xong | 18/11 thử đọc, ghi, xóa được |
+| 0-05 | 0 | Sinh khóa ký APK, cất ở `D:/giabao/troly-secrets/` (QĐ-32); người dùng chép hai bản dự phòng | agent hạ tầng, người dùng | | chờ | |
 | 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | | xong | Chạy được ở máy: api, db, worker, `/api/health` 200; pytest 2 bài xanh trong container. `backend/app/main.py`, `worker/main.py`, `app/` là khung, agent kiến trúc và agent app Android thay |
 | 0-07 | 0 | Tạm dừng `core-game` | điều phối | | bỏ | QĐ-29: để Gamebar chạy |
 | 1-01 | 1 | Chốt hợp đồng Phase 1: các mục V1.0, V1.1 trong 11, 12, 20 + `POST /client-logs`, `/system/status` | điều phối | | xong | Hợp đồng là tài liệu bản 3 cộng hai dòng đã chốt ở mục 4 |

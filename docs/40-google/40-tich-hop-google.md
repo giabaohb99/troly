@@ -74,7 +74,7 @@ Google chặn đăng nhập OAuth trong WebView nhúng (`disallowed_useragent`) 
    - lưu `tab_google_oauth_state`: băm `state`, `code_verifier` mã hóa Fernet, hạn 10 phút, dùng một lần;
    - trả `auth_url` với `access_type=offline`, `prompt=consent`, `include_granted_scopes=true`, `code_challenge_method=S256`, `login_hint`.
 2. App mở `auth_url` bằng Custom Tabs. Người dùng chọn tài khoản, bấm *Nâng cao > Đi tới...* ở màn chưa xác minh, tích quyền.
-3. Google chuyển về `GOOGLE_REDIRECT_URI` (`https://troly.baohuynh.io.vn/api/v1/google/oauth/callback`). Máy chủ:
+3. Google chuyển về `GOOGLE_REDIRECT_URI` (`https://assistant.baohuynh.io.vn/api/v1/google/oauth/callback`). Máy chủ:
    - kiểm `state` và đánh dấu đã dùng;
    - đổi `code` kèm `code_verifier`;
    - đọc `id_token` (`sub`, `email`) và `scope`;
@@ -150,7 +150,7 @@ Google chặn đăng nhập OAuth trong WebView nhúng (`disallowed_useragent`) 
 
 **Thông báo đẩy** [N23][N29]:
 
-- `events.watch` cho `primary`, `address = https://troly.baohuynh.io.vn/api/v1/webhooks/google/calendar`. Địa chỉ phải là HTTPS có chứng chỉ hợp lệ; Cloudflare đáp ứng.
+- `events.watch` cho `primary`, `address = https://assistant.baohuynh.io.vn/api/v1/webhooks/google/calendar`. Địa chỉ phải là HTTPS có chứng chỉ hợp lệ; Cloudflare đáp ứng.
 - `token` ngẫu nhiên mỗi kênh, lưu băm. `ttl` để mặc định 604800 giây; tài liệu không ghi mức tối đa.
 - Webhook xử lý theo `12-api.md` mục 5.7: kiểm kênh và token, đặt `needs_sync`, trả 200 trong 1 giây.
 - Thông báo không chứa dữ liệu, nên luôn phải chạy đồng bộ tăng dần.
@@ -415,7 +415,7 @@ Quét định kỳ cách nhau ít nhất `GOOGLE_SYNC_MIN_SECONDS` (300 giây); 
    3. *Data access*: thêm scope ở mục 3.1. Ghi nhãn mức Console hiện cho Calendar, Tasks, Contacts.
    4. V1.4 chạy ổn thì *Publish app* sang **In production**. Không gửi xác minh.
 4. **Client OAuth** loại *Web application*:
-   - redirect `https://troly.baohuynh.io.vn/api/v1/google/oauth/callback`; máy cá nhân dùng client và địa chỉ riêng;
+   - redirect `https://assistant.baohuynh.io.vn/api/v1/google/oauth/callback`; máy cá nhân dùng client và địa chỉ riêng;
    - ghi `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` vào `.env`.
 5. **Khóa Maps:**
    - giới hạn IP của VPS;

@@ -45,7 +45,7 @@ Máy đích chạy One UI 7 (Android 15) trở lên, nên các thay đổi của
 | `applicationId` | `vn.io.baohuynh.troly`; bản gỡ lỗi thêm `.debug`, tên *Trợ lý (thử)* |
 | Tên hiển thị | **Trợ lý** |
 | Phiên bản | `versionName` từ thẻ `vX.Y.Z`; `versionCode = X*10000 + Y*100 + Z` |
-| Địa chỉ api | `https://troly.baohuynh.io.vn` (QĐ-26), gắn lúc build |
+| Địa chỉ api | `https://assistant.baohuynh.io.vn` (QĐ-26), gắn lúc build |
 | Đường dẫn sâu | `troly://` (thông báo nhắc; trang kết nối Google `troly://cai-dat/google?ket-qua=ok\|huy\|thieu-quyen\|loi`) |
 | Bảo vệ | `android:allowBackup="false"`; `network_security_config` cấm HTTP rõ, không ghim chứng chỉ; WebView chỉ nạp nội dung của app, link ngoài mở trình duyệt hệ thống; chỉ activity chính và dịch vụ nghe thông báo được `exported` |
 
@@ -191,7 +191,7 @@ Không xin: vị trí, danh bạ máy, SMS, `QUERY_ALL_PACKAGES`, dịch vụ ti
 4. `required = true`: chặn app, chỉ còn nút *Cập nhật*.
 5. Cài xong: `MY_PACKAGE_REPLACED` đặt lại báo thức, thông báo *Đã cập nhật lên x.y.z*.
 
-**Cài lần đầu:** mở trang `https://troly.baohuynh.io.vn/tai-app` (công khai, `50`) trên trình duyệt Samsung hoặc Chrome, tải APK, cho phép trình duyệt *Cài ứng dụng không rõ nguồn gốc*, cài, mở app, đăng nhập, làm thiết lập máy.
+**Cài lần đầu:** mở trang `https://assistant.baohuynh.io.vn/tai-app` (công khai, `50`) trên trình duyệt Samsung hoặc Chrome, tải APK, cho phép trình duyệt *Cài ứng dụng không rõ nguồn gốc*, cài, mở app, đăng nhập, làm thiết lập máy.
 
 **Khi Android chặn cài.** Từ năm 2027 Android chặn cài và cập nhật app chưa đăng ký với chương trình xác minh nhà phát triển trên máy được chứng nhận [N20][N21]. Chỉ làm khi gặp (QĐ-27): cài bằng `adb install` (không bị chặn [N21]), hoặc mở tài khoản phân phối giới hạn miễn phí trên Android Developer Console và đăng ký tên gói cùng khóa ký [N23].
 

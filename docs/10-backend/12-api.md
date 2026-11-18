@@ -18,7 +18,7 @@ API của tiến trình `api` cho giao diện React, plugin Kotlin và Google (w
 
 | Mục | Quy ước |
 |---|---|
-| Gốc | `https://troly.baohuynh.io.vn/api/v1` (QĐ-26). `/api/health` không phiên bản; hai trang tĩnh ở mục 5.10 nằm ngoài `/api` |
+| Gốc | `https://assistant.baohuynh.io.vn/api/v1` (QĐ-26). `/api/health` không phiên bản; hai trang tĩnh ở mục 5.10 nằm ngoài `/api` |
 | Đường dẫn | Danh từ số nhiều; hành động không phải CRUD là động từ ở cuối (`/tasks/{id}/complete`) |
 | JSON | UTF-8, snake_case. Trường không có giá trị trả `null` |
 | Id | Số nguyên; id máy khách sinh là UUID; cuộc trò chuyện hộp tin dùng `conversation_key` |
@@ -304,7 +304,7 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 ### 5.6 Google
 
 - `GoogleStatus`: `{connected, email, status, packs: [{name, enabled, granted, last_sync_at, status, last_error}], initial_sync: {state, message}, failed_outbox_count}`. `initial_sync.message` là câu cho giao diện, ví dụ *Đang lấy lịch lần đầu*.
-- **Kết nối**: `POST /google/connect` tạo `state` và PKCE (lưu `tab_google_oauth_state`, 10 phút, dùng một lần), trả `auth_url` (`access_type=offline`, `prompt=consent`, `include_granted_scopes=true`). App mở bằng Custom Tab. Google về `GOOGLE_REDIRECT_URI` (`https://troly.baohuynh.io.vn/api/v1/google/oauth/callback`); máy chủ đổi mã, lưu token mã hóa, đặt việc `google_initial_sync`, trả trang HTML chuyển về `troly://cai-dat/google?ket-qua=<ok|huy|thieu-quyen|loi>`.
+- **Kết nối**: `POST /google/connect` tạo `state` và PKCE (lưu `tab_google_oauth_state`, 10 phút, dùng một lần), trả `auth_url` (`access_type=offline`, `prompt=consent`, `include_granted_scopes=true`). App mở bằng Custom Tab. Google về `GOOGLE_REDIRECT_URI` (`https://assistant.baohuynh.io.vn/api/v1/google/oauth/callback`); máy chủ đổi mã, lưu token mã hóa, đặt việc `google_initial_sync`, trả trang HTML chuyển về `troly://cai-dat/google?ket-qua=<ok|huy|thieu-quyen|loi>`.
 - **Ngắt**: `keep_data` theo `11-co-so-du-lieu.md` mục 3.15.
 - **Webhook**: kiểm `channel_id` và băm token; khớp thì `needs_sync = true` và `NOTIFY troly_wake`; luôn trả 200 rỗng trong 1 giây. Tasks đọc ngược bằng quét 15 phút; Gmail quét 5 phút.
 

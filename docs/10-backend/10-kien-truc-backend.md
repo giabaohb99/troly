@@ -94,7 +94,7 @@ Cấu hình chỉ đọc từ biến môi trường của container (compose `en
 | | `APP_TIMEZONE` | `Asia/Ho_Chi_Minh` | |
 | | `CORS_ORIGINS` | `https://localhost,http://localhost:5190` | |
 | | `LOG_LEVEL` | `INFO` | |
-| | `PUBLIC_BASE_URL` | bắt buộc | `https://troly.baohuynh.io.vn`; máy cá nhân `http://localhost:8200` |
+| | `PUBLIC_BASE_URL` | bắt buộc | `https://assistant.baohuynh.io.vn`; máy cá nhân `http://localhost:8200` |
 | | `API_BIND`, `API_PORT`, `TROLY_IMAGE_TAG` | `127.0.0.1`, `8200`, `latest` | Chỉ compose dùng |
 | DB | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | `troly`, `troly`, bắt buộc | |
 | | `DATABASE_URL` | bắt buộc | Host `db` |
@@ -122,7 +122,7 @@ Cấu hình chỉ đọc từ biến môi trường của container (compose `en
 | | `BACKUP_HOUR`, `BACKUP_MINUTE` | `2`, `0` | Giờ Việt Nam |
 | | `BACKUP_KEEP` | `5` | Gồm bản trước migration; không mã hóa `age` (QĐ-27) |
 | Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | từ V1.4 | |
-| | `GOOGLE_REDIRECT_URI` | từ V1.4 | `https://troly.baohuynh.io.vn/api/v1/google/oauth/callback` |
+| | `GOOGLE_REDIRECT_URI` | từ V1.4 | `https://assistant.baohuynh.io.vn/api/v1/google/oauth/callback` |
 | | `GOOGLE_MAPS_API_KEY` | từ V1.6 | |
 | | `GOOGLE_SYNC_MIN_SECONDS` | `300` | |
 | Worker | `WORKER_POLL_SECONDS` | `30` | |
