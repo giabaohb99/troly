@@ -41,15 +41,15 @@ Trạng thái: `chờ`, `đang làm`, `chờ rà`, `xong`, `chặn`. Mã việc:
 | 0-03 | 0 | Tạo khóa API Anthropic cho troly, đặt hạn mức chi trên trang Anthropic | người dùng | | chờ | |
 | 0-04 | 0 | Tạo bucket R2 và mã truy cập | người dùng | | chờ | Số bucket theo 50 bản 3 |
 | 0-05 | 0 | Sinh khóa ký APK, cất hai bản, đặt secret GitHub | người dùng, agent hạ tầng | | chờ | |
-| 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | | chờ rà | Chạy được ở máy: api, db, worker, `/api/health` 200; pytest 2 bài xanh trong container. `backend/app/main.py`, `worker/main.py`, `app/` là khung, agent kiến trúc và agent app Android thay |
+| 0-06 | 0 | Dựng khung kho: compose, Dockerfile, CI kiểm backend và build APK | agent hạ tầng | | xong | Chạy được ở máy: api, db, worker, `/api/health` 200; pytest 2 bài xanh trong container. `backend/app/main.py`, `worker/main.py`, `app/` là khung, agent kiến trúc và agent app Android thay |
 | 0-07 | 0 | Tạm dừng `core-game` | điều phối | | bỏ | QĐ-29: để Gamebar chạy |
-| 1-01 | 1 | Chốt hợp đồng Phase 1: các mục V1.0, V1.1 trong 11, 12, 20 + `POST /client-logs` | điều phối | 0-06 | chờ | |
-| 1-02 | 1 | Backend lõi: config, db, auth (đăng nhập, mã làm mới 365 ngày, mã thiết bị), lỗi, log, `client-logs`, migration đầu | agent kiến trúc | 1-01 | chờ | |
-| 1-03 | 1 | Module setting, file (tải lên R2, trích chữ), memory, chat (SSE, hành động chờ duyệt, hoàn tác), expense, search, device (kiểm bản APK) | agent kiến trúc | 1-02 | chờ | |
-| 1-04 | 1 | Worker và job V1.0: sao lưu tuần, dọn dữ liệu, tóm tắt phiên 04:05, trích chữ tệp, hết hạn duyệt, trả dòng kẹt, kiểm ổ | agent kiến trúc | 1-02 | chờ | |
-| 1-05 | 1 | Tầng AI: client, giá, lời nhắc, `run_turn`, nén phiên, nối phiên 3 giờ, chia model, tìm web, hành động | agent AI | 1-02 | chờ | |
+| 1-01 | 1 | Chốt hợp đồng Phase 1: các mục V1.0, V1.1 trong 11, 12, 20 + `POST /client-logs`, `/system/status` | điều phối | | xong | Hợp đồng là tài liệu bản 3 cộng hai dòng đã chốt ở mục 4 |
+| 1-02 | 1 | Backend lõi: config, db, auth (đăng nhập, mã làm mới 365 ngày, mã thiết bị), lỗi, log, `client-logs`, migration đầu | agent kiến trúc | 1-01 | đang làm | |
+| 1-03 | 1 | Module setting, file (tải lên R2, trích chữ), memory, chat (SSE, hành động chờ duyệt, hoàn tác), expense, search, device (kiểm bản APK) | agent kiến trúc | 1-02 | đang làm | |
+| 1-04 | 1 | Worker và job V1.0: sao lưu tuần, dọn dữ liệu, tóm tắt phiên 04:05, trích chữ tệp, hết hạn duyệt, trả dòng kẹt, kiểm ổ | agent kiến trúc | 1-02 | đang làm | |
+| 1-05 | 1 | Tầng AI: client, giá, lời nhắc, `run_turn`, nén phiên, nối phiên 3 giờ, chia model, tìm web, hành động | agent AI | 1-02 | đang làm | |
 | 1-06 | 1 | `tools.py` của memory, chat, file, expense, search; bộ câu mẫu và `FakeClaude` | agent AI | 1-03 | chờ | |
-| 1-07 | 1 | App: vỏ Capacitor, đăng nhập, Chat (SSE, hành động, hoàn tác, nhãn model, nguồn web, Nghĩ kỹ, Tìm web), Chi tiêu, Tìm, Cài đặt cơ bản, kiểm bản APK, gửi lỗi về `client-logs` | agent app Android | 1-01 | chờ | Làm với API giả trước, nối thật khi 1-03 xong |
+| 1-07 | 1 | App: vỏ Capacitor, đăng nhập, Chat (SSE, hành động, hoàn tác, nhãn model, nguồn web, Nghĩ kỹ, Tìm web), Chi tiêu, Tìm, Cài đặt cơ bản, kiểm bản APK, gửi lỗi về `client-logs` | agent app Android | 1-01 | đang làm | Làm với API giả trước, nối thật khi 1-03 xong |
 | 1-08 | 1 | CI build APK và `releases/latest.json`; deploy lần đầu; sao lưu lên R2 | agent hạ tầng | 0-02 tới 0-05 | chờ | |
 | 1-09 | 1 | Lát cắt mỏng chạy trên S25+: đăng nhập, gửi một câu, nhận trả lời | cả nhóm | 1-02, 1-05, 1-07, 1-08 | chờ | Làm ngay khi có thể, trước khi làm dày |
 | 1-10 | 1 | Thử theo danh sách Phase 1, gom góp ý một vòng | người dùng | 1-09 | chờ | |
