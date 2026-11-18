@@ -256,6 +256,18 @@ def test_ai_extract_converts_to_trip_schema():
     assert from_ai_extract(no_title, TripExtract, "Cần Thơ - Bến Tre").title == "Cần Thơ - Bến Tre"
     assert from_ai_extract(no_title, TripExtract).title == "Chuyến đi"
 
+    # Thiếu tên bắt buộc ở mục con (gặp thật khi đọc ảnh): lấy tên dự phòng hoặc bỏ mục, không hỏng cả chuyến.
+    dump = raw.model_dump()
+    dump["hotels"] = [
+        {"night_no": 1, "label": "", "url": "", "booked": False, "backups": ["Khách sạn 68", "Sapphire"]},
+        {"night_no": 2, "label": "", "url": "", "booked": False, "backups": []},
+    ]
+    dump["days"][0]["stops"].append({**stop, "title": "", "places": [{"label": "", "url": "", "role": "main"}]})
+    dump["notes"] = ["", "Gọi phà trước"]
+    out = from_ai_extract(AiExtract.model_validate(dump), TripExtract)
+    assert [h.label for h in out.hotels] == ["Khách sạn 68"] and [b.label for b in out.hotels[0].backups] == ["Sapphire"]
+    assert len(out.days[0].stops) == 1 and out.notes == ["Gọi phà trước"]
+
 
 def test_find_trip_by_query_and_day(db, user, imported):
     data = service.find_trip(db, user, query="Phước Hải", day_no=2)

@@ -48,12 +48,41 @@ def from_ai_extract(result, output_model, default_title: str | None = None):
     for fact in data.get("facts", []):
         if not fact.get("day_no"):
             fact["day_no"] = None
-    for hotel in data.get("hotels", []):
-        hotel["backups"] = [
+    _drop_unnamed(data)
+    return output_model.model_validate(data)
+
+
+def _drop_unnamed(data: dict) -> None:
+    """Model đôi khi để trống trường tên bắt buộc (gặp thật: khách sạn đêm 1 không tên khi đọc ảnh).
+    Thiếu một mục không được làm hỏng cả chuyến: lấy tên thay thế nếu có, không thì bỏ mục đó."""
+    hotels = []
+    for hotel in data.get("hotels") or []:
+        backups = [
             b if isinstance(b, dict) else {"label": b, "url": None, "role": "backup"}
             for b in hotel.get("backups") or []
         ]
-    return output_model.model_validate(data)
+        backups = [b for b in backups if b.get("label")]
+        if not hotel.get("label") and backups:
+            hotel["label"], hotel["url"] = backups[0]["label"], backups[0].get("url") or hotel.get("url")
+            backups = backups[1:]
+        hotel["backups"] = backups
+        if hotel.get("label"):
+            hotels.append(hotel)
+    data["hotels"] = hotels
+    for day in data.get("days") or []:
+        stops = []
+        for stop in day.get("stops") or []:
+            stop["places"] = [p for p in stop.get("places") or [] if p.get("label")]
+            if not stop.get("title") and stop["places"]:
+                stop["title"] = stop["places"][0]["label"]
+            if stop.get("title"):
+                stops.append(stop)
+        day["stops"] = stops
+    data["map_links"] = [m for m in data.get("map_links") or [] if m.get("url")]
+    for link in data["map_links"]:
+        link["label"] = link.get("label") or "Bản đồ"
+    data["facts"] = [f for f in data.get("facts") or [] if f.get("text")]
+    data["notes"] = [n for n in data.get("notes") or [] if n]
 
 
 def extract_trip(user_id: int, content, output_model, hint: str | None = None, default_title: str | None = None):
