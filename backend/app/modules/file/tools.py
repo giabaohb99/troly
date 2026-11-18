@@ -57,7 +57,7 @@ class ExportInput(BaseModel):
         default="pdf",
         description="pdf mặc định; xlsx khi chủ yếu là bảng số; docx khi người dùng muốn sửa tiếp",
     )
-    title: str = Field(description="Tiêu đề tài liệu, cũng là tên tệp")
+    title: str = Field(description="Tiêu đề có dấu, đầy đủ; tên tệp máy tự bỏ dấu")
     blocks: list[DocBlock] = Field(description="Nội dung theo thứ tự: heading, paragraph, bullets, table")
 
 

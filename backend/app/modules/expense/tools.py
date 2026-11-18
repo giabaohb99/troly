@@ -38,7 +38,10 @@ def _brief(e: dict, tz: str) -> dict:
         "expense_id": e["id"],
         "amount_vnd": e["amount_vnd"],
         "kind": e["kind"],
-        "account": e["account"],
+        "account": e["account"],  # mã, dùng để lọc
+        "account_label": e.get("account_label")
+        or e["account"],  # tên hiện cho người dùng, dùng khi trả lời, xuất tệp
+        "to_account_label": e.get("to_account_label"),
         "category": (e.get("category") or {}).get("name"),
         "merchant": e.get("merchant"),
         "note": e.get("note"),

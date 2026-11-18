@@ -15,6 +15,15 @@ from app.modules.expense.amount import parse_amount_vnd
 from app.modules.expense.models import Expense, ExpenseCategory
 
 UNDO_DAYS = 30
+# Nhãn hiển thị của tài khoản (báo cáo, tệp xuất); mã thô `vcb`, `momo` chỉ dùng trong dữ liệu.
+ACCOUNT_LABELS = {
+    "vcb": "Vietcombank",
+    "tcb": "Techcombank",
+    "momo": "MoMo",
+    "cash": "Tiền mặt",
+    "card": "Thẻ",
+    "other": "Khác",
+}
 MAX_AMOUNT = 1_000_000_000
 
 DEFAULT_CATEGORIES = [
@@ -160,8 +169,10 @@ def serialize(e: Expense, categories: dict[int, str] | None = None) -> dict:
         "amount_vnd": e.amount_vnd,
         "kind": e.kind,
         "account": e.account,
+        "account_label": ACCOUNT_LABELS.get(e.account, e.account),
         "account_last4": e.account_last4,
         "to_account": e.to_account,
+        "to_account_label": ACCOUNT_LABELS.get(e.to_account, e.to_account) if e.to_account else None,
         "to_account_last4": e.to_account_last4,
         "category": category,
         "merchant": e.merchant,
@@ -371,7 +382,12 @@ def summarize(
         ).all()
         names = _category_names(session, user.user_id) if group_by == "category" else {}
         for k, total, count in rows:
-            label = names.get(k, ("Chưa phân loại",))[0] if group_by == "category" else str(k)
+            if group_by == "category":
+                label = names.get(k, ("Chưa phân loại",))[0]
+            elif group_by == "account":
+                label = ACCOUNT_LABELS.get(k, str(k))
+            else:
+                label = str(k)
             groups.append(
                 {
                     "key": None if k is None else str(k),

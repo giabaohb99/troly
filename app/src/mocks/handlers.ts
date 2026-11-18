@@ -243,7 +243,7 @@ export const handlers = [
   http.get(`${API}/files/:id`, ({ params }) => {
     const file = mockFiles.get(Number(params.id))
     if (!file) return fail(404, 'NOT_FOUND', 'Không tìm thấy tệp.')
-    return ok({ ...file, download_url: `/mock-files/${file.name}` })
+    return ok({ id: file.id, original_name: file.name, mime: file.mime, size_bytes: file.size_bytes, download_url: `/mock-files/${file.name}` })
   }),
   http.get('/mock-files/:name', ({ params }) => new HttpResponse(`Tệp giả ${String(params.name)}`, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })),
   http.post(`${API}/files/:id/complete`, ({ params }) => ok({ id: Number(params.id), status: 'ready' })),

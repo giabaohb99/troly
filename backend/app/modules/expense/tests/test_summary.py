@@ -53,3 +53,13 @@ def test_guess_category_from_keywords(db, user):
     assert e["category"]["name"] == "Ăn uống"
     other = add(db, user, 99_000, clock.now() - timedelta(minutes=5), note="linh tinh")
     assert other["category"]["name"] == "Khác"
+
+
+def test_group_by_account_uses_display_labels(db, user, monkeypatch):
+    monkeypatch.setattr(clock, "now", lambda: vn(2026, 11, 30, 12))
+    add(db, user, 45_000, vn(2026, 11, 5, 9), account="momo")
+    add(db, user, 30_000, vn(2026, 11, 6, 9), account="cash")
+    out = service.summarize(db, user, "month", date(2026, 11, 15), None, None, "account")
+    assert [(g["key"], g["label"]) for g in out["groups"]] == [("momo", "MoMo"), ("cash", "Tiền mặt")]
+    item = service.list_expenses(db, user, {}, None, 10)["items"][0]
+    assert item["account_label"] in ("MoMo", "Tiền mặt")

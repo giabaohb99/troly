@@ -24,7 +24,7 @@ export function FileCard({ file }: { file: FileCardData }) {
       disabled={busy}
       onClick={() => {
         setBusy(true)
-        void openFileById(file.file_id).finally(() => setBusy(false))
+        void openFileById(file.file_id, file.name).finally(() => setBusy(false))
       }}
       className="flex w-full max-w-[85%] items-center gap-3 rounded-2xl border bg-card px-3 py-2.5 text-left"
     >

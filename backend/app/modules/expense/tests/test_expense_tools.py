@@ -178,3 +178,16 @@ def test_chat_turn_records_expense_end_to_end(auth_client, db, monkeypatch):
     assert any(a["type"] == "open_screen" for a in msg["actions"])
     rows = list(db.scalars(select(Expense).where(Expense.deleted_at.is_(None))))
     assert [r.amount_vnd for r in rows] == [45000]
+
+
+def test_items_and_account_groups_use_readable_labels(ctx):
+    _add(ctx, 60000, "ăn sáng", account="momo")
+    _add(ctx, 500000, "chuyển", kind="transfer", account="vcb", to_account="momo")
+    out = _query(ctx, group_by="account")
+    by_note = {i["note"]: i for i in out.result["items"]}
+    assert by_note["ăn sáng"]["account"] == "momo" and by_note["ăn sáng"]["account_label"] == "MoMo"
+    assert (
+        by_note["chuyển"]["account_label"] == "Vietcombank"
+        and by_note["chuyển"]["to_account_label"] == "MoMo"
+    )
+    assert out.result["groups"][0]["label"] == "MoMo"

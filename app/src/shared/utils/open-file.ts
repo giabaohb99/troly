@@ -3,19 +3,23 @@ import { apiGet } from '@/core/api/http-client'
 import { getErrorMessage } from '@/core/api/api-error'
 import { Files } from '@/core/native/files'
 
+// GET /files/{id} của máy chủ trả original_name (module file); name chỉ có ở API giả cũ.
 interface FileInfo {
   id: number
-  name: string
+  original_name?: string | null
+  name?: string | null
   mime: string
   download_url: string
 }
 
 // Mở tệp theo id (QĐ-41): lấy link tải tạm từ GET /files/{id}, tải về máy rồi mở bằng trình xem của máy.
 // Máy không có app mở được loại tệp đó thì báo và cho chia sẻ.
-export async function openFileById(fileId: number): Promise<void> {
+export async function openFileById(fileId: number, knownName?: string | null): Promise<void> {
   try {
     const info = await apiGet<FileInfo>(`/files/${fileId}`)
-    const result = await Files.open({ url: info.download_url, name: info.name, mime: info.mime })
+    // Tên tệp đúng để trình xem của máy hiện trên thanh tiêu đề (lỗi thấy trên S25+: hiện tep).
+    const name = info.original_name || info.name || knownName || `tep-${fileId}`
+    const result = await Files.open({ url: info.download_url, name, mime: info.mime })
     if (!result.opened && result.path) {
       const path = result.path
       toast.info('Máy chưa có app mở được tệp này.', {

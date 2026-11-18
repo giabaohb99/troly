@@ -176,6 +176,7 @@ def _docx(title: str, blocks: list[dict]) -> bytes:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = Document()
+    doc.core_properties.title = title
     doc.add_heading(title, level=0)
     for b in blocks:
         if b["type"] == "heading":
@@ -224,6 +225,7 @@ def _xlsx(title: str, blocks: list[dict]) -> bytes:
     from openpyxl.utils import get_column_letter
 
     wb = Workbook()
+    wb.properties.title = title
     used: set[str] = set()
     text_sheet = wb.active
     text_sheet.title = _sheet_name("Nội dung", used)
@@ -265,8 +267,34 @@ def _xlsx(title: str, blocks: list[dict]) -> bytes:
     return buf.getvalue()
 
 
+def _words(value: str) -> list[str]:
+    folded = unicodedata.normalize("NFD", value.replace("đ", "d").replace("Đ", "D"))
+    folded = "".join(c for c in folded if unicodedata.category(c) != "Mn").lower()
+    return re.findall(r"[a-z0-9]+", folded)
+
+
+def same_meaning(title: str, heading: str) -> bool:
+    """Heading đầu nói lại tiêu đề (bỏ dấu, một bên là phần đầu của bên kia, hoặc trùng từ 3/4 trở lên)."""
+    a, b = _words(title), _words(heading)
+    if not a or not b:
+        return False
+    if a == b[: len(a)] or b == a[: len(b)]:
+        return True
+    shared = len(set(a) & set(b))
+    return shared / min(len(set(a)), len(set(b))) >= 0.75
+
+
+def document_title(title: str, blocks: list[dict]) -> tuple[str, list[dict]]:
+    """Tiêu đề in ra và metadata. Khối đầu là heading nói lại `title` (model hay đặt title không dấu cho
+    tên tệp rồi mở bài bằng heading có dấu) thì dùng heading đó, in một lần; không thì in `title`."""
+    if blocks and blocks[0]["type"] == "heading" and same_meaning(title, blocks[0]["text"]):
+        return blocks[0]["text"], blocks[1:]
+    return title, blocks
+
+
 def render_document(fmt: str, title: str, blocks: list) -> tuple[bytes, str, str]:
     """Trả `(dữ liệu, mime, phần mở rộng)`."""
     clean = validate(fmt, title, blocks)
-    data = {"pdf": _pdf, "docx": _docx, "xlsx": _xlsx}[fmt](title, clean)
+    shown, body = document_title(title, clean)
+    data = {"pdf": _pdf, "docx": _docx, "xlsx": _xlsx}[fmt](shown, body)
     return data, FORMATS[fmt], fmt

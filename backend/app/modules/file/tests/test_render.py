@@ -85,3 +85,37 @@ def test_no_tables_still_gives_sheet_and_bad_input_is_refused():
 
 def test_file_name_is_ascii_slug():
     assert render.file_name("Báo cáo chi tiêu tháng 11/2026!", "pdf") == "bao-cao-chi-tieu-thang-11-2026.pdf"
+
+
+def test_title_printed_once_with_accents_and_set_as_metadata():
+    from docx import Document
+    from openpyxl import load_workbook
+    from pypdf import PdfReader
+
+    blocks = [
+        {"type": "heading", "level": 1, "text": "Báo cáo chi tiêu tháng 11/2026 (1/11 - 18/11)"},
+        {"type": "paragraph", "text": "Tổng chi 3.465.000 đ."},
+    ]
+    data, _, _ = render.render_document("pdf", "Bao cao chi tieu thang 11-2026", blocks)
+    reader = PdfReader(io.BytesIO(data))
+    text = reader.pages[0].extract_text()
+    assert "Bao cao chi tieu" not in text and text.count("Báo cáo chi tiêu tháng 11/2026") == 1
+    assert reader.metadata.title == "Báo cáo chi tiêu tháng 11/2026 (1/11 - 18/11)"
+
+    doc = Document(io.BytesIO(render.render_document("docx", "Bao cao", blocks)[0]))
+    assert [p.text for p in doc.paragraphs].count("Báo cáo chi tiêu tháng 11/2026 (1/11 - 18/11)") == 1
+    assert doc.core_properties.title == "Báo cáo chi tiêu tháng 11/2026 (1/11 - 18/11)"
+    wb = load_workbook(io.BytesIO(render.render_document("xlsx", "Bao cao", blocks)[0]))
+    assert wb["Nội dung"]["A1"].value == "Báo cáo chi tiêu tháng 11/2026 (1/11 - 18/11)"
+
+    # Không mở bài bằng heading thì in title như cũ.
+    plain = render.render_document("pdf", "Ghi chú họp", [{"type": "paragraph", "text": "Nội dung"}])[0]
+    assert "Ghi chú họp" in PdfReader(io.BytesIO(plain)).pages[0].extract_text()
+
+
+def test_same_meaning_rule():
+    assert render.same_meaning(
+        "Bao cao chi tieu thang 11-2026", "Báo cáo chi tiêu tháng 11/2026 (1/11 - 18/11)"
+    )
+    assert render.same_meaning("Báo cáo chi tiêu", "Báo cáo chi tiêu tháng 11")
+    assert not render.same_meaning("Báo cáo chi tiêu tháng 11", "Tổng quan")
