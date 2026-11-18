@@ -4,6 +4,8 @@ Mỗi mục ghi một việc đã xong, viết cho người không đọc mã c�
 
 ## 18/11/2026
 
+- Thử thật trên Galaxy S25+: thông báo MoMo *Nhận tiền* tự thành khoản thu 35.000 đ; tin Zalo, Telegram vào hộp tin. Sửa lỗi worker (kết nối LISTEN autocommit lọt vào pool làm `begin_nested` lỗi trên VPS, bài kiểm cũ không bắt được). Deploy 7d8ab23. Phase 4 phần mã xong (lịch trình bóc tách thật tệp Phước Hải – Trà Vinh: 3 ngày, 31 điểm), còn chờ khóa Maps để chạy tìm địa điểm và thời gian chạy thật.
+
 - **Xong Phase 1 (v0.1).** Chat với Claude thật (Haiku cho việc thường, Sonnet cho research có nguồn), ghi và hỏi chi tiêu qua chat, tìm toàn văn, hồ sơ lõi. Chạy trên VPS ở `assistant.baohuynh.io.vn` (bản 721480a), game và gym không ảnh hưởng. Sao lưu thật lên R2 bằng `pg_dump` 16. APK 1.0.0 đã đăng lên R2, trang `/tai-app` có bản. 267 bài kiểm backend xanh. Lỗi chỉ lộ khi chạy thật đã sửa: tin hệ thống sai chỗ, quá nhiều tham số kiểu hợp, mã quốc gia VN của tìm web, tìm web không trả nguồn, `pg_dump` 17 không khôi phục được vào Postgres 16.
 
 - Vòng 3 gọn hóa xong (QĐ-27, QĐ-28): một người dùng, bỏ khóa vân tay, chia model Haiku, Sonnet, Opus, tìm toàn văn thay RAG, tự quyết kỹ thuật. Tài liệu từ khoảng 8.600 dòng còn khoảng 4.650 dòng (chưa tính báo cáo rà soát). Lập bảng việc chung, lộ trình theo phase. Bỏ báo cáo tổng hợp cũ vì đã lỗi thời; bức tranh chung xem `01-thiet-ke-tong-the.md`.
