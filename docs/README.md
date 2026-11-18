@@ -7,6 +7,7 @@ Mọi tài liệu của dự án nằm trong thư mục này, chia theo mảng. 
 | `00-tong-quan/` | [00-ke-hoach.md](00-tong-quan/00-ke-hoach.md) | Kế hoạch tổng, lộ trình, phân công | điều phối | Đã viết |
 | | [01-thiet-ke-tong-the.md](00-tong-quan/01-thiet-ke-tong-the.md) | Thiết kế tổng thể | điều phối | Bản sau rà chéo |
 | | [02-cau-truc-ma-nguon.md](00-tong-quan/02-cau-truc-ma-nguon.md) | Cấu trúc mã nguồn và tài liệu | điều phối | Bản sau rà chéo |
+| | [03-bao-cao-tong-hop.md](00-tong-quan/03-bao-cao-tong-hop.md) | Báo cáo tổng hợp toàn bộ tài liệu, đọc trong 15 phút | điều phối | Bản 1 |
 | `10-backend/` | [10-kien-truc-backend.md](10-backend/10-kien-truc-backend.md) | Kiến trúc backend | agent kiến trúc | Bản 2 |
 | | [11-co-so-du-lieu.md](10-backend/11-co-so-du-lieu.md) | Cơ sở dữ liệu | agent kiến trúc | Bản 2 |
 | | [12-api.md](10-backend/12-api.md) | API | agent kiến trúc | Bản 2 |
@@ -18,7 +19,8 @@ Mọi tài liệu của dự án nằm trong thư mục này, chia theo mảng. 
 | `50-ha-tang/` | [50-ha-tang-trien-khai.md](50-ha-tang/50-ha-tang-trien-khai.md) | Hạ tầng, triển khai | agent hạ tầng | Bản 2 |
 | `60-bao-mat/` | [60-bao-mat-rieng-tu.md](60-bao-mat/60-bao-mat-rieng-tu.md) | Bảo mật, riêng tư | agent hạ tầng | Bản 2 |
 | `70-kiem-thu/` | [70-kiem-thu.md](70-kiem-thu/70-kiem-thu.md) | Kiểm thử | agent hạ tầng | Bản 2 |
-| `80-ra-soat/` | [80-ra-cheo-lan-1.md](80-ra-soat/80-ra-cheo-lan-1.md) | Rà chéo lần 1: chỗ vênh, câu hỏi mở | điều phối | Chờ chốt |
+| `80-ra-soat/` | [80-ra-cheo-lan-1.md](80-ra-soat/80-ra-cheo-lan-1.md) | Rà chéo lần 1: 86 chỗ vênh, câu hỏi mở | điều phối | Đã xử lý ở bản 2 |
+| | [81-ra-cheo-lan-2.md](80-ra-soat/81-ra-cheo-lan-2.md) | Rà chéo lần 2: 43 chỗ còn vênh, 44 câu chờ người dùng | điều phối | Chờ chốt |
 | `90-quan-ly/` | [90-quyet-dinh.md](90-quan-ly/90-quyet-dinh.md) | Sổ quyết định | điều phối | Đang cập nhật |
 | | [nhat-ky-viec.md](90-quan-ly/nhat-ky-viec.md) | Nhật ký việc | điều phối | Đang cập nhật |
 
