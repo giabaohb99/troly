@@ -1,6 +1,7 @@
 # Thiết kế tổng thể: Trợ lý cá nhân
 
-Ngày lập: 18/11/2026. Bản 3: thêm MoMo, module lịch trình và bản đồ, cách build APK, kho `giabaohb99/troly`.
+Ngày lập: 18/11/2026. Bản 4: tích hợp Google đầy đủ (xem `00-ke-hoach.md` mục 2 và QĐ-09, QĐ-10), cấu trúc mã chuyển sang `02-cau-truc-ma-nguon.md`.
+Bản 3: thêm MoMo, module lịch trình và bản đồ, cách build APK, kho `giabaohb99/troly`.
 Bản 2: chuyển sang app Android làm gốc, bỏ MacroDroid và bot Telegram.
 Trạng thái: đã chốt hướng, chờ dựng V1.0.
 
@@ -43,6 +44,7 @@ Trả lời **ngắn gọn**, không tự gửi báo cáo. Phục vụ 1 ngườ
 | Bản đồ | Mở Google Maps bằng URL và lệnh gọi app trên Android (không cần khóa). Tìm tọa độ, giờ mở cửa, thời gian di chuyển bằng Google Maps Platform (khóa riêng, phạm vi dùng cá nhân nằm trong mức miễn phí hằng tháng) |
 | Build APK | GitHub Actions, máy cá nhân không cần cài Android SDK để build. Cài Android SDK trên máy chỉ khi cần gỡ lỗi trực tiếp |
 | Kho mã | `https://github.com/giabaohb99/troly` |
+| Google | Calendar hai chiều (Google làm gốc); Tasks một chiều từ app; Gmail, Contacts, Drive, Sheets ở V1.8; Health Connect ở V2. Chi tiết ở `00-ke-hoach.md` mục 2 |
 | Tự phát triển | Claude CLI trên VPS đăng nhập bằng gói đăng ký (dùng thử gói hiện có, lâu dài chuyển gói riêng) |
 
 ## 3. Nguyên tắc thiết kế
@@ -93,45 +95,7 @@ Trả lời **ngắn gọn**, không tự gửi báo cáo. Phục vụ 1 ngườ
 
 ## 5. Cấu trúc mã nguồn
 
-```
-troly/
-  CLAUDE.md                 luật code cho người và cho Claude CLI
-  docker-compose.yml
-  .env.example
-  backend/
-    app/
-      main.py
-      core/                 cấu hình, DB session, đăng nhập JWT, lỗi, ghi log
-      ai/
-        client.py           gọi Claude, đo token, tính tiền
-        prompt.py           lời nhắc hệ thống tĩnh + ghép hồ sơ lõi
-        loop.py             vòng gọi công cụ
-        compaction.py       tóm tắt phiên dài
-        registry.py         gom công cụ của mọi module
-      modules/
-        memory/             hồ sơ lõi + ghi chú
-        expense/            chi tiêu + bóc tách thông báo ngân hàng
-        inbox/              tin nhắn nghe từ thông báo, tổng hợp
-        task/               việc cần làm
-        calendar/           lịch + nhắc
-        device/             đăng ký thiết bị, nhận sự kiện, phiên bản app
-        file/               tệp trên R2
-        trip/               lịch trình, điểm dừng, bản đồ, xuất Word
-        <tên>/
-          models.py  schemas.py  repo.py  service.py  router.py  tools.py  test_*.py
-    worker/main.py
-    alembic/
-  app/                      app Android
-    src/modules/<tên>/{api,components,hooks,pages,types}
-    src/shared/  src/core/
-    android/                dự án Android do Capacitor sinh
-      app/src/main/java/.../notify/   plugin Kotlin nghe thông báo
-  doc/
-    00-thiet-ke-tong-the.md
-    nhat-ky-viec.md
-```
-
-Luật module: module không import ruột module khác; cần dùng chung thì đưa lên `core/`.
+Xem [02-cau-truc-ma-nguon.md](02-cau-truc-ma-nguon.md).
 
 ## 6. Dữ liệu
 
