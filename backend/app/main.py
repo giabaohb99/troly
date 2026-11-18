@@ -1,23 +1,87 @@
-"""Khung tối thiểu do agent hạ tầng dựng (việc 0-06): chỉ có GET /api/health.
+"""Gốc ghép FastAPI (10 mục 3.13): cấu hình, log, lớp giữa, lỗi, router mọi module, công cụ AI."""
 
-Agent kiến trúc thay tệp này bằng gốc ghép thật (docs/10-backend/10-kien-truc-backend.md):
-cấu hình ở core/config.py, kết nối DB ở core/db.py, phong bì lỗi ở core/errors.py.
-"""
+import logging
 
-import os
-from functools import lru_cache
-
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+from sqlalchemy import text
 
-app = FastAPI(title="troly", docs_url=None, redoc_url=None)
+from app.core import clock
+from app.core.config import get_settings
+from app.core.db import get_engine
+from app.core.errors import error_body, install_error_handlers
+from app.core.logging import setup_logging
+from app.core.middleware import RequestContextMiddleware
+from app.core.router import router as core_router
+from app.registry import import_all_models, iter_module_parts
+
+settings = get_settings()
+setup_logging(settings.log_level)
+log = logging.getLogger("troly")
+import_all_models()
+
+app = FastAPI(
+    title="troly",
+    docs_url=None if settings.is_prod else "/api/docs",
+    redoc_url=None,
+    openapi_url=None if settings.is_prod else "/api/openapi.json",
+)
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Retry-After"],
+)
+install_error_handlers(app)
+
+_VERSION_EXEMPT = ("/api/v1/device/release", "/api/v1/auth/", "/api/v1/client-logs")
 
 
-@lru_cache
-def get_engine() -> Engine:
-    return create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True, pool_size=2)
+@app.middleware("http")
+async def check_app_version(request: Request, call_next):
+    """Bản APK thấp hơn min_supported_version_code của releases/latest.json thì 426 (12 mục 3.6)."""
+    raw = request.headers.get("x-app-version", "")
+    path = request.url.path
+    if raw.isdigit() and path.startswith("/api/v1/") and not path.startswith(_VERSION_EXEMPT):
+        from app.modules.device import service as device_service
+
+        min_code = await run_in_threadpool(device_service.min_supported_version_code)
+        if min_code and int(raw) < min_code:
+            return JSONResponse(
+                status_code=426,
+                content=error_body("APP_VERSION_UNSUPPORTED", "Bản app đã cũ, cập nhật để dùng tiếp."),
+            )
+    return await call_next(request)
+
+
+api = APIRouter(prefix="/api/v1")
+api.include_router(core_router)
+for _name, module in iter_module_parts("router"):
+    api.include_router(module.router)
+    if hasattr(module, "public_router"):
+        app.include_router(module.public_router)
+app.include_router(api)
+
+
+def _register_tools() -> None:
+    """Gom công cụ AI của các module có tools.py (agent AI viết)."""
+    try:
+        from app.ai.registry import register_tools
+    except ModuleNotFoundError:
+        return
+    for name, module in iter_module_parts("tools"):
+        tools = getattr(module, "TOOLS", None)
+        if tools:
+            register_tools(tools)
+            log.info("Đã đăng ký công cụ AI", extra={"tool_module": name, "count": len(tools)})
+
+
+_register_tools()
 
 
 def check_database() -> bool:
@@ -29,15 +93,28 @@ def check_database() -> bool:
         return False
 
 
+def worker_lag_seconds() -> int | None:
+    try:
+        with get_engine().connect() as conn:
+            last = conn.execute(text("SELECT max(last_finished_at) FROM tab_job_schedule")).scalar()
+    except Exception:
+        return None
+    if last is None:
+        return None
+    return int((clock.now() - last).total_seconds())
+
+
 @app.get("/api/health")
 def read_health() -> JSONResponse:
     db_ok = check_database()
+    lag = worker_lag_seconds() if db_ok else None
+    healthy = db_ok and (lag is None or lag < 300)
     data = {
-        "status": "ok" if db_ok else "degraded",
+        "status": "ok" if healthy else "degraded",
         "db": db_ok,
-        "worker_lag_seconds": None,
-        "version": os.environ.get("APP_VERSION", "dev"),
-        "git_sha": os.environ.get("GIT_SHA", "dev"),
+        "worker_lag_seconds": lag,
+        "version": settings.app_version,
+        "git_sha": settings.git_sha,
     }
     message = "" if db_ok else "Không kết nối được cơ sở dữ liệu."
     return JSONResponse(

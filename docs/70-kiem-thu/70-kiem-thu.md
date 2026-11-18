@@ -44,7 +44,7 @@ docker compose -f infra/docker-compose.test.yml run --rm web-test npx vitest run
 | `db-test` | `postgres:16-alpine`, DB `troly_test` trên tmpfs, không mở cổng |
 | `test` | Ảnh backend đích `dev`, gắn `./backend` và `./testdata`, `TEST_DATABASE_URL` (tên phải kết thúc `_test`), chặn mạng ra ngoài |
 | `web-test` | `node:24-alpine`, tsc, lint, Vitest |
-| `android-test` | Từ Phase 2, ảnh `infra/android-build.Dockerfile`, JUnit JVM (`50` mục 3.11) |
+| `android-test` | Ảnh `infra/android-builder/Dockerfile`, JUnit JVM và APK debug (`50` mục 3.11) |
 
 - Mỗi bài kiểm chạy trong giao dịch rồi rollback; bài cần commit thật (worker) đánh dấu `commits` và dọn bằng `TRUNCATE`.
 - Thay dịch vụ ngoài: `FakeClaude` (kịch bản trả lời, giả cả luồng stream và `cache_creation` theo TTL), máy chủ Google giả (`backend/tests/fakes/google.py`, chặn HTTP bằng lớp giả của httpx), S3 giả, giờ đóng băng (mặc định 18/11/2026 09:00 giờ Việt Nam).

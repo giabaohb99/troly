@@ -83,7 +83,7 @@ backend/app/ai/
 
 `ai/` không import `modules/`. `chat.service` gọi `ai.loop.run_turn`; module khác chỉ import `ai.schemas`, `ai.actions`. `app/main.py` gọi `register_tools(<module>.tools.TOOLS)` cho mỗi module bật.
 
-**`ToolSpec`:** `name`, `label` (câu cho `tool.started`, ví dụ *Đang ghi khoản chi*), `description` (nói rõ khi nào gọi), `input_model` (Pydantic, `strict: true`, `additionalProperties: false`, mọi trường trong `required`, trường không bắt buộc cho phép `null`, **không có `user_id`**), `run(ctx, data) -> ToolOutput` (đồng bộ), `needs_approval(data) -> bool` (null = không bao giờ), `prepare(ctx, data) -> ApprovalDraft` và `execute(ctx, input) -> ToolOutput` cho công cụ có duyệt, `phase`.
+**`ToolSpec`:** `name`, `label` (câu cho `tool.started`, ví dụ *Đang ghi khoản chi*), `description` (nói rõ khi nào gọi), `input_model` (Pydantic, `additionalProperties: false`, mọi trường trong `required`, trường không bắt buộc cho phép `null`, **không có `user_id`**; vòng chat kiểm đầu vào bằng Pydantic, sai thì trả lỗi để model gọi lại), `strict` (mặc định tắt: API giới hạn cả request 20 công cụ strict, 16 tham số union, 24 tham số không bắt buộc; registry kiểm giới hạn này), `run(ctx, data) -> ToolOutput` (đồng bộ), `needs_approval(data) -> bool` (null = không bao giờ), `prepare(ctx, data) -> ApprovalDraft` và `execute(ctx, input) -> ToolOutput` cho công cụ có duyệt, `phase`.
 
 **`ToolContext`:** `session`, `user` (`UserContext` của 10), `conversation_id`, `now`. **`ToolOutput`:** `result` (JSON gọn gửi lại Claude), `actions`, `contains_third_party`. **`ApprovalDraft`:** `title`, `summary`, `details`, `danger`, `input`.
 
@@ -210,7 +210,8 @@ turn.completed(text, actions, model, usage)
 | `refusal` | Không chạy công cụ, bỏ chữ dở. Sonnet, Opus đã có dự phòng phía máy chủ; `refusal` còn lại nghĩa là cả chuỗi từ chối. Trả một dòng *Em không làm được yêu cầu này.*, ghi `refusal_category` |
 
 - Đọc khối theo `type`, không theo vị trí. Gửi lại khối `thinking` nguyên vẹn.
-- Không bật `eager_input_streaming`: đầu vào công cụ ngắn, giữ việc máy chủ kiểm `strict`.
+- Không bật `eager_input_streaming`: đầu vào công cụ ngắn.
+- Lịch sử đi qua `normalize_history` trước khi gửi: tin `system` phải đứng sau tin user và trước tin assistant (hoặc cuối mảng); tin thời gian của lượt hỏng bị bỏ, tin báo duyệt dồn sang lượt sau, hai tin liền cùng vai thì gộp.
 - `message.completed` mang chữ cuối; app thay bóng chữ bằng chữ này (cần khi từ chối giữa chừng).
 - Nội dung bên thứ ba nằm trong trường `du_lieu_ngoai` của kết quả công cụ, không bao giờ thành lượt `user`.
 - Kết quả công cụ cắt gọn: tối đa 50 dòng, chuỗi 500 ký tự, kèm `con_lai`.
@@ -470,7 +471,7 @@ Theo 11; chỉ ghi phần thêm hoặc đổi.
 |---|---|
 | Chọn model | Mỗi `mode`, nút, cụm từ ra đúng model, effort, bộ công cụ; câu không có từ khóa luôn là Haiku; model không đổi giữa vòng của một lượt |
 | Cache | Byte `tools`, `system` trùng giữa hai lần dựng cùng model; `messages` lượt trước là tiền tố của lượt sau; không có giờ trong `system`; TTL đúng theo model |
-| Registry | 41 tên khớp mục 3.7; schema `strict`, không có `user_id`; công cụ có duyệt đủ `prepare`, `execute` |
+| Registry | 41 tên khớp mục 3.7; schema đúng khuôn, không có `user_id`; công cụ strict không vượt giới hạn API; công cụ có duyệt đủ `prepare`, `execute` |
 | Duyệt và xóa | Xóa một mục: xóa ngay, có `undo`. Xóa hai mục, xóa chuyến, gửi thư, mời khách: chỉ tạo `tab_pending_action`, DB chưa đổi; sai `payload_hash`, hết hạn, duyệt hai lần đều bị chặn |
 | `stop_reason` | `end_turn`, `tool_use`, `pause_turn`, `max_tokens` có `tool_use` dở, `refusal` rỗng và có chữ dở |
 | Research | Gắn số nguồn đúng, gộp URL trùng, tối đa 5 nguồn; đếm `web_search_requests` vào tiền |

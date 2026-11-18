@@ -1,0 +1,73 @@
+// Kiểu theo 12-api.md mục 3.9 (hành động, vỏ phẳng) và 5.2 (chat).
+
+export type ChatMode = 'chat' | 'think' | 'research' | 'summary'
+
+export interface Citation {
+  title: string
+  url: string
+}
+
+interface ActionBase {
+  id: string
+  label: string
+}
+
+export type ChatAction =
+  | (ActionBase & { type: 'open_map_navigation'; lat: number | null; lng: number | null; query: string | null; mode: string; avoid: string | null; fallback_url: string })
+  | (ActionBase & { type: 'open_map_directions'; urls: string[]; segment_labels: string[] })
+  | (ActionBase & { type: 'open_map_place'; query: string; place_id: string | null })
+  | (ActionBase & { type: 'open_link'; url: string; kind: 'file' | 'gmail' | 'sheet' | 'web' })
+  | (ActionBase & { type: 'open_screen'; screen: string; params: Record<string, string | number> | null })
+  | (ActionBase & { type: 'confirm'; pending_action_id: number; title: string; summary: string; details: { label: string; value: string }[]; confirm_label: string; cancel_label: string; danger: boolean; expires_at: string })
+  | (ActionBase & { type: 'undo'; text: string; resource: 'expense' | 'task' | 'event'; ids: number[]; expires_at: string })
+  | (ActionBase & { type: 'memory_changed'; version: number; text: string; undo_version: number })
+  | (ActionBase & { type: 'choices'; options: { label: string; value: string }[] })
+
+export const KNOWN_ACTION_TYPES = new Set(['open_map_navigation', 'open_map_directions', 'open_map_place', 'open_link', 'open_screen', 'confirm', 'undo', 'memory_changed', 'choices'])
+
+export interface Attachment {
+  file_id: number
+  mime: string
+  name: string
+}
+
+export interface ChatMessage {
+  id: number
+  role: 'user' | 'assistant' | 'system'
+  text: string
+  model: string | null
+  citations: Citation[] | null
+  attachments: Attachment[] | null
+  actions: ChatAction[] | null
+  status: string | null
+  created_at: string
+}
+
+export type PendingStatus = 'pending' | 'done' | 'failed' | 'rejected' | 'expired'
+
+export interface PendingAction {
+  id: number
+  tool_name: string
+  title: string
+  summary: string
+  details: { label: string; value: string }[]
+  danger: boolean
+  status: PendingStatus
+  expires_at: string
+  created_at: string
+}
+
+export interface ChatToday {
+  conversation: { id: number; local_date: string } | null
+  messages: ChatMessage[]
+  next_cursor: string | null
+  pending_actions: PendingAction[]
+}
+
+export interface ChatStatus {
+  models: Record<string, string> | null
+  today_usd: number
+  month_usd: number
+  monthly_warn_usd: number
+  over_monthly_warning: boolean
+}

@@ -8,7 +8,8 @@
 # Biến tùy chọn: SKIP_CI_CHECK=1 bỏ bước kiểm CI (khi chưa có kho trên GitHub).
 #
 # Chỉ đụng /opt/troly và các container troly-*. Không đụng /opt/gamebar, /opt/gymcanhan, cloudflared.
-# Lần đầu: script dừng vì thiếu /opt/troly/.env; tạo tệp đó từ .env.example (quyền 600) rồi chạy lại.
+# Lần đầu: script tự tạo /opt/troly/.env (scripts/vps-init-env.sh): sinh khóa mới, chép R2_* của Gamebar,
+# gửi khóa Anthropic từ D:/giabao/keyapiclaude.txt (đổi bằng ANTHROPIC_KEY_FILE).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -57,6 +58,15 @@ else
   remote "mkdir -p $REMOTE_DIR"
   git archive --format=tar HEAD docker-compose.yml .env.example backend infra scripts \
     | ssh "${SSH_OPTS[@]}" "$VPS_HOST" "tar -xf - -C $REMOTE_DIR"
+fi
+
+# Lần đầu: tạo /opt/troly/.env trên VPS. Khóa Anthropic (QĐ-32) đi qua stdin của SSH, không in ra, không nằm trong lệnh.
+KEY_FILE="${ANTHROPIC_KEY_FILE:-D:/giabao/keyapiclaude.txt}"
+if [ "$MODE" = dry ]; then
+  echo "[ssh $VPS_HOST] test -f $REMOTE_DIR/.env || bash scripts/vps-init-env.sh < $KEY_FILE"
+elif ! ssh "${SSH_OPTS[@]}" "$VPS_HOST" "test -f $REMOTE_DIR/.env"; then
+  [ -f "$KEY_FILE" ] || { echo "Thiếu $KEY_FILE (khóa Anthropic dùng chung với gym)."; exit 1; }
+  ssh "${SSH_OPTS[@]}" "$VPS_HOST" "cd $REMOTE_DIR && bash scripts/vps-init-env.sh" < "$KEY_FILE"
 fi
 
 # Bước 3 tới 7 chạy trên VPS.

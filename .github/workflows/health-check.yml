@@ -16,7 +16,7 @@ jobs:
       - name: Gọi /api/health
         run: |
           for i in 1 2 3; do
-            if curl -fsS --max-time 15 https://troly.baohuynh.io.vn/api/health; then exit 0; fi
+            if curl -fsS --max-time 15 https://assistant.baohuynh.io.vn/api/health; then exit 0; fi
             sleep 20
           done
           echo "api không trả lời sau 3 lần thử."

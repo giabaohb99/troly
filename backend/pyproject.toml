@@ -1,29 +1,39 @@
-# Khung tối thiểu do agent hạ tầng dựng (việc 0-06) để chạy thử Docker và CI.
-# Agent kiến trúc thay và bổ sung phụ thuộc thật theo docs/10-backend.
+# Phụ thuộc backend troly. Agent kiến trúc giữ tệp này; agent khác cần thư viện thì nhắn để thêm.
 [build-system]
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "troly-backend"
-version = "0.0.1"
+version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    "sqlalchemy>=2.0",
+    "sqlalchemy>=2.0.36",
     "psycopg[binary]>=3.2",
     "alembic>=1.14",
+    "bcrypt>=4.2",
+    "pyjwt>=2.10",
+    "cryptography>=43",
+    "boto3>=1.35",
+    "httpx>=0.28",
+    "python-docx>=1.1",
+    "pypdf>=5.1",
+    "tzdata>=2024.2",
+    "anthropic>=0.75",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
-    "httpx>=0.28",
     "ruff>=0.8",
     "watchfiles>=1.0",
     "pip-audit>=2.7",
+    "moto[s3]>=5.0",
+    "pyyaml>=6",
 ]
 
 # Chỉ dùng pyproject để khai phụ thuộc; mã chạy thẳng từ /app, không đóng gói.
@@ -31,7 +41,8 @@ dev = [
 packages = []
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "app"]
+testpaths = ["tests", "app", "worker"]
+pythonpath = ["."]
 addopts = "-q -p no:cacheprovider"
 markers = [
     "ai_eval: gọi Claude thật, chỉ chạy tay",
@@ -45,3 +56,4 @@ cache-dir = "/tmp/ruff-cache"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "E501"]  # độ dài do ruff format lo; chuỗi SQL dài để nguyên cho dễ đọc

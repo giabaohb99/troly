@@ -37,12 +37,12 @@ Một người dùng (QĐ-15). Cột `user_id` và việc lọc theo nó vẫn g
 
 | Bí mật | Chỗ cất |
 |---|---|
-| `JWT_SECRET`, `TOKEN_ENCRYPTION_KEYS`, `POSTGRES_PASSWORD`, `ANTHROPIC_API_KEY`, mã R2 của VPS, `GOOGLE_CLIENT_SECRET`, `GOOGLE_MAPS_API_KEY` | `/opt/troly/.env` (quyền 600) và một bản trong trình quản lý mật khẩu |
-| Keystore và mật khẩu, mã R2 của CI (chỉ `troly-release`) | GitHub Secrets, Environment `release` |
+| `JWT_SECRET`, `TOKEN_ENCRYPTION_KEYS`, `POSTGRES_PASSWORD`, `ANTHROPIC_API_KEY` (dùng chung với gym, QĐ-32), mã R2 (dùng chung với Gamebar, QĐ-31), `GOOGLE_CLIENT_SECRET`, `GOOGLE_MAPS_API_KEY` | `/opt/troly/.env` (quyền 600) và một bản trong trình quản lý mật khẩu |
+| Khóa ký APK (`troly-release.jks`, `keystore.env`), `r2.env` để đăng bản | `D:/giabao/troly-secrets/` trên máy cá nhân, ngoài kho; hai bản dự phòng. GitHub không giữ secret nào (QĐ-32) |
 | Khóa SSH vào VPS | Máy cá nhân |
 
 - Tệp không lên git: `.env`, `*.keystore`, `*.jks`, `*.age`, `*.pem`, `*.p12`, `age-key*.txt` (điều phối thêm mẫu còn thiếu vào `.gitignore`). CI chạy `gitleaks`.
-- **Khóa ký APK:** tạo một lần trên máy cá nhân bằng `keytool` trong container JDK, RSA 4096, hiệu lực 10950 ngày (30 năm). Không tạo trên GitHub Actions. Cất hai bản ngoại tuyến (trình quản lý mật khẩu và một ổ khác). Dấu vân tay SHA-256 ghi vào nhật ký việc và biến `ANDROID_SIGNING_CERT_SHA256` để job `apk` so. Mất khóa thì không cập nhật đè được, phải gỡ ra cài lại.
+- **Khóa ký APK:** tạo một lần trên máy cá nhân bằng `keytool` trong container JDK, RSA 4096, hiệu lực 10950 ngày (30 năm). Tạo bằng `scripts/make-keystore.sh` (mật khẩu ngẫu nhiên, không in ra). Cất hai bản ngoại tuyến (trình quản lý mật khẩu và một ổ khác). Dấu vân tay SHA-256 ghi vào nhật ký việc và `cert-sha256.txt` để `scripts/release-apk.sh` so. Mất khóa thì không cập nhật đè được, phải gỡ ra cài lại.
 
 ### 3.4 Mã hóa token Google
 
@@ -106,7 +106,7 @@ Cơ chế:
 
 ### 3.8 Sao lưu
 
-Theo `50` mục 3.9: mỗi tuần, giữ 5 bản, **không mã hóa `age`**, nằm trong bucket R2 riêng tư `troly-backup`; chỉ mã R2 của VPS đọc được. Token Google trong bản sao lưu vẫn là bản mã Fernet.
+Theo `50` mục 3.9: mỗi tuần, giữ 5 bản, **không mã hóa `age`**, nằm ở `backups/` trong bucket R2 riêng tư `assistant`; chỉ mã R2 (dùng chung với Gamebar) đọc được. Token Google trong bản sao lưu vẫn là bản mã Fernet.
 
 ### 3.9 Nhật ký
 
@@ -145,7 +145,7 @@ Xem `70`: bộ mẫu OTP chung cho Kotlin và Python; việc dọn 180 ngày; h�
 | Rủi ro | Giảm thiểu |
 |---|---|
 | OTP lọt vì mẫu tin mới | Hai lớp lọc; bộ đếm máy chủ phải bằng 0; thêm mẫu khi gặp |
-| Lộ mã R2 của VPS thì đọc được bản sao lưu không mã hóa | Bucket riêng tư; mã chỉ ở `.env`; token Google vẫn mã hóa |
+| Lộ mã R2 (dùng chung với Gamebar) thì đọc được bản sao lưu không mã hóa | Bucket riêng tư; mã chỉ ở `.env` của hai app và `r2.env` trên máy; token Google vẫn mã hóa; tách mã riêng khi có người dùng thứ hai |
 | Giữ tin người khác 180 ngày làm tăng phần bị lộ nếu DB lộ | Người dùng chọn (QĐ-17); không gửi AI khi không hỏi; dọn đúng hạn cả khối chat |
 | Mất khóa ký APK | Hai bản ngoại tuyến |
 

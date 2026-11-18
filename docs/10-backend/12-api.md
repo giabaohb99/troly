@@ -114,7 +114,7 @@ Danh sách `type` và trường theo `20-bo-nao-ai.md` mục 3.8; **vỏ phẳng
 | `memory_changed` | `version`, `text`, `undo_version` |
 | `choices` | `options[]` (`label`, `value`), tối đa 5 |
 
-`confirm` không có `kind`, `require_unlock` (K6, QĐ-27). Giá trị `screen`: `chat`, `inbox`, `inbox_conversation`, `calendar_day`, `event_detail`, `task_list`, `task_detail`, `expense_list`, `expense_detail`, `trip_list`, `trip_detail`, `report`, `search`, `settings_google`, `settings_listened_apps`, `settings_device_check`, `settings_profile`, `settings_ai_cost`. URL bản đồ luôn do `trip/service.py` dựng.
+`confirm` không có `kind`, `require_unlock` (K6, QĐ-27). Giá trị `screen`: `chat`, `inbox`, `inbox_conversation`, `calendar_day`, `event_detail`, `task_list`, `task_detail`, `expense_list`, `expense_detail`, `trip_list`, `trip_detail`, `report`, `search`, `note_detail`, `file_detail`, `settings_google`, `settings_listened_apps`, `settings_device_check`, `settings_profile`, `settings_ai_cost`. URL bản đồ luôn do `trip/service.py` dựng.
 
 ## 4. Dữ liệu cần
 
@@ -141,6 +141,7 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | GET | `/jobs/{id}` | U | | `{id, kind, status, result, error, finished_at}` | V1.0 |
 | GET | `/system/status` | U | | `SystemStatus` (mục 5.9) | V1.0 |
 | POST | `/system/jobs/{name}/run` | U | | `{queued: true}` (202); dùng cho *Sao lưu ngay* | V1.0 |
+| POST | `/client-logs` | U hoặc - | `items[]` (1 tới 50): `level` (`error`, `warn`, `info`), `kind`, `screen`, `message`, `detail`, `app_version`, `occurred_at` | `{accepted}`; nhận cả khi chưa đăng nhập, 60 mục mỗi phút mỗi IP (QĐ-30) | V1.0 |
 
 **Trí nhớ, chat, tìm kiếm**
 

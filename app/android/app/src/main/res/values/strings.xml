@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trợ lý</string>
+    <string name="title_activity_main">Trợ lý</string>
+    <string name="package_name">vn.io.baohuynh.troly</string>
+    <string name="custom_url_scheme">vn.io.baohuynh.troly</string>
+</resources>

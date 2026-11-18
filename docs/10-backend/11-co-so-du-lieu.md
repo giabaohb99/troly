@@ -90,6 +90,8 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`.
 
 **`tab_job_run`**: `id`; `job_name NN`; `started_at NN`; `finished_at`; `status` CK `running`, `ok`, `error`; `items_processed int NN default 0`; `detail jsonb` (sao lưu: khóa R2, kích thước, `sha256`, số dòng bảng chính); `error`. Chỉ mục `(job_name, started_at DESC)`.
 
+**`tab_client_log`** (QĐ-30): lỗi giao diện và lỗi gọi API do app gửi về. `id`; `user_id FK CASCADE` (rỗng được: lỗi trước khi đăng nhập); `device_id bigint`; `level` CK `error`, `warn`, `info`; `kind text NN` (`ui_error`, `api_error`, `native_error`...); `screen`; `message text NN`; `detail jsonb`; `app_version`; `occurred_at NN`; `created_at`. Chỉ mục `(created_at)`. Giữ 30 ngày.
+
 ### 3.4 Setting
 
 **`tab_setting`**: PK `(user_id, key)`; `value jsonb NN`; `updated_at`. Khóa hợp lệ khai trong `setting/service.py`, khóa lạ bị 400.
@@ -273,7 +275,7 @@ Chỉ mục `(user_id, created_at)`; `(created_at)` cho cảnh báo `AI_MONTHLY_
 
 Chỉ mục `(user_id, purpose, created_at DESC) WHERE status = 'ready'`; `(extract_status) WHERE extract_status = 'pending'`.
 
-**`tab_file_text`**: chữ trích để tìm. `file_id bigint PK FK tab_file CASCADE`; `user_id NN`; `content text NN` (cắt 200.000 ký tự); `method` CK `docx`, `pdf_text`, `ai_ocr`; `page_count int`; `extracted_at timestamptz NN`; `search_vector` sinh từ `content` (GIN). Do job `extract_file_text` ghi (`10-kien-truc-backend.md` mục 3.9): Word bằng python-docx, PDF có lớp chữ bằng pypdf, ảnh và PDF quét (tối đa 20 trang) nhờ Haiku chép chữ (`purpose = file_extract`).
+**`tab_file_text`**: chữ trích để tìm. `file_id bigint PK FK tab_file CASCADE`; `user_id NN`; `content text NN` (cắt 200.000 ký tự); `method` CK `docx`, `pdf_text`, `ai_ocr`, `plain` (tệp chữ); `page_count int`; `extracted_at timestamptz NN`; `search_vector` sinh từ `content` (GIN). Do job `extract_file_text` ghi (`10-kien-truc-backend.md` mục 3.9): Word bằng python-docx, PDF có lớp chữ bằng pypdf, ảnh và PDF quét (tối đa 20 trang) nhờ Haiku chép chữ (`purpose = file_extract`).
 
 ### 3.9 Expense
 
@@ -489,6 +491,7 @@ Job `cleanup_old_data` chạy 03:30 hằng ngày, lô 1.000 dòng.
 | `tab_auth_session` | 30 ngày sau hết hạn hoặc thu hồi |
 | `tab_google_oauth_state` | 1 giờ sau hết hạn |
 | `tab_job_queue` | 30 ngày (`failed` 90 ngày); `tab_job_run` 30 ngày |
+| `tab_client_log` | 30 ngày |
 | `tab_google_outbox` | `done` 7 ngày; `failed`, `conflict` 30 ngày |
 | Tọa độ Google ở `tab_place_cache`, `tab_trip_stop` | 30 ngày từ lần lấy (điều khoản Places) |
 | `tab_route_cache` | Tới `expires_at` |

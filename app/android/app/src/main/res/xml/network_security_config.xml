@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chỉ HTTPS; không ghim chứng chỉ vì Cloudflare tự xoay (60-bao-mat-rieng-tu.md, 30-app-android.md mục 3.2). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

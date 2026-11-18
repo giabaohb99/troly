@@ -1,6 +1,6 @@
 # Hạ tầng và triển khai
 
-Ngày lập: 18/11/2026. Người giữ: agent hạ tầng. Trạng thái: bản 3, gọn hóa theo QĐ-27 và sửa theo `81-ra-cheo-lan-2.md`.
+Ngày lập: 18/11/2026. Người giữ: agent hạ tầng. Trạng thái: bản 3, gọn hóa theo QĐ-27 và sửa theo `81-ra-cheo-lan-2.md`; cập nhật QĐ-29 (để Gamebar chạy), QĐ-31 (một bucket R2), QĐ-32 (build APK trên máy, GitHub không giữ secret), QĐ-33 (tên miền) và số đo VPS ngày 18/11.
 
 Nguồn chuẩn (QĐ-25): tệp này là nguồn chuẩn cho **mạng, cổng, compose**. Biến môi trường và danh sách job theo `10-kien-truc-backend.md` (mục 3.6, 3.9); đường dẫn API và giới hạn theo `12-api.md`; bảng theo `11-co-so-du-lieu.md`.
 
@@ -10,12 +10,12 @@ Liên quan: [60-bao-mat-rieng-tu.md](../60-bao-mat/60-bao-mat-rieng-tu.md); [70-
 
 - Chạy api, worker, db của troly trên VPS chung, không làm hỏng gymcanhan; không mở cổng web nào ra Internet, mọi lưu lượng qua Cloudflare Tunnel sẵn có.
 - Thử trên VPS hiện tại (2 vCPU, 4 GB RAM). Chạy ổn thì người dùng mua VPS mạnh hơn và chuyển sang bằng bản sao lưu (mục 3.9).
-- Build APK trên GitHub Actions; máy cá nhân chỉ cần Docker.
+- Build, ký, đăng APK ngay trên máy cá nhân bằng Docker (QĐ-32); GitHub Actions chỉ chạy bài kiểm.
 - Deploy một lệnh, quay lui một lệnh, sao lưu trước mỗi lần chạy migration.
 
 ## 2. Phạm vi
 
-Trong tệp: Phase 0, mạng và cổng, compose, tài nguyên, Cloudflare, CI, deploy, sao lưu, giám sát, môi trường phát triển, build APK trên máy, tạm dừng Gamebar, trang tĩnh. V3 (Claude CLI) chỉ ghi hướng.
+Trong tệp: Phase 0, mạng và cổng, compose, tài nguyên, Cloudflare, CI, deploy, sao lưu, giám sát, môi trường phát triển, build APK trên máy, Gamebar, trang tĩnh. V3 (Claude CLI) chỉ ghi hướng.
 
 Ngoài tệp: bảo mật ở `60`, kiểm thử ở `70`, mã backend ở `10`, cập nhật APK phía app ở `30-app-android.md`.
 
@@ -27,21 +27,22 @@ Thông tin VPS lấy từ tài liệu và script của gymcanhan và Gamebar, đ
 
 | Mục | Hiện trạng |
 |---|---|
-| Máy | Ubuntu 24.04, 2 vCPU, 4 GB RAM, ổ khoảng 22 GB; tường lửa chỉ mở cổng 22 |
+| Máy | Ubuntu 24.04, 2 vCPU, RAM 3,9 GB (còn dùng được 2,8 GB), swap 8 GB, ổ 22 GB còn 15 GB; tường lửa chỉ mở cổng 22 (đo 18/11) |
 | `cloudflared` | Nằm trong compose của Gamebar (`/opt/gamebar`), `network_mode: host`; gymcanhan dùng chung |
-| Gamebar | Container `core-game`, `127.0.0.1:8080`. **Tạm dừng ở Phase 0** (QĐ-24, mục 3.12) |
-| gymcanhan | Container `gymcanhan`, `127.0.0.1:8100`; giữ nguyên |
+| Gamebar | Container `core-game`, `127.0.0.1:8080`, dùng 51 MB. **Để chạy** (QĐ-29) |
+| gymcanhan | Container `gymcanhan`, `127.0.0.1:8100`, dùng 40 MB; giữ nguyên |
 
-**Phase 0, người dùng làm trước Phase 1 (V1.0, V1.1):**
+**Phase 0, trước Phase 1 (V1.0, V1.1):**
 
-| Bước | Việc |
-|---|---|
-| 1 | Kiểm VPS: `ss -ltn` (cổng 8200 trống), `docker stats --no-stream`, `free -m`, `df -h /`. Gửi kết quả cho điều phối |
-| 2 | Cloudflare: thêm Public Hostname `troly.baohuynh.io.vn` trỏ `http://localhost:8200` vào tunnel đang có (mục 3.5) |
-| 3 | R2: tạo ba bucket riêng tư `troly-files`, `troly-backup`, `troly-release`; một mã R2 cho VPS (quyền trên cả ba), một mã cho CI (chỉ `troly-release`) |
-| 4 | Khóa Anthropic; tạo `JWT_SECRET`, `TOKEN_ENCRYPTION_KEYS`, mật khẩu DB; cất bản sao trong trình quản lý mật khẩu |
-| 5 | Khóa ký APK: tạo trên máy cá nhân theo `60` mục 3.3, dán vào GitHub Secrets |
-| 6 | Tạm dừng Gamebar (mục 3.12), có xác nhận của người dùng |
+| Bước | Việc | Ai |
+|---|---|---|
+| 1 | Kiểm VPS (xong 18/11: cổng 8200 trống, RAM và ổ đủ) | điều phối |
+| 2 | Cloudflare: Public Hostname `assistant.baohuynh.io.vn` trỏ `http://localhost:8200` vào tunnel đang có (mục 3.5) | người dùng |
+| 3 | R2: bucket `assistant` của tài khoản Gamebar, dùng chung mã R2 của Gamebar (QĐ-31, xong 18/11) | điều phối |
+| 4 | Khóa Anthropic: dùng chung khóa của gym ở V1 (QĐ-32) | |
+| 5 | Khóa ký APK: `bash scripts/make-keystore.sh` sinh vào `D:/giabao/troly-secrets/` (xong 18/11); người dùng chép hai bản dự phòng | agent hạ tầng, người dùng |
+
+`.env` trên VPS do `scripts/vps-init-env.sh` tạo ở lần deploy đầu: sinh mới mật khẩu DB, `JWT_SECRET`, `TOKEN_ENCRYPTION_KEYS`; chép các dòng `R2_*` từ `/opt/gamebar/.env` rồi đặt `R2_BUCKET=assistant`; khóa Anthropic `scripts/deploy.sh` đọc từ `D:/giabao/keyapiclaude.txt` trên máy và gửi qua stdin của SSH (không in giá trị, không nằm trong lệnh).
 
 Google Cloud (OAuth, Maps) để tới Phase 3 (V1.4).
 
@@ -50,8 +51,8 @@ Google Cloud (OAuth, Maps) để tới Phase 3 (V1.4).
 ```
  Cloudflare ── tunnel ── cloudflared (của Gamebar, mạng host)
                             ├─ gym.baohuynh.io.vn    -> 127.0.0.1:8100  gymcanhan
-                            ├─ game.baohuynh.io.vn   -> 127.0.0.1:8080  core-game (tạm dừng)
-                            └─ troly.baohuynh.io.vn  -> 127.0.0.1:8200  troly-api
+                            ├─ game.baohuynh.io.vn   -> 127.0.0.1:8080  core-game
+                            └─ assistant.baohuynh.io.vn  -> 127.0.0.1:8200  troly-api
  Dự án compose "troly" (/opt/troly)
    troly_edge (bridge): troly-api, troly-worker  -> ra Internet (Claude, Google, R2)
    troly_core (internal): troly-api, troly-worker, troly-db (không cổng)
@@ -137,23 +138,22 @@ networks: { troly_core: { internal: true }, troly_edge: {} }
 
 ### 3.4 Tài nguyên
 
-Gamebar đã tạm dừng từ Phase 0, `cloudflared` vẫn chạy. Số ước, đo lại ở Phase 0 bước 1.
+Số đo 18/11 (`cloudflared` 19 MB, `core-game` 51 MB, `gymcanhan` 40 MB, máy còn 2,8 GB) cộng phần ước của troly:
 
-| Thành phần | RAM ước | Trần |
+| Thành phần | RAM | Trần |
 |---|---|---|
-| Hệ điều hành, Docker, `cloudflared` | 550 tới 600 MB | |
-| gymcanhan | khoảng 150 MB | của gym |
-| troly-db | 150 tới 300 MB | 512 MB |
-| troly-api | 150 tới 250 MB | 448 MB |
-| troly-worker | 120 tới 200 MB | 384 MB |
-| **Tổng lúc chạy** | **1,1 tới 1,5 GB** | trần troly 1,34 GB |
-| Dự trữ cho build ảnh, bộ đệm | khoảng 2,5 GB | |
+| Hệ điều hành, Docker | phần đã dùng ngoài các container dưới | |
+| `cloudflared`, `core-game`, `gymcanhan` | khoảng 110 MB (đo) | của app khác |
+| troly-db | 150 tới 300 MB (ước) | 512 MB |
+| troly-api | 150 tới 250 MB (ước) | 448 MB |
+| troly-worker | 120 tới 200 MB (ước) | 384 MB |
+| **Còn trống sau khi bật troly** | **khoảng 2 GB** | trần troly 1,34 GB |
 
-Build ảnh với `nice -n 10`; `pg_dump` với `nice`, `ionice -c3`; nhật ký 3 x 10 MB mỗi container. Job `disk_check` cảnh báo khi ổ trống dưới 15 phần trăm, dưới 8 phần trăm thì dừng việc ghi nhiều. Khi chuyển sang VPS mạnh hơn: dựng `/opt/troly` mới, khôi phục bản sao lưu mới nhất (mục 3.9), đổi Public Hostname; nới trần tài nguyên sau khi đo.
+Build ảnh với `nice -n 10`; `pg_dump` với `nice`, `ionice -c3`; nhật ký 3 x 10 MB mỗi container. Job `disk_check` cảnh báo khi ổ trống dưới 15 phần trăm, dưới 8 phần trăm thì dừng việc ghi nhiều. Ổ còn 15 GB: giữ 3 thẻ ảnh và dọn bộ đệm build sau mỗi lần deploy. Khi chuyển sang VPS mạnh hơn: dựng `/opt/troly` mới, khôi phục bản sao lưu mới nhất (mục 3.9), đổi Public Hostname; nới trần tài nguyên sau khi đo.
 
 ### 3.5 Cloudflare Tunnel
 
-1. Public Hostname `troly.baohuynh.io.vn` trỏ `http://localhost:8200` trong tunnel đang có; không tạo tunnel mới, không sửa compose Gamebar.
+1. Public Hostname `assistant.baohuynh.io.vn` trỏ `http://localhost:8200` trong tunnel đang có; không tạo tunnel mới, không sửa compose Gamebar.
 2. SSL/TLS chế độ Full, bật *Always Use HTTPS*.
 3. Luật WAF: `/api/v1/auth/*` tối đa 20 yêu cầu mỗi 10 giây mỗi IP (`12` mục 3.7).
 4. Chat dùng SSE (`12` mục 5.3): Cache Rules để *Bypass* cho `/api/*`; api gửi `X-Accel-Buffering: no` và ping 15 giây.
@@ -171,26 +171,26 @@ Theo QĐ-27, các biến sau không còn: `BACKUP_AGE_RECIPIENT`, `RELEASE_PUBLI
 
 Quota Google Maps Platform (Phase 4, đặt trong Cloud Console > Quotas theo `41` mục 7.3): Compute Routes 30 mỗi ngày, Places 300 mỗi ngày, Route Matrix 300 phần tử mỗi ngày. Ngân sách chỉ cảnh báo, quota mới chặn.
 
-### 3.7 GitHub Actions
+### 3.7 GitHub Actions và đăng bản APK
+
+GitHub Actions chỉ chạy bài kiểm, **không giữ secret nào** (QĐ-32).
 
 | Workflow | Khi chạy | Việc |
 |---|---|---|
-| `backend-test.yml` | Đổi `backend/**`, `testdata/**`, tệp compose | Đúng lệnh như ở máy: `docker compose -f infra/docker-compose.test.yml run --rm test` chạy `ruff check`, `alembic upgrade head`, `pytest -m "not ai_eval"`; `docker build --target prod` |
-| `app-build.yml` job `check` | Đổi `app/**` | Trong `node:24-alpine`: `tsc -b`, lint, `vitest run`; JUnit JVM nếu đổi `app/android/**` |
-| `app-build.yml` job `apk` | Đẩy thẻ `v*` | Mục dưới |
-| `health-check.yml` | Lịch mỗi 2 giờ | `curl https://troly.baohuynh.io.vn/api/health`; hỏng thì GitHub gửi thư |
-| `ai-eval.yml` | Chạy tay | Bộ câu mẫu của `20` với Claude thật (`70` mục 3.7) |
+| `backend-test.yml` | Đổi `backend/**`, `testdata/**`, tệp compose | Đúng lệnh như ở máy: `docker compose -f infra/docker-compose.test.yml run --rm test` chạy `ruff check`, `alembic upgrade head`, `pytest -m "not ai_eval"`; `pip-audit`; `docker build --target prod`; quét bí mật bằng `gitleaks` |
+| `app-build.yml` | Đổi `app/**` | `npm ci`, `npm run check` (tsc, lint, Vitest, build) |
+| `health-check.yml` | Lịch mỗi 2 giờ, chỉ khi biến kho `HEALTH_CHECK_ENABLED=true` | `curl https://assistant.baohuynh.io.vn/api/health`; hỏng thì GitHub gửi thư |
 
-**Đăng bản APK (gọn, không cần mã CI gọi API):**
+Bộ câu mẫu AI chạy ở máy: `docker compose -f infra/docker-compose.test.yml --profile ai run --rm test-ai` (cần `ANTHROPIC_API_KEY` trong môi trường).
 
-1. Dựng giao diện, `npx cap sync android`, giải mã keystore từ secret ra tệp tạm, `gradle assembleRelease`.
-2. `apksigner verify --print-certs`; dấu vân tay phải bằng biến GitHub `ANDROID_SIGNING_CERT_SHA256`, lệch thì dừng.
-3. Đẩy `releases/troly-<versionName>.apk` lên `troly-release`, rồi ghi đè `releases/latest.json`: `{version_code, version_name, apk_key, sha256, size_bytes, min_supported_version_code, notes, published_at}`. Giữ 10 APK mới nhất.
-4. Xóa tệp keystore tạm (cả khi lỗi).
+**Đăng bản APK từ máy cá nhân:** `bash scripts/release-apk.sh X.Y.Z "ghi chú"`. Script chạy ảnh `troly-android-builder` (mục 3.11) với thư mục bí mật `D:/giabao/troly-secrets/` gắn chỉ đọc:
 
-api đọc `latest.json` từ R2 (đệm 5 phút) để trả `GET /api/v1/device/release` kèm URL ký sẵn 300 giây. App luôn hỏi trước khi cài (QĐ-18). Bản lỗi thì đăng bản mới có `versionCode` lớn hơn; ép cập nhật bằng `min_supported_version_code`. `versionCode` = `X*10000 + Y*100 + Z` từ thẻ `vX.Y.Z`.
+1. Chép `app/` ra thư mục làm việc trong container, `npm ci`, `npm run build`, `npx cap sync android`.
+2. `gradlew testReleaseUnitTest assembleRelease`, ký bằng `troly-release.jks` (mật khẩu ở `keystore.env`); phiên bản truyền bằng `-PtrolyVersionCode`, `-PtrolyVersionName` (`versionCode` = `X*10000 + Y*100 + Z`).
+3. `apksigner verify --print-certs`; dấu vân tay phải bằng `cert-sha256.txt`, lệch thì dừng.
+4. Đẩy `releases/troly-X.Y.Z.apk` lên bucket `assistant`, ghi đè `releases/latest.json`: `{version_code, version_name, apk_key, sha256, size_bytes, min_supported_version_code, notes, published_at}`; giữ 10 APK mới nhất. Mã R2 đọc từ `D:/giabao/troly-secrets/r2.env`.
 
-Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `R2_RELEASE_ACCESS_KEY_ID`, `R2_RELEASE_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `ANTHROPIC_API_KEY_EVAL` (tùy chọn). Đặt trong Environment `release`, chỉ nhánh `main` và thẻ `v*` dùng được.
+Bản phát hành chỉ build từ mã đã commit (script từ chối cây còn thay đổi). api đọc `latest.json` (đệm 5 phút) để trả `GET /api/v1/device/release` kèm URL ký sẵn 300 giây. App luôn hỏi trước khi cài (QĐ-18). Bản lỗi thì đăng bản mới có `versionCode` lớn hơn; ép cập nhật bằng `troly.minSupportedVersionCode` trong `app/package.json`.
 
 ### 3.8 Deploy và quay lui
 
@@ -206,19 +206,19 @@ GitHub Actions không SSH vào VPS. Người dùng chạy `bash scripts/deploy.s
 | 6 | Ghi `TROLY_IMAGE_TAG` vào `.env`, `docker compose up -d api worker`, chờ `/api/health` tối đa 60 giây | Quay lui |
 | 7 | Ghi `releases.log`; giữ 3 thẻ ảnh; `docker builder prune -f --filter until=72h` | Chỉ cảnh báo |
 
-Lần đầu: script báo thiếu `.env` rồi dừng; người dùng tạo `/opt/troly/.env`, chạy lại; tạo tài khoản bằng `docker compose run --rm api python -m app.cli create-owner` (`10` mục 3.17); kiểm `/api/health` trả `status: ok`.
+Lần đầu: `scripts/vps-init-env.sh` tự tạo `/opt/troly/.env` (mục 3.1); thiếu giá trị nào thì script dừng và báo tên biến; tạo tài khoản bằng `docker compose run --rm api python -m app.cli create-owner` (`10` mục 3.17); kiểm `/api/health` trả `status: ok`.
 
 Migration phải tương thích ngược với bản trước (thêm cột cho phép null, thêm bảng; đổi tên hay xóa cột làm hai lần deploy), nên **quay lui** chỉ cần `bash scripts/deploy.sh --rollback`: đặt lại thẻ ảnh trước và `up -d`. Hỏng dữ liệu thì khôi phục bản trước migration.
 
 ### 3.9 Sao lưu và khôi phục (QĐ-16, QĐ-27)
 
-- Job `backup_database` (`10` mục 3.9), chủ nhật 02:00 giờ Việt Nam, chạy bù nếu lỡ giờ: `pg_dump --format=custom` (đã nén) đẩy thẳng lên `troly-backup/weekly/YYYY-MM-DD.dump`. **Không mã hóa bằng `age`**; bucket riêng tư, chỉ mã R2 của VPS đọc được. Token Google trong bản sao lưu vẫn là bản mã Fernet, khóa không nằm trong DB.
-- Bản trước migration ở `troly-backup/premigrate/<thời điểm>-<sha>.dump`.
-- Giữ tối đa 5 bản cả hai loại; xóa bản `premigrate` cũ trước để luôn còn ít nhất 1 bản tuần.
+- Job `backup_database` (`10` mục 3.9), chủ nhật 02:00 giờ Việt Nam, chạy bù nếu lỡ giờ: `pg_dump --format=custom` (đã nén) đẩy thẳng lên `backups/YYYYMMDD-HHMMSS-weekly.dump` trong bucket `assistant`. **Không mã hóa bằng `age`**; bucket riêng tư, chỉ người có mã R2 của Gamebar đọc được. Token Google trong bản sao lưu vẫn là bản mã Fernet, khóa không nằm trong DB.
+- Bản trước migration: `scripts/vps-deploy.sh` chạy `python -m worker.jobs.backup --reason predeploy` trong container worker, ra `backups/<thời điểm>-predeploy.dump` (lần deploy đầu DB còn trống thì bỏ qua).
+- Giữ tối đa 5 bản cả hai loại; xóa bản `predeploy` cũ trước để luôn còn ít nhất 1 bản tuần (job hiện xóa theo thời gian, cần thêm luật này).
 - Ghi khóa R2, kích thước, `sha256`, số dòng các bảng chính vào `tab_job_run.detail`. Quá 8 ngày không có bản thành công thì báo đỏ ở màn Máy chủ.
-- Nút *Sao lưu ngay* gọi `POST /api/v1/admin/worker/jobs/backup_database/run` (`12` mục 5.13), dùng trước việc lớn vì sao lưu tuần có thể mất tới 7 ngày dữ liệu.
+- Nút *Sao lưu ngay* gọi `POST /api/v1/system/jobs/backup_database/run` (`12` mục 5.9), dùng trước việc lớn vì sao lưu tuần có thể mất tới 7 ngày dữ liệu.
 
-**Khôi phục:** `scripts/restore-db.sh <khóa R2> [--target drill|production]`. `drill` khôi phục vào container tạm rồi xóa; `production` hỏi gõ lại tên bản, dừng api và worker, sao lưu DB hiện tại thành bản `premigrate`, khôi phục, bật lại.
+**Khôi phục:** tải tệp `.dump` từ `backups/` rồi `scripts/restore-db.sh <tệp.dump> [--target drill|production]`. `drill` khôi phục vào container tạm rồi xóa; `production` hỏi gõ lại tên bản, dừng api và worker, sao lưu DB hiện tại thành bản `premigrate`, khôi phục, bật lại.
 
 **Diễn tập** trên máy cá nhân bằng bộ compose dev: lần đầu ngay sau bản sao lưu đầu tiên của Phase 1, sau đó mỗi tháng. Đạt khi khôi phục được, `alembic current` đúng, số dòng khớp `detail`, đăng nhập xem được chi tiêu. Ghi vào `90-quan-ly/nhat-ky-viec.md`.
 
@@ -245,9 +245,9 @@ Máy cá nhân: Windows 11, Docker, Node 24; không cài Python, Postgres, Andro
 
 Thử app trên điện thoại với máy chủ ở máy cá nhân: tạm đặt `API_BIND=0.0.0.0` và mở cổng 8200 trên tường lửa Windows; đơn giản hơn là cho APK thử trỏ vào api trên VPS.
 
-### 3.11 Build APK trên máy bằng Docker (từ Phase 2)
+### 3.11 Build APK trên máy bằng Docker
 
-Bản phát hành chỉ build trên GitHub Actions. Khi làm plugin Kotlin (Phase 2) và ổ máy cá nhân còn 10 GB: ảnh tự viết `infra/android-build.Dockerfile` (`eclipse-temurin:21-jdk`, Android command-line tools, Node 24, phiên bản ghim) dùng cho dịch vụ `android-test` (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`). Bản thử ký khóa debug, `applicationIdSuffix ".debug"`, cài song song bản chính. `adb` để ngoài container.
+Bản phát hành và bản thử đều build trên máy bằng ảnh tự viết `infra/android-builder/Dockerfile` (`eclipse-temurin:21-jdk`, Android command-line tools, Node 24, phiên bản ghim) dùng cho dịch vụ `android-test` (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`). Bản thử ký khóa debug, `applicationIdSuffix ".debug"`, cài song song bản chính. `adb` để ngoài container.
 
 | | GitHub Actions | Docker trên máy |
 |---|---|---|
@@ -255,16 +255,9 @@ Bản phát hành chỉ build trên GitHub Actions. Khi làm plugin Kotlin (Phas
 | Ký phát hành | Có | Không, chỉ debug |
 | Tốn | Phút CI | 4 tới 8 GB ổ máy |
 
-### 3.12 Tạm dừng Gamebar (QĐ-24)
+### 3.12 Gamebar (QĐ-29)
 
-Làm ở Phase 0, sau khi người dùng xác nhận. **Chỉ dừng `core-game`, giữ `cloudflared`** vì gym dùng chung tunnel.
-
-1. Mở sảnh Gamebar, kiểm không có phòng đang chơi.
-2. Sao lưu Gamebar ngay bằng công cụ của Gamebar (`tools/khoi-phuc-r2.js`).
-3. `docker stop core-game`. Không chạy `docker compose down` hay `stop` trong `/opt/gamebar` (sẽ dừng cả `cloudflared`), không xóa container, không xóa volume `gamebar-db`.
-4. Kiểm: `docker ps` còn `cloudflared` và `gymcanhan`; `curl -s http://127.0.0.1:8100/api/health` trả lời; tên miền gym vào được.
-
-Mở lại khi RAM đo thật còn dư hơn 600 MB: `docker start core-game`, kiểm `curl -s http://127.0.0.1:8080`. Lưu ý: chạy script deploy của Gamebar cũng làm `core-game` chạy lại.
+Gamebar để chạy; QĐ-29 thay QĐ-24. Chỉ dừng khi VPS thật sự chật (RAM trống dưới 500 MB hoặc build ảnh troly bị hết bộ nhớ), và phải hỏi người dùng trước (QĐ-28). Khi đó **chỉ** `docker stop core-game`, giữ `cloudflared` vì gym và troly dùng chung tunnel; không chạy `docker compose down` hay `stop` trong `/opt/gamebar`. Mở lại bằng `docker start core-game`.
 
 ### 3.13 Trang tĩnh
 
@@ -292,8 +285,8 @@ api phục vụ hai trang HTML ngắn, công khai, ngoài `/api`:
 | Đường | Ghi chú |
 |---|---|
 | `GET /api/health` | `status`, `db`, `worker_lag_seconds`, `version`, `git_sha` |
-| `GET /api/v1/admin/worker` | Thêm: sao lưu gần nhất, số bản đang giữ, ổ trống, chi phí AI tháng so với `AI_MONTHLY_USD`, số OTP bị chặn ở máy chủ |
-| `POST /api/v1/admin/worker/jobs/backup_database/run` | Nút *Sao lưu ngay* |
+| `GET /api/v1/system/status` | Thêm: sao lưu gần nhất, số bản đang giữ, ổ trống, chi phí AI tháng so với `AI_MONTHLY_USD`, số OTP bị chặn ở máy chủ |
+| `POST /api/v1/system/jobs/backup_database/run` | Nút *Sao lưu ngay* |
 | `GET /api/v1/device/release` | Đọc `latest.json` trên R2 |
 | `GET /chinh-sach-rieng-tu`, `GET /tai-app` | Trang tĩnh, ngoài `/api` |
 
@@ -302,32 +295,31 @@ api phục vụ hai trang HTML ngắn, công khai, ngoài `/api`:
 - CI: `docker compose config`, dựng ảnh `prod`, bài kiểm backend trong container (mục 3.7).
 - Bài kiểm luật giữ 5 bản sao lưu: một tuần nhiều migration vẫn còn 1 bản tuần.
 - `scripts/deploy.sh --dry-run` in các bước.
-- Diễn tập khôi phục (mục 3.9); bảng kiểm sau khi dừng Gamebar (mục 3.12).
+- Diễn tập khôi phục (mục 3.9).
 
 ## 7. Rủi ro
 
 | Rủi ro | Giảm thiểu |
 |---|---|
-| Hết RAM khi build ảnh trên VPS 4 GB | Gamebar tạm dừng; trần từng container; build `nice`; nếu vẫn thiếu thì mua VPS mạnh hơn |
+| Hết RAM khi build ảnh trên VPS 4 GB | Trần từng container; build `nice`; swap 8 GB; thiếu thật thì hỏi người dùng dừng `core-game` hoặc mua VPS mạnh hơn |
 | Ổ 22 GB đầy | Giữ 3 thẻ ảnh, dọn bộ đệm 3 ngày, `disk_check`; sao lưu nằm trên R2 |
-| Dừng nhầm `cloudflared` | Chỉ `docker stop core-game`; kiểm gym sau khi dừng |
 | Mất tới 7 ngày dữ liệu | Sao lưu trước migration; nút *Sao lưu ngay* |
-| Lộ mã R2 của VPS thì lộ bản sao lưu không mã hóa | Bucket riêng tư; mã R2 chỉ ở `.env`; token Google vẫn là bản mã |
+| Lộ mã R2 (dùng chung với Gamebar) thì lộ bản sao lưu không mã hóa | Bucket riêng tư; token Google vẫn là bản mã; tách mã R2 riêng khi cần |
 | Lệnh dọn Docker xóa nhầm volume app khác | Chỉ dọn theo nhãn và theo tuổi |
 
 ## 8. Cần agent khác
 
 | Agent | Việc |
 |---|---|
-| agent kiến trúc | `10` mục 3.6: bỏ các biến nêu ở mục 3.6 của tệp này, `JWT_REFRESH_DAYS` = 365; `10` mục 3.9: job `disk_check`, sao lưu không mã hóa. `11`: bỏ `tab_app_release` ở V1. `12`: bỏ `POST /admin/releases`, `/admin/releases*`, `/device/web-bundle`, kiểu xác thực mã CI; thêm trường cho `/admin/worker` và hai trang tĩnh |
-| agent app Android | `30`: bỏ gói giao diện tải riêng và khóa ký ECDSA (QĐ-27); đọc `ReleaseInfo` từ `/device/release`; nội dung trang `/tai-app`; tên biến `ANDROID_SIGNING_CERT_SHA256` |
-| điều phối | `02`: `docker-compose.dev.yml`, `infra/docker-compose.test.yml`, `infra/android-build.Dockerfile`, `scripts/deploy.sh`, `scripts/restore-db.sh`, `.github/workflows/health-check.yml`; ghi nhật ký việc khi báo agent Gamebar rằng troly dùng chung tunnel và `core-game` tạm dừng |
+| agent kiến trúc | `10` mục 3.6: bỏ các biến nêu ở mục 3.6 của tệp này, `JWT_REFRESH_DAYS` = 365; `10` mục 3.9: job `disk_check`, sao lưu không mã hóa. `11`: bỏ `tab_app_release` ở V1. `12`: bỏ `POST /admin/releases`, `/admin/releases*`, `/device/web-bundle`, kiểu xác thực mã CI; thêm trường cho `/system/status` và hai trang tĩnh. `config.py` và 10 mục 3.6: một biến `R2_BUCKET=assistant` với tiền tố `files/`, `backups/`, `releases/` (QĐ-31) |
+| agent app Android | `30`: bỏ gói giao diện tải riêng và khóa ký ECDSA (QĐ-27); đọc `ReleaseInfo` từ `/device/release`; nội dung trang `/tai-app`; dự án Android đọc phiên bản từ thuộc tính Gradle `trolyVersionCode`, `trolyVersionName` (mục 3.7) |
+| điều phối | `02`: `docker-compose.dev.yml`, `infra/docker-compose.test.yml`, `infra/android-builder/`, `scripts/deploy.sh`, `scripts/restore-db.sh`, `.github/workflows/health-check.yml`, `scripts/release-apk.sh`, `scripts/make-keystore.sh`, `scripts/vps-init-env.sh`; ghi nhật ký việc khi báo agent Gamebar rằng troly dùng chung tunnel và mã R2 |
 
 ## 9. Đề xuất quyết định
 
 | Đề xuất | Lý do |
 |---|---|
-| Đăng bản APK bằng `releases/latest.json` trên R2, api chỉ đọc; bỏ `tab_app_release` và mã CI ở V1 | Gọn nhất; CI không cần gọi api |
+| Đăng bản APK bằng `releases/latest.json` trên R2, api chỉ đọc; build, ký, đăng từ máy bằng `scripts/release-apk.sh` (QĐ-32) | Gọn nhất; GitHub không giữ secret |
 | Thêm `health-check.yml` chạy 2 giờ một lần | Biết api chết mà không cần dịch vụ ngoài (C1 câu 32) |
 | Biến môi trường chỉ liệt kê ở `10`; tệp này không chép | Hết lệch giữa hai bảng |
 | Khi chuyển VPS mạnh hơn: khôi phục từ bản sao lưu, đổi Public Hostname | Cùng đường với diễn tập, không cần công cụ mới |

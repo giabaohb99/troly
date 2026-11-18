@@ -6,7 +6,13 @@ SHA="$1"
 VERSION="${2:-$1}"
 cd /opt/troly
 
-test -f .env || { echo "Thiếu /opt/troly/.env: chép từ .env.example, quyền 600, điền giá trị thật rồi chạy lại."; exit 1; }
+if [ ! -f .env ]; then
+  # Lần đầu: tạo .env, sinh khóa mới, chép mã R2 của Gamebar và khóa Anthropic của gym (QĐ-31, QĐ-32).
+  bash scripts/vps-init-env.sh
+  if grep -qE '^(R2_ENDPOINT|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY)=$' .env; then
+    echo "Điền các biến còn trống trong /opt/troly/.env rồi chạy lại deploy."; exit 1
+  fi
+fi
 
 set_tag() {
   if grep -q '^TROLY_IMAGE_TAG=' .env; then
@@ -38,13 +44,13 @@ if [ -f backend/alembic.ini ]; then
   CURRENT=$(echo "$STATE" | sed -n 's/^current=//p')
   HEAD=$(echo "$STATE" | sed -n 's/^head=//p')
   if [ "$CURRENT" != "$HEAD" ]; then
-    echo "Có migration mới ($CURRENT -> $HEAD): sao lưu trước migration."
-    mkdir -p backups
-    STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-    docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom' \
-      > "backups/premigrate-$STAMP-$SHA.dump"
-    # Khi job sao lưu (backup_database) có lệnh đẩy lên R2, đổi đoạn này sang lệnh đó; tạm giữ 3 bản trên VPS.
-    ls -1t backups/premigrate-*.dump | tail -n +4 | xargs -r rm -f
+    if [ -n "$CURRENT" ]; then
+      # Sao lưu lên R2 bằng job của worker (backups/<thời điểm>-predeploy.dump, tính trong BACKUP_KEEP bản).
+      echo "Có migration mới ($CURRENT -> $HEAD): sao lưu trước migration."
+      TROLY_IMAGE_TAG="$SHA" docker compose run --rm -T worker python -m worker.jobs.backup --reason predeploy
+    else
+      echo "DB còn trống (lần deploy đầu): bỏ qua sao lưu trước migration."
+    fi
     TROLY_IMAGE_TAG="$SHA" docker compose --profile migrate run --rm migrate
   fi
 fi

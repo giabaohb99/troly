@@ -1,0 +1,28 @@
+// Mọi query key của TanStack Query đặt ở đây (luật như app gym).
+export const queryKeys = {
+  auth: {
+    me: ['auth', 'me'] as const,
+  },
+  chat: {
+    today: ['chat', 'today'] as const,
+    status: ['chat', 'status'] as const,
+    conversations: ['chat', 'conversations'] as const,
+    conversation: (id: number) => ['chat', 'conversation', id] as const,
+  },
+  expense: {
+    all: ['expense'] as const,
+    list: (filters: Record<string, unknown>) => ['expense', 'list', filters] as const,
+    summary: (period: string) => ['expense', 'summary', period] as const,
+    categories: ['expense', 'categories'] as const,
+  },
+  search: {
+    results: (q: string, types: string) => ['search', q, types] as const,
+  },
+  memory: {
+    profile: ['memory', 'profile'] as const,
+  },
+  device: {
+    release: ['device', 'release'] as const,
+    list: ['device', 'list'] as const,
+  },
+}

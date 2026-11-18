@@ -1,5 +1,8 @@
 {
   "appId": "vn.io.baohuynh.troly",
   "appName": "Trợ lý",
-  "webDir": "dist"
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  }
 }
