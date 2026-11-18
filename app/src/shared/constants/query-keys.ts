@@ -36,6 +36,21 @@ export const queryKeys = {
     tasks: (status: string) => ['calendar', 'tasks', status] as const,
     task: (id: number) => ['calendar', 'task', id] as const,
   },
+  trip: {
+    all: ['trip'] as const,
+    list: ['trip', 'list'] as const,
+    detail: (id: number) => ['trip', 'detail', id] as const,
+    mapLinks: (id: number, day: number, max: number) => ['trip', 'map-links', id, day, max] as const,
+  },
+  report: {
+    dashboard: (date: string) => ['report', 'dashboard', date] as const,
+    aiCost: (month: string) => ['report', 'ai-cost', month] as const,
+  },
+  setting: {
+    values: ['setting', 'values'] as const,
+    inboxRules: ['setting', 'inbox-rules'] as const,
+    profileRevisions: ['setting', 'profile-revisions'] as const,
+  },
   google: {
     status: ['google', 'status'] as const,
     outbox: ['google', 'outbox'] as const,

@@ -16,6 +16,8 @@ def extract_structured[T: BaseModel](
     model: str | None = None,
     effort: str = "low",
     max_tokens: int = 1024,
+    timeout: float | None = None,
+    stream: bool = False,
     client: ClaudeClient | None = None,
 ) -> T | None:
     """Trả đối tượng đã kiểm, hoặc None khi bị từ chối, bị cắt hoặc không đọc được."""
@@ -28,7 +30,7 @@ def extract_structured[T: BaseModel](
     }
     if system:
         params["system"] = system
-    res = client.parse(params, output_model, purpose=purpose, user_id=user_id)
+    res = client.parse(params, output_model, purpose=purpose, user_id=user_id, timeout=timeout, stream=stream)
     if res.stop_reason in ("refusal", "max_tokens") or res.parsed is None:
         return None
     parsed = res.parsed

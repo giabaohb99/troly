@@ -1,45 +1,68 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, Cloud, Coins, Download, FileText, Loader2, LogOut, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
+import { BellRing, ChevronRight, Cloud, Coins, Download, FileText, History, Inbox, Loader2, LogOut, RefreshCw, Route, ShieldCheck, Smartphone } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getAppVersion } from '@/core/config'
 import { canInstallApk, startApkDownload } from '@/core/native/update'
 import { useLogout, useSession } from '@/modules/auth/hooks/use-session'
-import { getCostStatus, getProfile, listDevices } from '@/modules/setting/api/setting-api'
+import { getCostStatus, getProfile } from '@/modules/setting/api/setting-api'
+import { DeviceList } from '@/modules/setting/components/device-list'
 import { ProfileDialog } from '@/modules/setting/components/profile-dialog'
+import { ProfileHistoryDialog } from '@/modules/setting/components/profile-history-dialog'
+import { usePatchSettings, useSettings } from '@/modules/setting/hooks/use-settings'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { PageHeader } from '@/shared/components/page-header'
 import { needsReconnect, useGoogleStatus } from '@/shared/hooks/use-google-status'
 import { useRelease } from '@/shared/hooks/use-release'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
-import { formatDayTitle, formatTime, formatUsd, toDateKey } from '@/shared/utils/format'
+import { formatUsd } from '@/shared/utils/format'
+import { cn } from '@/shared/utils/cn'
 
-function Section({ icon: Icon, title, children }: { icon: typeof Coins; title: string; children: ReactNode }) {
+const REMIND_OPTIONS = [0, 5, 15, 30, 60]
+
+function Section({ icon: Icon, title, children, action }: { icon: typeof Coins; title: string; children: ReactNode; action?: ReactNode }) {
   return (
     <section className="rounded-2xl border bg-card p-4">
       <h2 className="mb-3 flex items-center gap-2 font-semibold">
         <Icon className="size-4 text-primary" />
-        {title}
+        <span className="flex-1">{title}</span>
+        {action}
       </h2>
       {children}
     </section>
   )
 }
 
-// Cài đặt Phase 1 (31 mục 3.5): hồ sơ lõi, chi phí AI, phiên bản, thiết bị, đăng xuất.
+function LinkRow({ icon: Icon, title, text, warn, onClick }: { icon: typeof Coins; title: string; text: string; warn?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+      <Icon className="size-5 shrink-0 text-primary" />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">{title}</span>
+        <span className={cn('block truncate text-sm', warn ? 'text-warning' : 'text-muted-foreground')}>{text}</span>
+      </span>
+      <ChevronRight className="size-4 text-muted-foreground" />
+    </button>
+  )
+}
+
+// Cài đặt đầy đủ (31 mục 3.5): các màn con, hồ sơ lõi và bản cũ, nhắc mặc định, chi phí AI, phiên bản, thiết bị, đăng xuất.
 export function SettingsPage() {
   const navigate = useNavigate()
   const session = useSession()
   const logout = useLogout()
   const profile = useQuery({ queryKey: queryKeys.memory.profile, queryFn: getProfile })
   const cost = useQuery({ queryKey: queryKeys.chat.status, queryFn: getCostStatus, staleTime: 60_000 })
-  const devices = useQuery({ queryKey: queryKeys.device.list, queryFn: listDevices })
   const release = useRelease()
   const google = useGoogleStatus()
+  const settings = useSettings()
+  const patch = usePatchSettings()
   const [profileOpen, setProfileOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const version = getAppVersion()
+  const remind = settings.data?.['calendar.default_remind_minutes']?.[0] ?? null
 
   const checkUpdate = async () => {
     const result = await release.refetch()
@@ -47,46 +70,72 @@ export function SettingsPage() {
     else if (!result.data?.update_available) toast.success('Đang dùng bản mới nhất')
   }
 
+  const googleText = !google.data
+    ? 'Lịch và việc'
+    : !google.data.connected
+      ? 'Chưa kết nối'
+      : needsReconnect(google.data)
+        ? 'Cần kết nối lại'
+        : google.data.failed_outbox_count
+          ? `${google.data.email} · ${google.data.failed_outbox_count} lỗi đồng bộ`
+          : (google.data.email ?? 'Đã kết nối')
+
   return (
     <div className="flex flex-col gap-4 pb-8">
       <PageHeader title="Cài đặt" subtitle={session.data ? `${session.data.name} · ${session.data.email}` : undefined} />
 
-      <button type="button" onClick={() => navigate('/thiet-lap')} className="flex items-center gap-3 rounded-2xl border bg-card p-4 text-left">
-        <ShieldCheck className="size-5 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold">Thiết lập máy</span>
-          <span className="block text-sm text-muted-foreground">Quyền đọc thông báo, pin, Samsung, app được nghe</span>
-        </span>
-        <ChevronRight className="size-4 text-muted-foreground" />
-      </button>
+      <div className="divide-y rounded-2xl border bg-card">
+        <LinkRow icon={ShieldCheck} title="Thiết lập máy" text="Quyền, pin, Samsung, app được nghe, kiểm tra máy" onClick={() => navigate('/thiet-lap')} />
+        <LinkRow icon={Cloud} title="Kết nối Google" text={googleText} warn={needsReconnect(google.data) || !!google.data?.failed_outbox_count} onClick={() => navigate('/cai-dat/google')} />
+        <LinkRow icon={Inbox} title="Hộp tin" text="Người quan trọng, từ khóa gấp, quyền đọc của trợ lý" onClick={() => navigate('/cai-dat/hop-tin')} />
+        <LinkRow icon={Route} title="Lịch trình" text="Luật đánh giá chuyến, giờ phà quen" onClick={() => navigate('/cai-dat/lich-trinh')} />
+      </div>
 
-      <button type="button" onClick={() => navigate('/cai-dat/google')} className="flex items-center gap-3 rounded-2xl border bg-card p-4 text-left">
-        <Cloud className="size-5 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold">Kết nối Google</span>
-          <span className={needsReconnect(google.data) || google.data?.failed_outbox_count ? 'block text-sm text-warning' : 'block text-sm text-muted-foreground'}>
-            {!google.data
-              ? 'Lịch và việc'
-              : !google.data.connected
-                ? 'Chưa kết nối'
-                : needsReconnect(google.data)
-                  ? 'Cần kết nối lại'
-                  : google.data.failed_outbox_count
-                    ? `${google.data.email} · ${google.data.failed_outbox_count} lỗi đồng bộ`
-                    : google.data.email}
-          </span>
-        </span>
-        <ChevronRight className="size-4 text-muted-foreground" />
-      </button>
-
-      <Section icon={FileText} title="Hồ sơ lõi">
+      <Section
+        icon={FileText}
+        title="Hồ sơ lõi"
+        action={
+          profile.data && (
+            <Button size="sm" variant="ghost" onClick={() => setHistoryOpen(true)}>
+              <History className="size-4" />
+              Bản cũ
+            </Button>
+          )
+        }
+      >
         <button type="button" disabled={!profile.data} onClick={() => setProfileOpen(true)} className="flex w-full items-center gap-2 text-left text-sm">
           <span className="line-clamp-2 min-w-0 flex-1 text-muted-foreground">{profile.data ? profile.data.content || 'Chưa có gì. Bấm để viết.' : profile.isError ? 'Không tải được.' : 'Đang tải...'}</span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </Section>
 
-      <Section icon={Coins} title="Chi phí AI">
+      <Section icon={BellRing} title="Nhắc mặc định">
+        <p className="mb-2 text-sm text-muted-foreground">Sự kiện tạo ở app được nhắc trước bao lâu.</p>
+        <div className="flex flex-wrap gap-2">
+          {REMIND_OPTIONS.map((minutes) => (
+            <button
+              key={minutes}
+              type="button"
+              disabled={!settings.data || patch.isPending}
+              onClick={() => patch.mutate({ 'calendar.default_remind_minutes': [minutes] })}
+              className={cn('rounded-full border px-3 py-1 text-sm', remind === minutes && 'border-primary bg-primary/15 text-primary')}
+            >
+              {minutes === 0 ? 'Đúng giờ' : `${minutes} phút`}
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        icon={Coins}
+        title="Chi phí AI"
+        action={
+          <Button size="sm" variant="ghost" onClick={() => navigate('/cai-dat/chi-phi')}>
+            Chi tiết
+            <ChevronRight className="size-4" />
+          </Button>
+        }
+      >
         {cost.data ? (
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
@@ -135,20 +184,7 @@ export function SettingsPage() {
       </Section>
 
       <Section icon={Smartphone} title="Thiết bị">
-        <ul className="flex flex-col gap-2 text-sm">
-          {(devices.data?.items ?? []).map((device) => (
-            <li key={device.id} className="flex justify-between gap-2">
-              <span>
-                {device.name}
-                {device.model ? ` · ${device.model}` : ''}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {device.last_seen_at ? `${formatDayTitle(toDateKey(device.last_seen_at)).split(', ')[1]} ${formatTime(device.last_seen_at)}` : ''}
-              </span>
-            </li>
-          ))}
-          {devices.isSuccess && devices.data.items.length === 0 && <li className="text-muted-foreground">Chưa có điện thoại nào đăng ký.</li>}
-        </ul>
+        <DeviceList />
       </Section>
 
       <ConfirmDialog
@@ -165,6 +201,7 @@ export function SettingsPage() {
       />
 
       {profile.data && profileOpen && <ProfileDialog profile={profile.data} open onOpenChange={setProfileOpen} />}
+      {profile.data && historyOpen && <ProfileHistoryDialog profile={profile.data} open onOpenChange={setHistoryOpen} />}
     </div>
   )
 }

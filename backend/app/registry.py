@@ -13,7 +13,9 @@ ENABLED_MODULES = [
     "inbox",
     "calendar",
     "task",
+    "trip",
     "search",
+    "report",
     "system",
 ]
 # Tích hợp ngoài ở app/integrations/<tên>/; không import modules, module cài store cho nó (10 mục 3.4).

@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { App as CapApp } from '@capacitor/app'
-import { ChartColumn, Route as RouteIcon } from 'lucide-react'
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { ApiError } from '@/core/api/api-error'
@@ -12,7 +11,6 @@ import { RequireAuth } from '@/modules/auth/components/require-auth'
 import { LoginPage } from '@/modules/auth/pages/login-page'
 import { ChatPage } from '@/modules/chat/pages/chat-page'
 import { queryKeys } from '@/shared/constants/query-keys'
-import { ComingSoon } from '@/shared/components/coming-soon'
 import { Toaster } from '@/shared/ui/sonner'
 
 const ExpensePage = lazyPage(() => import('@/modules/expense/pages/expense-page').then((m) => m.ExpensePage))
@@ -23,6 +21,12 @@ const ConversationPage = lazyPage(() => import('@/modules/inbox/pages/conversati
 const DeviceSetupPage = lazyPage(() => import('@/modules/device/pages/device-setup-page').then((m) => m.DeviceSetupPage))
 const CalendarPage = lazyPage(() => import('@/modules/calendar/pages/calendar-page').then((m) => m.CalendarPage))
 const GooglePage = lazyPage(() => import('@/modules/setting/pages/google-page').then((m) => m.GooglePage))
+const AiCostPage = lazyPage(() => import('@/modules/setting/pages/ai-cost-page').then((m) => m.AiCostPage))
+const InboxSettingsPage = lazyPage(() => import('@/modules/setting/pages/inbox-settings-page').then((m) => m.InboxSettingsPage))
+const TripSettingsPage = lazyPage(() => import('@/modules/setting/pages/trip-settings-page').then((m) => m.TripSettingsPage))
+const TripListPage = lazyPage(() => import('@/modules/trip/pages/trip-list-page').then((m) => m.TripListPage))
+const TripPage = lazyPage(() => import('@/modules/trip/pages/trip-page').then((m) => m.TripPage))
+const ReportPage = lazyPage(() => import('@/modules/report/pages/report-page').then((m) => m.ReportPage))
 
 const isAuthError = (error: unknown) => error instanceof ApiError && error.status === 401
 
@@ -83,8 +87,12 @@ export function App() {
                 <Route path="lich" element={<CalendarPage />} />
                 <Route path="lich/su-kien/:eventId" element={<CalendarPage />} />
                 <Route path="lich/viec/:taskId" element={<CalendarPage />} />
-                <Route path="lich-trinh" element={<ComingSoon title="Lịch trình" icon={RouteIcon} phase={4} text="Nhập lịch trình, đánh giá rủi ro và mở Google Maps." />} />
-                <Route path="bao-cao" element={<ComingSoon title="Báo cáo" icon={ChartColumn} phase={4} text="Bảng số liệu chi tiêu, lịch, hộp tin, chi phí AI." />} />
+                <Route path="cai-dat/chi-phi" element={<AiCostPage />} />
+                <Route path="cai-dat/hop-tin" element={<InboxSettingsPage />} />
+                <Route path="cai-dat/lich-trinh" element={<TripSettingsPage />} />
+                <Route path="lich-trinh" element={<TripListPage />} />
+                <Route path="lich-trinh/:tripId" element={<TripPage />} />
+                <Route path="bao-cao" element={<ReportPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

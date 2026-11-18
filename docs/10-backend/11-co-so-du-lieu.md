@@ -108,6 +108,7 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`. Sự kiện m�
 | `trip.night_start`, `trip.night_end` | `18:00`, `05:30` |
 | `trip.ride_break_minutes` | `90` |
 | `trip.speed_factor` | `1.2` |
+| `trip.ferries` | `[]`; tối đa 10 bến `{name, place_query, first_time (HH:MM), last_time (HH:MM), hotline, note, updated_at (YYYY-MM-DD)}`, giờ phà quen cho luật R3 (41 mục 5.4) |
 
 Bỏ `app.lock_enabled`, `app.lock_after_minutes` (QĐ-27 bỏ khóa vân tay).
 
@@ -336,7 +337,7 @@ Chỉ mục `(user_id, spent_at DESC) WHERE deleted_at IS NULL`; `(user_id) WHER
 | dedupe_hash | text NN | UQ `(user_id, dedupe_hash)` |
 | search_vector | tsvector | Từ `sender`, `conversation_title`, `subject`, `text` |
 
-UQ một phần `(user_id, external_id) WHERE source = 'gmail'`. Chỉ mục `(user_id, conversation_key, posted_at DESC)`; `(user_id, status, importance, posted_at DESC)`; GIN `search_vector`.
+Nhóm Zalo không đặt `conversation_title`, `is_group_conversation`: tiêu đề `Nhóm: <tên>` hoặc `Group: <tên>` là nhóm, `conversation_title` lấy phần sau tiền tố, người gửi lấy từ `messages[].sender`, thiếu thì tách `Tên: nội dung` trong chữ. Tiêu đề trùng tên app (`Zalo`, `Telegram`, `Messenger`) là thông báo của chính app, không vào hộp tin. Mẫu ở `testdata/inbox-notifications/`; `python -m app.cli export-inbox-samples` xuất dạng thông báo thật đã thay tên và nội dung, `reprocess-inbox` đọc lại hộp tin từ `tab_device_event` sau khi sửa luật. UQ một phần `(user_id, external_id) WHERE source = 'gmail'`. Chỉ mục `(user_id, conversation_key, posted_at DESC)`; `(user_id, status, importance, posted_at DESC)`; GIN `search_vector`.
 
 **`tab_inbox_rule`**: (cột chung); `kind` CK `vip_sender`, `urgent_keyword`, `muted_sender`, `muted_keyword`, `muted_app`, `private_conversation`; `value text NN`; `app text`; `contact_id FK SET NULL`. UQ `(user_id, kind, lower(value), coalesce(app,''))`. `private_conversation`: tin vào hộp tin nhưng không gửi Claude.
 

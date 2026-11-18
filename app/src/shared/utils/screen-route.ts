@@ -33,8 +33,12 @@ export function screenToRoute(screen: string, params: Record<string, string | nu
     case 'settings_device_check':
       return '/thiet-lap'
     case 'trip_list':
-    case 'trip_detail':
       return '/lich-trinh'
+    case 'trip_detail':
+      if (!p.trip_id) return '/lich-trinh'
+      return p.day_no ? `/lich-trinh/${p.trip_id}?ngay=${p.day_no}` : `/lich-trinh/${p.trip_id}`
+    case 'settings_ai_cost':
+      return '/cai-dat/chi-phi'
     case 'report':
       return '/bao-cao'
     default:

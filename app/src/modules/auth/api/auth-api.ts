@@ -2,6 +2,7 @@ import { apiGet, apiPost, ensureAccessToken } from '@/core/api/http-client'
 import { clearSession, saveTokens, type Tokens } from '@/core/auth/session'
 import { getAppVersion, isNative } from '@/core/config'
 import { Secure } from '@/core/native/secure'
+import { STORAGE_KEYS } from '@/shared/constants/storage-keys'
 
 export interface User {
   id: number
@@ -50,7 +51,7 @@ async function registerDeviceOnce(): Promise<void> {
   const device = describeDevice()
   const version = getAppVersion()
   try {
-    const data = await apiPost<{ device: unknown; device_token: string }>('/devices', {
+    const data = await apiPost<{ device: { id?: number } | null; device_token: string }>('/devices', {
       name: device.name,
       model: device.model,
       manufacturer: device.manufacturer,
@@ -59,6 +60,8 @@ async function registerDeviceOnce(): Promise<void> {
       app_version_name: version.name,
     })
     await Secure.set({ key: 'device_token', value: data.device_token })
+    // Để màn Cài đặt biết dòng nào là máy này (không cho tự thu hồi nhầm).
+    if (typeof data.device?.id === 'number') localStorage.setItem(STORAGE_KEYS.currentDeviceId, String(data.device.id))
   } catch {
     // Không chặn đăng nhập.
   }

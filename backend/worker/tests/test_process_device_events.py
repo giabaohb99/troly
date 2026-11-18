@@ -145,3 +145,35 @@ def test_reminder_done_completes_task(db, user, device):
     db.refresh(ev)
     assert (ev.status, ev.result_kind, ev.result_id) == ("done", "task_updated", task["id"])
     assert task_service.get_task(db, user, task["id"])["status"] == "done"
+
+
+def test_reprocess_inbox_and_export_structure_only(db, user, device, tmp_path):
+    from app import cli
+
+    ev = add_event(
+        db,
+        device,
+        "com.zing.zalo",
+        {
+            "title": "Nhóm: Bạn cũ",
+            "text": "Tuấn: đi cafe",
+            "messages": [{"sender": None, "text": "Tuấn: đi cafe"}],
+        },
+        NOW,
+    )
+    device_events.process_device_events()
+    db.execute(text("UPDATE tab_inbox_message SET sender = 'sai', conversation_title = 'sai'"))
+    assert cli.main(["reprocess-inbox"]) == 0
+    [row] = db.query(InboxMessage).all()
+    assert (row.sender, row.conversation_title, row.is_group, row.device_event_id) == (
+        "Tuấn",
+        "Bạn cũ",
+        True,
+        ev.id,
+    )
+
+    out = tmp_path / "inbox.yaml"
+    assert cli.main(["export-inbox-samples", "--out", str(out)]) == 0
+    [item] = yaml.safe_load(out.read_text(encoding="utf-8"))
+    assert item["payload"]["title"] == "Nhóm: Người 1" and item["payload"]["text"] == "Người 2: (nội dung)"
+    assert "cafe" not in out.read_text(encoding="utf-8") and "Tuấn" not in out.read_text(encoding="utf-8")

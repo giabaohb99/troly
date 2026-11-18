@@ -5,6 +5,8 @@ import logging
 import signal
 import threading
 
+import psycopg
+
 from app.core import clock
 from app.core.config import get_settings
 from app.core.db import SessionLocal, get_engine
@@ -23,16 +25,28 @@ def handle_stop(signum, frame) -> None:
 
 
 class Waker:
-    """LISTEN troly_wake trên một kết nối riêng; mất kết nối thì chỉ còn vòng quét định kỳ."""
+    """LISTEN troly_wake trên một kết nối psycopg riêng, ngoài pool của SQLAlchemy; mất kết nối thì chỉ
+    còn vòng quét định kỳ.
+
+    Không lấy từ pool: kết nối autocommit lọt về pool làm session sau không có BEGIN, `begin_nested()`
+    lỗi SAVEPOINT (lỗi 19/11 trên VPS, bài kiểm worker/tests/test_worker_engine.py).
+    """
 
     def __init__(self) -> None:
         self.conn = None
 
     def _connect(self) -> None:
-        raw = get_engine().raw_connection()
-        self.conn = raw.driver_connection
-        self.conn.autocommit = True
+        url = get_engine().url.set(drivername="postgresql").render_as_string(hide_password=False)
+        self.conn = psycopg.connect(url, autocommit=True, connect_timeout=10)
         self.conn.execute("LISTEN troly_wake")
+
+    def close(self) -> None:
+        if self.conn is not None:
+            try:
+                self.conn.close()
+            except Exception:
+                pass
+            self.conn = None
 
     def wait(self, seconds: int) -> None:
         """Chờ theo từng nhịp 5 giây để SIGTERM thoát kịp trong 30 giây Docker cho."""
@@ -47,7 +61,7 @@ class Waker:
                 remaining -= step
         except Exception:
             log.warning("Mất kết nối LISTEN, dùng vòng quét")
-            self.conn = None
+            self.close()
             stop_event.wait(seconds)
 
 

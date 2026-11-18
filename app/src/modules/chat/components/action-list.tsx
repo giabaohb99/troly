@@ -4,6 +4,7 @@ import { Brain, ChevronRight, CircleCheck, ExternalLink, FileText, Mail, Map, Ma
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
+import { Maps, placeUrl } from '@/core/native/maps'
 import { openExternal } from '@/core/native/open-external'
 import { restoreProfileRevision, restoreResources } from '@/modules/chat/api/chat-api'
 import { ConfirmCard } from '@/shared/components/confirm-card'
@@ -24,6 +25,15 @@ const LINK_ICONS = { file: FileText, gmail: Mail, sheet: Sheet, web: ExternalLin
 
 async function openOrWarn(url: string) {
   if (!(await openExternal(url))) toast.error('Link không an toàn, không mở.')
+}
+
+// Link bản đồ mở bằng app Google Maps nếu có (30 mục 3.12).
+async function openMap(open: () => Promise<unknown>) {
+  try {
+    await open()
+  } catch {
+    toast.error('Không mở được bản đồ.')
+  }
 }
 
 function UndoLine({ action }: { action: Extract<ChatAction, { type: 'undo' }> }) {
@@ -129,14 +139,14 @@ export function ActionList({ actions, pendingActions, onChoice, disabled }: Acti
           }
           case 'open_map_navigation':
             return (
-              <Button key={action.id} variant="outline" className="w-full justify-start" onClick={() => void openOrWarn(action.fallback_url)}>
+              <Button key={action.id} variant="outline" className="w-full justify-start" onClick={() => void openMap(() => Maps.navigate({ lat: action.lat, lng: action.lng, query: action.query, mode: action.mode, avoid: action.avoid, fallbackUrl: action.fallback_url }))}>
                 <Navigation className="size-4" />
                 {action.label}
               </Button>
             )
           case 'open_map_directions':
             return action.urls.map((url, index) => (
-              <Button key={`${action.id}-${index}`} variant="outline" className="w-full justify-start" onClick={() => void openOrWarn(url)}>
+              <Button key={`${action.id}-${index}`} variant="outline" className="w-full justify-start" onClick={() => void openMap(() => Maps.openUrl({ url }))}>
                 <Map className="size-4" />
                 {action.segment_labels[index] ?? action.label}
               </Button>
@@ -147,11 +157,7 @@ export function ActionList({ actions, pendingActions, onChoice, disabled }: Acti
                 key={action.id}
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  void openOrWarn(
-                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(action.query)}${action.place_id ? `&query_place_id=${encodeURIComponent(action.place_id)}` : ''}`,
-                  )
-                }
+                onClick={() => void openMap(() => Maps.openUrl({ url: placeUrl(action.query, action.place_id) }))}
               >
                 <MapPin className="size-4" />
                 {action.label}

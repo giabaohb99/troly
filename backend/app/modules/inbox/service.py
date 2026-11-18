@@ -24,6 +24,12 @@ HIDDEN_TEXT = "(Nội dung bị ẩn)"
 MARK_MAX = 500
 AI_TEXT_MAX = 500
 _PHONE = re.compile(r"(?<!\d)(?:\+?84|0)\d{6,8}(\d{3})(?!\d)")
+# Zalo đặt tên nhóm vào tiêu đề kèm tiền tố, không đặt conversation_title hay is_group_conversation.
+_GROUP_TITLE = re.compile(r"^\s*(?:Nhóm|Nhom|Group)\s*:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
+# Tin trong nhóm thiếu người gửi: chữ có dạng `Tên: nội dung`.
+_NAME_PREFIX = re.compile(r"^(?P<name>[^:\n]{1,60}?):\s+(?P<body>.+)$", re.DOTALL)
+# Tiêu đề trùng tên app là thông báo của chính app (tóm tắt, nhắc), không phải tin của ai.
+SYSTEM_TITLES = frozenset({"zalo", "telegram", "messenger", "facebook", "tin nhan", "messages"})
 
 
 def fold(value: str | None) -> str:
@@ -148,16 +154,27 @@ def ingest_notification(
     if _match(rules, "muted_app", app, equals=(app, fold(app_package))):
         return {**ignored, "reason": "App đã tắt tiếng"}
 
+    title = unicodedata.normalize("NFC", payload.get("title") or "").strip()
     is_group = bool(payload.get("is_group_conversation"))
     conv_title = payload.get("conversation_title") or None
+    if fold(title) in SYSTEM_TITLES and not conv_title and app != "sms":
+        return {**ignored, "reason": "Thông báo của chính app"}
+    group_label = None
+    if match := _GROUP_TITLE.match(title):
+        is_group, group_label = True, title
+        conv_title = conv_title or match.group("name")
     hidden = bool(payload.get("hidden_content"))
-    items = payload.get("messages") or [
-        {"sender": payload.get("title"), "text": payload.get("text"), "at": None}
-    ]
+    items = payload.get("messages") or [{"sender": title, "text": payload.get("text"), "at": None}]
     created_ids, muted = [], 0
     for item in items:
-        sender = item.get("sender") or (None if is_group else payload.get("title")) or conv_title
-        body = (item.get("text") or "").strip() or (HIDDEN_TEXT if hidden else "")
+        sender = item.get("sender")
+        if sender and (sender == group_label or (is_group and fold(sender) in SYSTEM_TITLES)):
+            sender = None
+        body = (item.get("text") or "").strip()
+        if is_group and not sender and (named := _NAME_PREFIX.match(body)):
+            sender, body = named.group("name").strip(), named.group("body").strip()
+        sender = sender or (None if is_group else title or None) or conv_title
+        body = body or (HIDDEN_TEXT if hidden else "")
         if not body:
             continue
         sender_key = f"{app}:{fold(sender) or '?'}"

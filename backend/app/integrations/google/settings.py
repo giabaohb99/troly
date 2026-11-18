@@ -16,6 +16,7 @@ class GoogleSettings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""
     google_sync_min_seconds: int = 300
+    google_maps_api_key: str = ""
     google_timeout_seconds: float = 10.0
 
     @property

@@ -1,0 +1,75 @@
+# Mẫu thông báo Zalo tự soạn theo dạng thấy trên Galaxy S25+ (18/11/2026); tên, nội dung đều bịa.
+# payload đúng như plugin gửi (11 mục 3.5). expect.messages là các dòng tab_inbox_message cần có;
+# expect.ignored: true là không vào hộp tin.
+- id: zalo-nhom-001
+  note: "Nhóm: tiêu đề có tiền tố Nhóm:, conversation_title rỗng, is_group_conversation false, người gửi nằm trong chữ"
+  package: com.zing.zalo
+  payload:
+    title: "Nhóm: Gia đình nhà mình"
+    text: "Minh: Ok cả nhà"
+    conversation_title: null
+    is_group_conversation: false
+    messages:
+      - { sender: "Nhóm: Gia đình nhà mình", text: "Lan: Tối nay ăn gì", at: "2026-11-18T19:00:05+07:00" }
+      - { sender: null, text: "Minh: Ok cả nhà", at: "2026-11-18T19:01:10+07:00" }
+      - { sender: "Hùng", text: "Lẩu nhé", at: "2026-11-18T19:02:00+07:00" }
+  expect:
+    messages:
+      - { sender: "Lan", text: "Tối nay ăn gì", conversation_title: "Gia đình nhà mình", is_group: true }
+      - { sender: "Minh", text: "Ok cả nhà", conversation_title: "Gia đình nhà mình", is_group: true }
+      - { sender: "Hùng", text: "Lẩu nhé", conversation_title: "Gia đình nhà mình", is_group: true }
+
+- id: zalo-nhom-002
+  note: "Không có messages[]: người gửi tách từ chữ Tên: nội dung"
+  package: com.zing.zalo
+  payload:
+    title: "Nhóm: Bạn cũ cấp 3"
+    text: "Tuấn: Cuối tuần đi cafe không"
+    is_group_conversation: false
+    messages: []
+  expect:
+    messages:
+      - { sender: "Tuấn", text: "Cuối tuần đi cafe không", conversation_title: "Bạn cũ cấp 3", is_group: true }
+
+- id: zalo-group-en-001
+  note: "Máy để tiếng Anh: tiền tố Group:"
+  package: com.zing.zalo
+  payload:
+    title: "Group: Team dự án"
+    text: "Hoa: Mai họp 9h"
+    messages:
+      - { sender: "Hoa", text: "Mai họp 9h", at: "2026-11-18T20:00:00+07:00" }
+  expect:
+    messages:
+      - { sender: "Hoa", text: "Mai họp 9h", conversation_title: "Team dự án", is_group: true }
+
+- id: zalo-mot-mot-001
+  note: "Chat một một: không tách Tên: trong chữ"
+  package: com.zing.zalo
+  payload:
+    title: "Lan"
+    text: "Chú ý: mai nghỉ học"
+    messages:
+      - { sender: "Lan", text: "Chú ý: mai nghỉ học", at: "2026-11-18T21:00:00+07:00" }
+  expect:
+    messages:
+      - { sender: "Lan", text: "Chú ý: mai nghỉ học", conversation_title: "Lan", is_group: false }
+
+- id: zalo-he-thong-001
+  note: "Thông báo của chính Zalo"
+  package: com.zing.zalo
+  payload:
+    title: "Zalo"
+    text: "Bạn có 3 tin nhắn mới"
+    messages: []
+  expect: { ignored: true }
+
+- id: zalo-he-thong-002
+  note: "Tóm tắt nhiều cuộc trò chuyện"
+  package: com.zing.zalo
+  payload:
+    title: "Zalo"
+    text: "5 tin nhắn mới từ 2 cuộc trò chuyện"
+    messages:
+      - { sender: "Zalo", text: "5 tin nhắn mới từ 2 cuộc trò chuyện", at: null }
+  expect: { ignored: true }

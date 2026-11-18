@@ -1,0 +1,72 @@
+import type { Risk, Stop, TripBrief } from '@/modules/trip/types/trip'
+
+// "2 giờ 10", "45 phút".
+export function formatDuration(minutes: number | null | undefined): string | null {
+  if (minutes === null || minutes === undefined || minutes < 0) return null
+  const m = Math.round(minutes)
+  if (m < 60) return `${m} phút`
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  return rest ? `${h} giờ ${String(rest).padStart(2, '0')}` : `${h} giờ`
+}
+
+// "85 km", "1,5 km".
+export function formatKm(km: number | null | undefined): string | null {
+  if (km === null || km === undefined) return null
+  return `${km >= 10 ? Math.round(km) : km.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} km`
+}
+
+// Rủi ro theo điểm, đỏ trước vàng.
+export function risksByStop(risks: Risk[]): Map<number, Risk[]> {
+  const map = new Map<number, Risk[]>()
+  for (const risk of risks) {
+    if (risk.stop_id === null) continue
+    map.set(risk.stop_id, [...(map.get(risk.stop_id) ?? []), risk])
+  }
+  for (const list of map.values()) list.sort((a, b) => Number(b.level === 'red') - Number(a.level === 'red'))
+  return map
+}
+
+// Gom điểm phụ ngay dưới điểm chính của nó, giữ thứ tự seq; điểm phụ không còn điểm chính thì đứng như điểm thường.
+export function groupStops(stops: Stop[]): Stop[] {
+  const sorted = [...stops].sort((a, b) => a.seq - b.seq)
+  const ids = new Set(sorted.map((s) => s.id))
+  const isChild = (s: Stop) => s.parent_stop_id !== null && ids.has(s.parent_stop_id)
+  const result: Stop[] = []
+  for (const stop of sorted) {
+    if (isChild(stop)) continue
+    result.push(stop, ...sorted.filter((s) => isChild(s) && s.parent_stop_id === stop.id))
+  }
+  return result
+}
+
+// Điểm có Dẫn đường: điểm chính hoặc đi qua đã có tọa độ.
+export function canNavigate(stop: Stop): boolean {
+  return stop.lat !== null && stop.lng !== null && (stop.role === 'main' || stop.role === 'via')
+}
+
+// Chuyến đang đi đứng đầu, rồi chuyến sắp tới (gần nhất trước), rồi chuyến đã qua (mới nhất trước) (31 mục 3.5).
+export function sortTrips(trips: TripBrief[], todayKey: string): TripBrief[] {
+  const rank = (t: TripBrief) => {
+    const start = t.start_date ?? '9999-12-31'
+    const end = t.end_date ?? start
+    if (start <= todayKey && todayKey <= end) return 0
+    if (start > todayKey) return 1
+    return 2
+  }
+  return [...trips].sort((a, b) => {
+    const ra = rank(a)
+    const rb = rank(b)
+    if (ra !== rb) return ra - rb
+    const sa = a.start_date ?? '9999-12-31'
+    const sb = b.start_date ?? '9999-12-31'
+    return ra === 2 ? sb.localeCompare(sa) : sa.localeCompare(sb)
+  })
+}
+
+// Ngày mở mặc định: hôm nay nếu đang trong chuyến, không thì ngày 1.
+export function defaultDayNo(days: { day_no: number; date: string | null }[], todayKey: string): number {
+  return days.find((d) => d.date === todayKey)?.day_no ?? days[0]?.day_no ?? 1
+}
+
+export const TRAVEL_MODE_LABEL = { motorbike: 'Xe máy', car: 'Ô tô', walk: 'Đi bộ' } as const

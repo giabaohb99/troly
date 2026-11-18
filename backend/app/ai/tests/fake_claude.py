@@ -187,6 +187,11 @@ class FakeClaude:
         self.requests: list[dict] = []
         self.messages = _Messages(self, beta=False)
         self.beta = _Beta(self)
+        self.timeouts: list[float] = []
+
+    def with_options(self, *, timeout: float | None = None, **_):
+        self.timeouts.append(timeout)
+        return self
 
 
 def text_reply(text: str, **kw) -> dict:

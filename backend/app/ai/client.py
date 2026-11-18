@@ -125,11 +125,12 @@ class ClaudeClient:
             )
         return self._sdk
 
-    def _api_and_params(self, params: dict) -> tuple[Any, dict]:
+    def _api_and_params(self, params: dict, timeout: float | None = None) -> tuple[Any, dict]:
         """Sonnet, Opus đi đường beta có dự phòng phía máy chủ; Haiku đi đường thường."""
+        sdk = self.sdk.with_options(timeout=timeout) if timeout else self.sdk
         if supports_fallbacks(params["model"]):
-            return self.sdk.beta.messages, {**params, "betas": [FALLBACK_BETA], "fallbacks": "default"}
-        return self.sdk.messages, params
+            return sdk.beta.messages, {**params, "betas": [FALLBACK_BETA], "fallbacks": "default"}
+        return sdk.messages, params
 
     def _finish(self, message: Any, meta: dict, started: float, parsed: Any = None) -> ClaudeResult:
         usage = usage_from_response(_get(message, "usage"))
@@ -253,13 +254,27 @@ class ClaudeClient:
             raise self._fail(meta, exc, started) from exc
         return self._finish(message, meta, started)
 
-    def parse(self, params: dict, output_format: type, *, purpose: str, **meta_kw) -> ClaudeResult:
-        """Đầu ra có cấu trúc bằng `messages.parse`; `result.parsed` là đối tượng Pydantic hoặc None."""
+    def parse(
+        self,
+        params: dict,
+        output_format: type,
+        *,
+        purpose: str,
+        timeout: float | None = None,
+        stream: bool = False,
+        **meta_kw,
+    ) -> ClaudeResult:
+        """Đầu ra có cấu trúc bằng `messages.parse`; `result.parsed` là đối tượng Pydantic hoặc None.
+        `timeout` (giây) cho việc dài như bóc tách cả tệp lịch trình; mặc định theo AI_TIMEOUT_SECONDS."""
         meta = self._meta(params, purpose, **meta_kw)
         started = time.monotonic()
         try:
-            api, full = self._api_and_params(params)
-            message = api.parse(**full, output_format=output_format)
+            api, full = self._api_and_params(params, timeout)
+            if stream:  # SDK đòi stream khi max_tokens lớn (đầu ra dài như bóc tách cả tệp lịch trình)
+                with api.stream(**full, output_format=output_format) as s:
+                    message = s.get_final_message()
+            else:
+                message = api.parse(**full, output_format=output_format)
         except Exception as exc:
             raise self._fail(meta, exc, started) from exc
         parsed = _get(message, "parsed_output")

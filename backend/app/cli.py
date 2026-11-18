@@ -148,6 +148,137 @@ def cmd_export_bank_samples(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_inbox_samples(args: argparse.Namespace) -> int:
+    """Xuất dạng thông báo tin nhắn thật để rút luật (70 mục 3.3), KHÔNG giữ nội dung tin người khác.
+
+    Mọi tên thay bằng `Người N` (cùng tên cùng số), mọi nội dung thay bằng `(nội dung)`; chỉ giữ tiền tố
+    tiêu đề (`Nhóm:`, `Group:`), dạng `Tên: nội dung`, cờ, số tin trong messages[]. Ghi YAML bằng chuỗi JSON.
+    """
+    import json
+    import re
+    from datetime import timedelta
+
+    from sqlalchemy import text
+
+    since = clock.now() - timedelta(days=args.days)
+    with SessionLocal() as session:
+        rows = session.execute(
+            text(
+                "SELECT e.id, e.app_package, e.payload, e.posted_at FROM tab_device_event e "
+                "JOIN tab_listened_app a ON a.user_id = e.user_id AND a.package_name = e.app_package "
+                "WHERE a.purpose = 'inbox' AND e.kind = 'notification' AND e.received_at >= :since "
+                "ORDER BY e.app_package, e.posted_at"
+            ),
+            {"since": since},
+        ).all()
+    names: dict[str, str] = {}
+    prefix = re.compile(r"^\s*((?:Nhóm|Nhom|Group)\s*:\s*)(.+)$", re.IGNORECASE)
+    named = re.compile(r"^([^:\n]{1,60}?):\s+.+$", re.DOTALL)
+
+    def alias(value: str | None) -> str | None:
+        if not value:
+            return value
+        m = prefix.match(value)
+        if m:
+            return m.group(1) + alias(m.group(2))
+        if value.strip().lower() in ("zalo", "telegram", "messenger", "facebook"):
+            return value
+        return names.setdefault(value.strip(), f"Người {len(names) + 1}")
+
+    def body(value: str | None) -> str | None:
+        if not value:
+            return value
+        m = named.match(value)
+        return f"{alias(m.group(1))}: (nội dung)" if m else "(nội dung)"
+
+    lines = [
+        "# Dạng thông báo tin nhắn thật, đã thay hết tên và nội dung. Điền expect trước khi chép vào testdata/."
+    ]
+    for r in rows:
+        p = r.payload or {}
+        payload = {
+            "title": alias(p.get("title")),
+            "text": body(p.get("text")),
+            "conversation_title": alias(p.get("conversation_title")),
+            "is_group_conversation": bool(p.get("is_group_conversation")),
+            "hidden_content": bool(p.get("hidden_content")),
+            "category": p.get("category"),
+            "messages": [
+                {"sender": alias(m.get("sender")), "text": body(m.get("text")), "at": m.get("at")}
+                for m in p.get("messages") or []
+            ],
+        }
+        lines += [
+            f"- id: real-{r.app_package.rsplit('.', 1)[-1].lower()}-{r.id}",
+            f"  package: {json.dumps(r.app_package)}",
+            f"  payload: {json.dumps(payload, ensure_ascii=False)}",
+            "  expect: {}",
+            "",
+        ]
+    pathlib.Path(args.out).write_text("\n".join(lines), encoding="utf-8")
+    print(f"Đã xuất {len(rows)} thông báo vào {args.out}.")
+    return 0
+
+
+def cmd_reprocess_inbox(args: argparse.Namespace) -> int:
+    """Đọc lại tin trong hộp tin từ tab_device_event sau khi sửa luật bóc tách (tin cũ bị xóa, tạo lại;
+    trạng thái đã xem, xong của các tin đó mất). Chỉ tin đến từ thông báo, trong `--days` ngày."""
+    from datetime import timedelta
+
+    from sqlalchemy import delete, select
+
+    from app.core.context import UserContext
+    from app.core.models import User
+    from app.modules.device import service as device_service
+    from app.modules.device.models import DeviceEvent
+    from app.modules.inbox import service as inbox_service
+    from app.modules.inbox.models import InboxMessage
+
+    since = clock.now() - timedelta(days=args.days)
+    with SessionLocal() as session:
+        event_ids = sorted(
+            set(
+                session.scalars(
+                    select(InboxMessage.device_event_id).where(
+                        InboxMessage.device_event_id.is_not(None), InboxMessage.posted_at >= since
+                    )
+                )
+            )
+        )
+        removed = session.execute(
+            delete(InboxMessage).where(InboxMessage.device_event_id.in_(event_ids))
+        ).rowcount
+        created = 0
+        for ev in session.scalars(
+            select(DeviceEvent).where(DeviceEvent.id.in_(event_ids)).order_by(DeviceEvent.id)
+        ):
+            tz = session.scalar(select(User.timezone).where(User.id == ev.user_id))
+            app = device_service.resolve_listened_app(session, ev.user_id, ev.device_id, ev.app_package)
+            if app is None or app.purpose != "inbox":
+                continue
+            out = inbox_service.ingest_notification(
+                session,
+                UserContext(user_id=ev.user_id, timezone=tz),
+                parser=app.parser,
+                app_package=ev.app_package,
+                payload=ev.payload,
+                posted_at=ev.posted_at,
+                device_id=ev.device_id,
+                device_event_id=ev.id,
+            )
+            device_service.finish_event(
+                ev,
+                out["status"],
+                out["result_kind"],
+                out.get("result_id"),
+                None if out["status"] == "done" else out.get("reason"),
+            )
+            created += out.get("created", 0)
+        session.commit()
+    print(f"Đã đọc lại {len(event_ids)} thông báo: xóa {removed} tin cũ, tạo {created} tin.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import_all_models()
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -171,6 +302,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--days", type=int, default=30)
     p.add_argument("--out", default="bank-samples.yaml")
     p.set_defaults(func=cmd_export_bank_samples)
+
+    p = sub.add_parser(
+        "export-inbox-samples", help="Xuất dạng thông báo tin nhắn thật, đã thay tên và nội dung"
+    )
+    p.add_argument("--days", type=int, default=30)
+    p.add_argument("--out", default="inbox-samples.yaml")
+    p.set_defaults(func=cmd_export_inbox_samples)
+
+    p = sub.add_parser("reprocess-inbox", help="Đọc lại hộp tin từ sự kiện thiết bị sau khi sửa luật")
+    p.add_argument("--days", type=int, default=7)
+    p.set_defaults(func=cmd_reprocess_inbox)
 
     args = parser.parse_args(argv)
     return args.func(args)

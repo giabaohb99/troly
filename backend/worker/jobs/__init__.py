@@ -10,10 +10,16 @@ def build_jobs() -> list[Job]:
     from app.integrations.google import jobs as google_jobs
     from app.modules.chat import jobs as chat_jobs
     from app.modules.file import jobs as file_jobs
+    from app.registry import _import_if_exists
     from worker.jobs import backup, cleanup, device_events, disk, queue
 
     s = get_settings()
     queue.HANDLERS["google_initial_sync"] = google_jobs.run_initial_sync
+    # Module trip (4-01) có jobs.py thì nhận hai việc nền nhập và đánh giá lịch trình.
+    trip_jobs = _import_if_exists("app.modules.trip.jobs")
+    if trip_jobs is not None:
+        queue.HANDLERS["trip_import"] = trip_jobs.run_import
+        queue.HANDLERS["trip_evaluate"] = trip_jobs.run_evaluate
 
     def extract_unless_disk_full() -> int:
         return 0 if disk.heavy_jobs_paused() else file_jobs.extract_file_text()

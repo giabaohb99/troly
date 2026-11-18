@@ -1,7 +1,7 @@
 """Cài đặt người dùng dạng khóa và giá trị (11 mục 3.4). Khóa lạ hoặc sai kiểu bị 400."""
 
 from collections.abc import Callable
-from datetime import time
+from datetime import date, time
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -64,6 +64,33 @@ def _speed(v):
     return float(v)
 
 
+FERRY_FIELDS = ("name", "place_query", "first_time", "last_time", "hotline", "note", "updated_at")
+
+
+def _ferries(v):
+    """Giờ phà quen (QĐ-26 câu 28, 41 mục 5.4): tối đa 10 bến."""
+    if not isinstance(v, list) or len(v) > 10:
+        raise ValueError
+    out = []
+    for item in v:
+        if not isinstance(item, dict) or set(item) - set(FERRY_FIELDS):
+            raise ValueError
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip() or len(name) > 120:
+            raise ValueError
+        for key in ("place_query", "hotline", "note"):
+            value = item.get(key)
+            if value is not None and (not isinstance(value, str) or len(value) > 300):
+                raise ValueError
+        for key in ("first_time", "last_time"):
+            if item.get(key) is not None:
+                _hhmm(item[key])
+        if item.get("updated_at") is not None:
+            date.fromisoformat(item["updated_at"])
+        out.append({key: item.get(key) for key in FERRY_FIELDS} | {"name": name.strip()})
+    return out
+
+
 # khóa: (mặc định, hàm kiểm, câu lỗi)
 REGISTRY: dict[str, tuple[object, Callable, str]] = {
     "ui.voice_reply": (False, _bool, "Phải là true hoặc false."),
@@ -85,6 +112,11 @@ REGISTRY: dict[str, tuple[object, Callable, str]] = {
     "trip.night_end": ("05:30", _hhmm, "Giờ dạng HH:MM."),
     "trip.ride_break_minutes": (90, _int_range(15, 600), "Từ 15 tới 600 phút."),
     "trip.speed_factor": (1.2, _speed, "Từ 0,5 tới 3."),
+    "trip.ferries": (
+        [],
+        _ferries,
+        "Tối đa 10 bến: {name, place_query, first_time HH:MM, last_time HH:MM, hotline, note, updated_at YYYY-MM-DD}.",
+    ),
 }
 
 

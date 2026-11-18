@@ -64,3 +64,18 @@ def test_unsupported_and_too_large(db, user):
         service.create_upload(
             db, user.user_id, "big.pdf", "application/pdf", 26 * 1024 * 1024, "document", None
         )
+
+
+def test_store_generated_and_read_back(db, user, s3):
+    out = service.store_generated_file(
+        db, user.user_id, b"noi dung", "text/plain", "lich-trinh.txt", "trip_export"
+    )
+    assert (
+        out["status"] == "ready"
+        and out["download_url"].startswith("http")
+        and out["purpose"] == "trip_export"
+    )
+    data, mime, name = service.read_file_bytes(db, user.user_id, out["id"])
+    assert (data, mime, name) == (b"noi dung", "text/plain", "lich-trinh.txt")
+    with pytest.raises(service.ValidationError):
+        service.store_generated_file(db, user.user_id, b"x", "text/plain", "a.txt", "khong-co")

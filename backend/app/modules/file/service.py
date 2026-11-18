@@ -1,6 +1,7 @@
 """Tệp trên R2: tải lên bằng URL ký sẵn, tải về, xóa mềm, trích chữ để tìm (11 mục 3.8, 12 mục 5.10)."""
 
 import base64
+import hashlib
 import io
 import logging
 import uuid
@@ -111,6 +112,49 @@ def create_upload(
         "upload_headers": {"Content-Type": mime},
         "expires_at": now + timedelta(seconds=get_settings().r2_presign_seconds),
     }
+
+
+READ_MAX_BYTES = 20 * 1024 * 1024
+
+
+def read_file_bytes(session: Session, user_id: int, file_id: int) -> tuple[bytes, str, str | None]:
+    """Cho module khác (trip đọc tệp lịch trình): `(dữ liệu, mime, tên gốc)`, tối đa 20 MB."""
+    f = _get(session, user_id, file_id)
+    if f.status != "ready":
+        raise ValidationError("Tệp chưa tải lên xong.")
+    if f.size_bytes > READ_MAX_BYTES:
+        raise PayloadTooLarge("Tệp quá lớn để đọc (tối đa 20 MB).")
+    return storage.get_bytes(_bucket(), f.r2_key, READ_MAX_BYTES + 1), f.mime, f.original_name
+
+
+def store_generated_file(
+    session: Session, user_id: int, data: bytes, mime: str, filename: str, purpose: str
+) -> dict:
+    """Cho module khác lưu tệp máy chủ tạo ra (trip_export, report_export): ghi R2, dòng `ready`."""
+    from app.modules.file.models import PURPOSES
+
+    if purpose not in PURPOSES:
+        raise ValidationError(fields={"purpose": "Mục đích tệp không hợp lệ."})
+    if not data:
+        raise ValidationError("Tệp rỗng.")
+    if len(data) > MAX_BYTES:
+        raise PayloadTooLarge()
+    now = clock.now()
+    key = f"files/u/{user_id}/{now:%Y}/{now:%m}/{uuid.uuid4().hex}"
+    storage.put_bytes(_bucket(), key, data, mime)
+    f = File(
+        user_id=user_id,
+        r2_key=key,
+        original_name=(filename or "tep")[:200],
+        mime=mime,
+        size_bytes=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        purpose=purpose,
+        status="ready",
+    )
+    session.add(f)
+    session.flush()
+    return serialize(f, with_url=True)
 
 
 def complete_upload(session: Session, user_id: int, file_id: int) -> dict:

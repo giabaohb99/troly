@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { calendarHandlers, calendarPending } from '@/mocks/calendar-handlers'
 import { mockDb } from '@/mocks/db'
+import { phase4Handlers } from '@/mocks/phase4-handlers'
 import type { ChatAction, ChatMessage } from '@/modules/chat/types/chat'
 import type { InboxMessage } from '@/modules/inbox/types/inbox'
 import { parseMoney } from '@/shared/utils/format'
@@ -121,6 +122,10 @@ function mockConversations() {
     }
   }).sort((a, b) => Number(b.importance === 'important') - Number(a.importance === 'important') || Date.parse(b.last_posted_at) - Date.parse(a.last_posted_at))
 }
+const mockDevices = [
+  { id: 1, name: 'Galaxy S25+', model: 'SM-S936B', app_version_name: '0.1.0', last_seen_at: new Date().toISOString() },
+  { id: 2, name: 'Galaxy A52 cũ', model: 'SM-A525F', app_version_name: '0.0.1', last_seen_at: new Date(Date.now() - 20 * 86_400_000).toISOString() },
+]
 const mockListened = [
   { id: 1, package_name: 'com.VCB', label: 'Vietcombank', purpose: 'expense', parser: 'vcb', enabled: true, is_default: true },
   { id: 2, package_name: 'vn.com.techcombank.bb.app', label: 'Techcombank', purpose: 'expense', parser: 'tcb', enabled: true, is_default: true },
@@ -133,6 +138,7 @@ const mockListened = [
 
 export const handlers = [
   ...calendarHandlers,
+  ...phase4Handlers,
   http.post(`${API}/auth/login`, async ({ request }) => {
     const body = (await request.json()) as { email: string; password: string }
     await delay(300)
@@ -143,7 +149,12 @@ export const handlers = [
   http.post(`${API}/auth/logout`, () => ok(null)),
   http.get(`${API}/auth/me`, ({ request }) => (authed(request) ? ok(user) : fail(401, 'AUTH_REQUIRED', 'Cần đăng nhập.'))),
   http.post(`${API}/devices`, () => ok({ device: { id: 1 }, device_token: 'dev_mock' }, 201)),
-  http.get(`${API}/devices`, () => ok({ items: [{ id: 1, name: 'Galaxy S25+', model: 'SM-S936B', app_version_name: '0.1.0', last_seen_at: new Date().toISOString() }] })),
+  http.get(`${API}/devices`, () => ok({ items: mockDevices })),
+  http.delete(`${API}/devices/:id`, ({ params }) => {
+    const index = mockDevices.findIndex((d) => d.id === Number(params.id))
+    if (index >= 0) mockDevices.splice(index, 1)
+    return ok(null)
+  }),
   http.post(`${API}/client-logs`, async ({ request }) => {
     const body = (await request.json()) as { items: unknown[] }
     console.info('[mock] client-logs', body.items)
