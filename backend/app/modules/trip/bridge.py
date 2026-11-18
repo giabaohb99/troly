@@ -35,12 +35,14 @@ def _blank_to_none(value):
     return None if value == "" else value
 
 
-def from_ai_extract(result, output_model):
+def from_ai_extract(result, output_model, default_title: str | None = None):
     """Đổi TripExtract của app.ai.trip_ai (chuỗi rỗng thay null, 0 là không rõ) sang lược đồ trip.
 
     Kiểm lại bằng model của trip (extra="forbid"), nên hai bên lệch trường là lỗi ngay ở đây.
     """
     data = _blank_to_none(result.model_dump())
+    if not data.get("title"):
+        data["title"] = default_title or "Chuyến đi"
     if data.get("travel_mode") in (None, "unknown"):
         data["travel_mode"] = "motorbike"
     for fact in data.get("facts", []):
@@ -54,7 +56,7 @@ def from_ai_extract(result, output_model):
     return output_model.model_validate(data)
 
 
-def extract_trip(user_id: int, content, output_model, hint: str | None = None):
+def extract_trip(user_id: int, content, output_model, hint: str | None = None, default_title: str | None = None):
     """Haiku bóc tách (app.ai.trip_ai.extract_trip, agent AI giữ). content là chữ hoặc khối PDF, ảnh."""
     mod = _optional("app.ai.trip_ai")
     if mod is None or not hasattr(mod, "extract_trip"):
@@ -63,7 +65,7 @@ def extract_trip(user_id: int, content, output_model, hint: str | None = None):
         result = mod.extract_trip(user_id, files=content, hint=hint)
     else:
         result = mod.extract_trip(user_id, text=content, hint=hint)
-    return from_ai_extract(result, output_model) if result is not None else None
+    return from_ai_extract(result, output_model, default_title) if result is not None else None
 
 
 def summarize_options(user_id: int, trip_title: str, options: list[dict]) -> dict[int, dict]:

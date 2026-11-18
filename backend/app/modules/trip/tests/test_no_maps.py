@@ -198,7 +198,7 @@ def test_trip_from_description_without_key(db, user, no_maps, fake_ai, monkeypat
         f"Ngày 2: 7h00 lên [Hải đăng Vũng Tàu]({found['Hải đăng Vũng Tàu']['link']})."
     )
 
-    def extract(user_id, content, output_model, hint=None):
+    def extract(user_id, content, output_model, hint=None, default_title=None):
         assert content == text
         days = [
             {"day_no": i + 1, "stops": [{"time_text": t, "title": title, "category": "tham_quan",

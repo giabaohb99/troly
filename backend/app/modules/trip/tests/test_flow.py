@@ -249,6 +249,12 @@ def test_ai_extract_converts_to_trip_schema():
     assert out.travel_mode == "motorbike" and out.start_date is None and out.origin_text is None
     assert out.days[0].stops[0].places[0].url is None and out.facts[0].day_no is None
     assert out.hotels[0].backups[0].label == "Khách sạn B"
+    assert out.title == "Chuyến thử"
+
+    # Model bỏ trống tiêu đề (gặp thật khi dựng chuyến từ câu mô tả): lấy tên chuyến đã có.
+    no_title = raw.model_copy(update={"title": ""})
+    assert from_ai_extract(no_title, TripExtract, "Cần Thơ - Bến Tre").title == "Cần Thơ - Bến Tre"
+    assert from_ai_extract(no_title, TripExtract).title == "Chuyến đi"
 
 
 def test_find_trip_by_query_and_day(db, user, imported):

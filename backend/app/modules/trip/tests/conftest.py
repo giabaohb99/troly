@@ -88,7 +88,7 @@ def sample_file(db, user, stored_files) -> int:
 def fake_ai(monkeypatch):
     calls = {"extract": 0, "summaries": []}
 
-    def extract(user_id, content, output_model, hint=None):
+    def extract(user_id, content, output_model, hint=None, default_title=None):
         calls["extract"] += 1
         assert isinstance(content, str) and "[chợ Phước Hải](" in content
         return build_sample_extract(content)
