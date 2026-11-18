@@ -4,6 +4,7 @@ import { Brain, ChevronRight, CircleCheck, ExternalLink, FileText, Mail, Map, Ma
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
+import { Alarm } from '@/core/native/alarm'
 import { Maps, placeUrl } from '@/core/native/maps'
 import { openExternal } from '@/core/native/open-external'
 import { restoreProfileRevision, restoreResources } from '@/modules/chat/api/chat-api'
@@ -12,6 +13,7 @@ import { KNOWN_ACTION_TYPES, type ChatAction, type PendingAction } from '@/modul
 import { screenToRoute } from '@/shared/utils/screen-route'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { Button } from '@/shared/ui/button'
+import { FileCard } from '@/modules/chat/components/file-card'
 
 interface ActionListProps {
   actions: ChatAction[]
@@ -19,6 +21,8 @@ interface ActionListProps {
   onChoice?: (value: string) => void
   // Dòng xác nhận (open_screen ngay sau công cụ ghi dữ liệu) hiện như dòng nhỏ có dấu tích.
   disabled?: boolean
+  // Tệp đã hiện bằng attachments của tin: bỏ hành động file trùng để không vẽ thẻ hai lần (QĐ-41).
+  hiddenFileIds?: number[]
 }
 
 const LINK_ICONS = { file: FileText, gmail: Mail, sheet: Sheet, web: ExternalLink }
@@ -50,6 +54,10 @@ function UndoLine({ action }: { action: Extract<ChatAction, { type: 'undo' }> })
       await restoreResources(action)
       setState('done')
       void queryClient.invalidateQueries({ queryKey: queryKeys.expense.all })
+      if (action.resource !== 'expense') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
+        void Alarm.sync()
+      }
       toast.success('Đã hoàn tác')
     } catch (error) {
       setState('idle')
@@ -106,9 +114,9 @@ function MemoryLine({ action }: { action: Extract<ChatAction, { type: 'memory_ch
 }
 
 // Hiện hành động trợ lý trả về (31 mục 3.3). Kiểu lạ bỏ qua, không làm vỡ màn.
-export function ActionList({ actions, pendingActions, onChoice, disabled }: ActionListProps) {
+export function ActionList({ actions, pendingActions, onChoice, disabled, hiddenFileIds }: ActionListProps) {
   const navigate = useNavigate()
-  const visible = actions.filter((action) => KNOWN_ACTION_TYPES.has(action.type))
+  const visible = actions.filter((action) => KNOWN_ACTION_TYPES.has(action.type) && !(action.type === 'file' && hiddenFileIds?.includes(action.file_id)))
   if (visible.length === 0) return null
 
   return (
@@ -139,7 +147,7 @@ export function ActionList({ actions, pendingActions, onChoice, disabled }: Acti
           }
           case 'open_map_navigation':
             return (
-              <Button key={action.id} variant="outline" className="w-full justify-start" onClick={() => void openMap(() => Maps.navigate({ lat: action.lat, lng: action.lng, query: action.query, mode: action.mode, avoid: action.avoid, fallbackUrl: action.fallback_url }))}>
+              <Button key={action.id} variant="outline" className="w-full justify-start" onClick={() => void openMap(() => Maps.navigate({ lat: action.lat, lng: action.lng, query: action.query, mode: action.mode, avoid: action.avoid, uri: action.uri, fallbackUrl: action.fallback_url }))}>
                 <Navigation className="size-4" />
                 {action.label}
               </Button>
@@ -163,6 +171,8 @@ export function ActionList({ actions, pendingActions, onChoice, disabled }: Acti
                 {action.label}
               </Button>
             )
+          case 'file':
+            return <FileCard key={action.id} file={action} />
           case 'undo':
             return <UndoLine key={action.id} action={action} />
           case 'memory_changed':

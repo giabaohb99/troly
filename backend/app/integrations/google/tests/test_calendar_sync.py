@@ -234,3 +234,142 @@ def test_transient_errors_retry_inside_call(db, fake, account, cal_store, status
     fake.forced = [httpx.Response(status, json={"error": {"errors": [{"reason": "backendError"}]}})] * 2
     _initial_sync(db, account)
     assert len(fake.sleeps) == 2
+
+
+def test_meet_link_created_on_insert(db, fake, account, cal_store):
+    start = datetime(2026, 11, 21, 3, 0, tzinfo=UTC)
+    local_id = cal_store.add_local(
+        title="Họp online", start_at=start, end_at=start, google_event_id=outbox.new_event_id()
+    )
+    outbox.enqueue(db, account.user_id, "calendar", "insert", "event", local_id, {"meet": True})
+    outbox.push_due(db)
+    request = fake.calls("POST", r"/events$")[0]
+    assert request.url.params["conferenceDataVersion"] == "1"
+    body = json.loads(request.content)
+    assert body["conferenceData"]["createRequest"]["conferenceSolutionKey"] == {"type": "hangoutsMeet"}
+    assert body["conferenceData"]["createRequest"]["requestId"] == f"troly-{local_id}"
+    assert cal_store.rows[local_id]["meet_url"].startswith("https://meet.google.com/")
+
+
+def test_meet_link_added_later_by_patch_and_read_on_sync(db, fake, account, cal_store):
+    fake.put_event(_event("ev1"))
+    state = _initial_sync(db, account)
+    row = cal_store.by_google("ev1")
+    assert row["meet_url"] is None
+    outbox.enqueue(db, account.user_id, "calendar", "patch", "event", row["id"], {"meet": True})
+    outbox.push_due(db)
+    assert row["meet_url"].startswith("https://meet.google.com/")
+    fake.put_event(_event("ev2", hangoutLink="https://meet.google.com/xyz-abcd-efg"))
+    calendar_sync.sync_calendar(db, account, state)
+    assert cal_store.by_google("ev2")["meet_url"] == "https://meet.google.com/xyz-abcd-efg"
+
+
+def test_no_conference_without_meet_flag(db, fake, account, cal_store):
+    start = datetime(2026, 11, 21, 3, 0, tzinfo=UTC)
+    local_id = cal_store.add_local(start_at=start, end_at=start, google_event_id=outbox.new_event_id())
+    outbox.enqueue(db, account.user_id, "calendar", "insert", "event", local_id)
+    outbox.push_due(db)
+    request = fake.calls("POST", r"/events$")[0]
+    assert "conferenceDataVersion" not in request.url.params and "conferenceData" not in json.loads(
+        request.content
+    )
+
+
+# ---------- Phút nhắc và cờ báo thức (QĐ-39) ----------
+
+
+def test_google_event_takes_popup_overrides_only(db, fake, account, cal_store):
+    reminders = {
+        "useDefault": False,
+        "overrides": [{"method": "email", "minutes": 1440}, {"method": "popup", "minutes": 10}],
+    }
+    fake.put_event(_event("ev1", reminders=reminders))
+    _initial_sync(db, account)
+    assert cal_store.by_google("ev1")["remind_minutes"] == [10]
+    assert not fake.calls("GET", r"/calendarList/")
+
+
+def test_use_default_reads_calendar_default_once_per_pull(db, fake, account, cal_store):
+    fake.default_reminders = [{"method": "popup", "minutes": 45}, {"method": "email", "minutes": 60}]
+    fake.put_event(_event("ev1", reminders={"useDefault": True}))
+    fake.put_event(_event("ev2"))  # không có trường reminders: Google coi như useDefault
+    _initial_sync(db, account)
+    assert cal_store.by_google("ev1")["remind_minutes"] == [45]
+    assert cal_store.by_google("ev2")["remind_minutes"] == [45]
+    assert len(fake.calls("GET", r"/users/me/calendarList/primary")) == 1
+
+
+def test_reminders_off_on_google_clears_google_event_minutes(db, fake, account, cal_store):
+    fake.put_event(
+        _event("ev1", reminders={"useDefault": False, "overrides": [{"method": "popup", "minutes": 5}]})
+    )
+    state = _initial_sync(db, account)
+    fake.put_event({"id": "ev1", "reminders": {"useDefault": False}})
+    calendar_sync.sync_calendar(db, account, state)
+    assert cal_store.by_google("ev1")["remind_minutes"] == []
+
+
+def test_app_event_keeps_minutes_when_google_is_silent(db, fake, account, cal_store):
+    local_id = cal_store.add_local(google_event_id="app1", remind_minutes=[15])
+    fake.put_event(_event("app1", reminders={"useDefault": False, "overrides": []}))
+    _initial_sync(db, account)
+    assert cal_store.rows[local_id]["remind_minutes"] == [15]
+    assert db.scalar(select(GoogleOutbox)) is None
+
+
+def test_app_event_edited_on_google_takes_minutes_and_silences_google(db, fake, account, cal_store):
+    local_id = cal_store.add_local(google_event_id="app1", google_etag="old", remind_minutes=[15])
+    fake.put_event(
+        _event("app1", reminders={"useDefault": False, "overrides": [{"method": "popup", "minutes": 60}]})
+    )
+    _initial_sync(db, account)
+    assert cal_store.rows[local_id]["remind_minutes"] == [60]
+    row = db.scalar(select(GoogleOutbox))
+    assert row.local_id == local_id and row.status == "pending"
+    outbox.push_due(db)
+    body = json.loads(fake.calls("PATCH", r"/events/app1$")[-1].content)
+    assert body["reminders"] == {"useDefault": False, "overrides": []}
+    assert fake.events["app1"]["reminders"]["overrides"] == []
+
+
+def test_minutes_changed_in_app_for_google_event_pushes_overrides(db, fake, account, cal_store):
+    fake.put_event(_event("ev1"))
+    _initial_sync(db, account)
+    local = cal_store.by_google("ev1")
+    local["remind_minutes"] = [30, 5, 5]
+    outbox.enqueue(
+        db, account.user_id, "calendar", "patch", "event", local["id"], {"reminders_changed": True}
+    )
+    outbox.push_due(db)
+    body = json.loads(fake.calls("PATCH", r"/events/ev1$")[-1].content)
+    assert body["reminders"] == {
+        "useDefault": False,
+        "overrides": [{"method": "popup", "minutes": 5}, {"method": "popup", "minutes": 30}],
+    }
+
+
+def test_google_event_patch_without_reminder_change_leaves_google_reminders(db, fake, account, cal_store):
+    fake.put_event(_event("ev1"))
+    _initial_sync(db, account)
+    local = cal_store.by_google("ev1")
+    local["title"] = "Đổi tên"
+    outbox.enqueue(db, account.user_id, "calendar", "patch", "event", local["id"])
+    outbox.push_due(db)
+    assert "reminders" not in json.loads(fake.calls("PATCH", r"/events/ev1$")[-1].content)
+
+
+def test_alarm_flag_round_trips_through_private_property(db, fake, account, cal_store):
+    start = datetime(2026, 11, 21, 3, 0, tzinfo=UTC)
+    local_id = cal_store.add_local(
+        title="Dậy đi phà", start_at=start, end_at=start, google_event_id=outbox.new_event_id(), is_alarm=True
+    )
+    outbox.enqueue(db, account.user_id, "calendar", "insert", "event", local_id)
+    outbox.push_due(db)
+    google_id = cal_store.rows[local_id]["google_event_id"]
+    assert fake.events[google_id]["extendedProperties"]["private"]["troly_alarm"] == "1"
+    # Đồng bộ đủ lại (410) xóa dòng nguồn Google rồi tạo lại: cờ báo thức vẫn còn nhờ Google giữ.
+    fake.put_event(_event("ev9", extendedProperties={"private": {"troly_alarm": "1"}}))
+    fake.put_event(_event("ev8"))
+    _initial_sync(db, account)
+    assert cal_store.by_google("ev9")["is_alarm"] is True
+    assert cal_store.by_google("ev8").get("is_alarm") in (None, False)

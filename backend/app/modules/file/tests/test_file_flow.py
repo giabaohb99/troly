@@ -79,3 +79,17 @@ def test_store_generated_and_read_back(db, user, s3):
     assert (data, mime, name) == (b"noi dung", "text/plain", "lich-trinh.txt")
     with pytest.raises(service.ValidationError):
         service.store_generated_file(db, user.user_id, b"x", "text/plain", "a.txt", "khong-co")
+
+
+def test_save_generated_document(db, user, s3):
+    out = service.save_generated_file(
+        db,
+        user,
+        "xlsx",
+        "Chi tiêu tuần",
+        [{"type": "table", "header": ["Mục", "Tiền"], "rows": [["Cơm", 45000]]}],
+    )
+    assert out["name"] == "chi-tieu-tuan.xlsx" and out["mime"].endswith("spreadsheetml.sheet")
+    data, mime, name = service.read_file_bytes(db, user.user_id, out["file_id"])
+    assert len(data) == out["size_bytes"] and name == "chi-tieu-tuan.xlsx"
+    assert db.get(File, out["file_id"]).purpose == "document"

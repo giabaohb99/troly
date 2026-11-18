@@ -5,6 +5,7 @@ import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
 import vn.io.baohuynh.troly.plugin.AlarmPlugin;
+import vn.io.baohuynh.troly.plugin.FilesPlugin;
 import vn.io.baohuynh.troly.plugin.MapsPlugin;
 import vn.io.baohuynh.troly.plugin.NotifyPlugin;
 import vn.io.baohuynh.troly.plugin.SecurePlugin;
@@ -19,6 +20,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SystemPlugin.class);
         registerPlugin(AlarmPlugin.class);
         registerPlugin(MapsPlugin.class);
+        registerPlugin(FilesPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 # pg_dump phải đúng bản 16 như máy chủ: bản 17 của Debian ghi định dạng và lệnh (transaction_timeout)
 # mà pg_restore, máy chủ 16 không đọc được. Lấy postgresql-client-16 từ kho chính thức apt.postgresql.org.
+# fonts-dejavu-core: font Unicode đủ dấu tiếng Việt cho tệp PDF bot xuất (QĐ-41), không tải lúc chạy.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && install -d /usr/share/postgresql-common/pgdg \
@@ -16,7 +17,7 @@ RUN apt-get update \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get install -y --no-install-recommends postgresql-client-16 fonts-dejavu-core \
     && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

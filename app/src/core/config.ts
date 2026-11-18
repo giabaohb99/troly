@@ -14,6 +14,7 @@ export interface AppVersion {
 }
 
 let cachedVersion: AppVersion = { code: 0, name: 'web' }
+let cachedAppId = 'web'
 
 // Đọc versionCode thật từ APK một lần lúc mở app (CI ghi versionCode vào build.gradle theo thẻ vX.Y.Z).
 export async function loadAppVersion(): Promise<AppVersion> {
@@ -21,6 +22,7 @@ export async function loadAppVersion(): Promise<AppVersion> {
   try {
     const info = await App.getInfo()
     cachedVersion = { code: Number(info.build) || 0, name: info.version }
+    cachedAppId = info.id
   } catch {
     // Giữ mặc định: không đọc được bản thì máy chủ coi như bản cũ nhất, vẫn gọi được /device/release.
   }
@@ -29,4 +31,13 @@ export async function loadAppVersion(): Promise<AppVersion> {
 
 export function getAppVersion(): AppVersion {
   return cachedVersion
+}
+
+// Gói đang chạy: bản chính thức vn.io.baohuynh.troly, bản thử thêm đuôi .debug (30 mục 3.2).
+export function getAppId(): string {
+  return cachedAppId
+}
+
+export function isDebugBuild(): boolean {
+  return cachedAppId.endsWith('.debug')
 }

@@ -52,8 +52,14 @@ class MemoryCalendarStore:
         data["deleted"] = event.status == "cancelled"
         if local_id is None:
             local_id = self.add_local(source="google", remind_source="google", google_calendar_id=calendar_id)
-        self.rows[local_id].update(data)
-        self.rows[local_id]["sync_status"] = "synced"
+        row = self.rows[local_id]
+        row.update({k: v for k, v in data.items() if k not in ("reminder_minutes", "is_alarm")})
+        # Luật nhắc: Google nhắc thì lấy đúng phút Google; app nhắc thì chỉ lấy khi Google có phút.
+        if row["remind_source"] == "google" or event.reminder_minutes:
+            row["remind_minutes"] = list(event.reminder_minutes)
+        if event.is_alarm is not None:
+            row["is_alarm"] = event.is_alarm
+        row["sync_status"] = "synced"
         return local_id
 
     def mark_remote_cancelled(self, session, user_id, local_id):
@@ -88,6 +94,9 @@ class MemoryCalendarStore:
     def set_sync_status(self, session, user_id, local_id, status, error=None):
         self.rows[local_id]["sync_status"] = status
         self.rows[local_id]["sync_error"] = error
+
+    def save_meet_url(self, session, user_id, local_id, url):
+        self.rows[local_id]["meet_url"] = url
 
     def on_disconnect(self, session, user_id, keep_data):
         self.disconnected.append(keep_data)
@@ -164,3 +173,21 @@ class MemoryTaskStore:
 
     def on_disconnect(self, session, user_id, keep_data):
         self.disconnected.append(keep_data)
+
+
+class MemoryFileStore:
+    def __init__(self):
+        self.files: dict[int, dict] = {}
+
+    def add(self, file_id: int, data: bytes, mime: str = "application/pdf", name: str = "tep.pdf") -> None:
+        self.files[file_id] = {"data": data, "mime": mime, "name": name, "drive_file_id": None, "link": None}
+
+    def file_bytes(self, session, user_id, file_id):
+        f = self.files[file_id]
+        return f["data"], f["mime"], f["name"]
+
+    def drive_file_id(self, session, user_id, file_id):
+        return self.files[file_id]["drive_file_id"]
+
+    def save_drive_result(self, session, user_id, file_id, drive_file_id, web_view_link):
+        self.files[file_id].update(drive_file_id=drive_file_id, link=web_view_link)

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Ban, CircleCheck, Clock, Loader2, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { getErrorMessage } from '@/core/api/api-error'
+import { Alarm } from '@/core/native/alarm'
 import { approveAction, rejectAction } from '@/shared/api/pending-action-api'
 import { queryKeys } from '@/shared/constants/query-keys'
 import type { ConfirmInfo, PendingStatus } from '@/shared/types/pending-action'
@@ -51,6 +52,7 @@ export function ConfirmCard({ action, serverStatus, className, onDecided }: Conf
       void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
       void queryClient.invalidateQueries({ queryKey: queryKeys.expense.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
+      if (next === 'done') void Alarm.sync()
     } catch (err) {
       setError(getErrorMessage(err))
       setStatus('failed')

@@ -110,3 +110,15 @@ def choices(label: str, options: list[tuple[str, str]]) -> dict:
         "label": label,
         "options": [{"label": lbl, "value": val} for lbl, val in options[:5]],
     }
+
+
+def file_card(file: dict) -> dict:
+    """Thẻ tệp trong tin trả lời (QĐ-41). `file`: {file_id, name, mime, size_bytes}; app mở bằng GET /files/{id}."""
+    return {
+        "type": "file",
+        "label": file["name"],
+        "file_id": file["file_id"],
+        "name": file["name"],
+        "mime": file["mime"],
+        "size_bytes": file["size_bytes"],
+    }

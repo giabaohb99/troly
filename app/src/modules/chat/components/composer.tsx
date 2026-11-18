@@ -88,7 +88,7 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
   const toggleMode = (next: ChatMode) => setMode((current) => (current === next ? 'chat' : next))
 
   return (
-    <form onSubmit={handleSubmit} className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-30 border-t bg-background/95 px-4 py-2 backdrop-blur">
+    <form onSubmit={handleSubmit} className="-mx-4 shrink-0 border-t bg-background px-4 py-2">
       <div className="mx-auto flex max-w-lg flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <button

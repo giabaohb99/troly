@@ -3,7 +3,7 @@ import pytest
 from app.integrations.google import http, stores
 from app.integrations.google.settings import get_google_settings
 from app.integrations.google.tests.fake_google import CLIENT_ID, FakeGoogle
-from app.integrations.google.tests.memory_stores import MemoryCalendarStore, MemoryTaskStore
+from app.integrations.google.tests.memory_stores import MemoryCalendarStore, MemoryFileStore, MemoryTaskStore
 
 ALL_SCOPES = (
     "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile "
@@ -64,3 +64,14 @@ def account(db, user, fake):
     acc, result = connect_account(db, user, fake)
     assert result.ket_qua == "ok", result.message
     return acc
+
+
+@pytest.fixture
+def file_store():
+    store = MemoryFileStore()
+    stores.register_file_store(store)
+    yield store
+    stores.register_file_store(None)
+
+
+DRIVE_SCOPES = ALL_SCOPES + " https://www.googleapis.com/auth/drive.file"

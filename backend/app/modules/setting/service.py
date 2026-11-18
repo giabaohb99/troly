@@ -102,6 +102,13 @@ REGISTRY: dict[str, tuple[object, Callable, str]] = {
         "Tài khoản không hợp lệ.",
     ),
     "inbox.ai_enabled": (True, _bool, "Phải là true hoặc false."),
+    # QĐ-38: báo trên máy khi ghi giao dịch mới (mặc định tắt), khi có tin quan trọng (mặc định bật);
+    # app nhắc cả sự kiện tạo trên Google (mặc định tắt, Google tự nhắc).
+    "notify.new_transaction": (False, _bool, "Phải là true hoặc false."),
+    "notify.important_message": (True, _bool, "Phải là true hoặc false."),
+    # QĐ-41: lượt chat xong khi app không ở màn hình thì máy báo (mặc định bật).
+    "notify.chat_done": (True, _bool, "Phải là true hoặc false."),
+    "calendar.app_reminds_google": (False, _bool, "Phải là true hoặc false."),
     "inbox.quiet_hours": (None, _quiet_hours, 'Dạng {start: "22:00", end: "07:00"} hoặc null.'),
     "trip.default_travel_mode": (
         "motorbike",

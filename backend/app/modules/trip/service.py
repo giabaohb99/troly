@@ -16,6 +16,7 @@ from app.core.models import JobQueue
 from app.integrations.google import maps
 from app.modules.trip import bridge, engine, links, places
 from app.modules.trip.docx_export import DocDay, DocTrip, build_docx
+from app.modules.trip.hours_text import hours_from_text
 from app.modules.trip.models import CATEGORIES, RouteCache, Trip, TripFact, TripOption, TripStop
 from app.modules.trip.normalize import Normalized, check_extract, fold, normalize
 from app.modules.trip.reader import read_docx
@@ -274,11 +275,11 @@ def find_trip(
 # ---------- Nhập ----------
 
 
-def _queue(session: Session, user_id: int, kind: str, trip_id: int) -> int:
+def _queue(session: Session, user_id: int, kind: str, trip_id: int, extra: dict | None = None) -> int:
     job = JobQueue(
         user_id=user_id,
         kind=kind,
-        payload={"trip_id": trip_id},
+        payload={"trip_id": trip_id, **(extra or {})},
         dedupe_key=f"{kind}:{trip_id}",
         max_attempts=1,
     )
@@ -689,12 +690,16 @@ def delete_trip(session: Session, user: UserContext, trip_id: int) -> None:
 # ---------- Đánh giá ----------
 
 
-def evaluate_trip(session: Session, user: UserContext, trip_id: int) -> dict:
+def evaluate_trip(session: Session, user: UserContext, trip_id: int, mode: str = "normal") -> dict:
+    """mode `think` (người dùng bấm nghĩ kỹ): AI tìm thêm giờ mở cửa trên web (QĐ-36)."""
+    if mode not in ("normal", "think"):
+        raise ValidationError(fields={"mode": "Chỉ nhận normal hoặc think."})
     trip = _get(session, user.user_id, trip_id, lock=True)
     if trip.status in ("importing", "evaluating"):
         raise TripBusy()
     trip.status = "evaluating"
-    return {"job_id": _queue(session, user.user_id, "trip_evaluate", trip.id), "status": "evaluating"}
+    job_id = _queue(session, user.user_id, "trip_evaluate", trip.id, {"mode": mode})
+    return {"job_id": job_id, "status": "evaluating"}
 
 
 def _settings(session: Session, user_id: int, tz: str) -> engine.Settings:
@@ -905,6 +910,135 @@ def _numbers_ok(summary: str, allowed: set[str]) -> bool:
     return all(n.replace(",", ".") in allowed for n in re.findall(r"\d+(?:[.,]\d+)?", summary))
 
 
+def _hour_sentences(row: TripStop | None, stops: list[TripStop]) -> list[str]:
+    """Câu về giờ mở cửa của đúng điểm này: hàng có nhiều điểm thì chỉ lấy câu nhắc tên điểm."""
+    if row is None or not row.note:
+        return [row.title] if row else []
+    sentences = [x for x in re.split(r"(?<=[.;!?])\s+", row.note) if x.strip()]
+    words = fold(row.title).split()[:3]
+    key = " ".join(words)
+    own = [x for x in sentences if key and key in fold(x)]
+    shared = sum(1 for s in stops if s.day_no == row.day_no and s.note == row.note and s.role == "main") > 1
+    return [row.title, *(own if own or shared else sentences)]
+
+
+def _estimate_legs(
+    session: Session,
+    trip: Trip,
+    stops: list[TripStop],
+    days: list[engine.PDay],
+    cfg: engine.Settings,
+    web: bool,
+) -> tuple[dict, list[engine.Fact], list[str]]:
+    """Chặng do AI ước tính (app.ai.trip_legs.estimate_legs); thiếu thì tạm tính theo khoảng cách chim bay.
+
+    Trả (chặng, mốc phà cuối AI tìm được khi nghĩ kỹ). Giờ mở cửa gắn thẳng vào PStop.hours.
+    """
+    zone = ZoneInfo(cfg.tz)
+    by_id = {s.id: s for s in stops}
+    pairs: list[tuple[engine.PStop, engine.PStop]] = []
+    payload_stops: list[dict] = []
+    for d in days:
+        points = [p for p in d.stops if engine.routable(p, cfg)]
+        pairs += list(zip(points, points[1:], strict=False))
+        for p in points:
+            payload_stops.append(
+                {
+                    "stop_id": p.id,
+                    "day_no": d.day_no,
+                    "title": p.title,
+                    "category": p.category,
+                    "address": None,
+                    "place_query": p.place_query,
+                    "lat": p.lat,
+                    "lng": p.lng,
+                    "planned_time": p.planned_start.astimezone(zone).strftime("%H:%M")
+                    if p.planned_start
+                    else None,
+                    "visit_date": d.date.isoformat(),
+                }
+            )
+    estimate = (
+        bridge.estimate_legs(
+            trip.user_id,
+            trip.title,
+            trip.end_text or trip.origin_text,
+            payload_stops,
+            [{"from_stop_id": a.id, "to_stop_id": b.id} for a, b in pairs],
+            web,
+            trip.travel_mode,
+        )
+        or {}
+    )
+    legs: dict = {}
+    for leg in estimate.get("legs") or []:
+        try:
+            ferry = float(leg.get("ferry_minutes") or 0)
+            minutes = max(float(leg["minutes"]) - ferry, 0)
+            legs[(int(leg["from_stop_id"]), int(leg["to_stop_id"]))] = engine.PLeg(
+                minutes,
+                float(leg["km"]),
+                [leg.get("note") or "", *(leg.get("roads") or [])],
+                wait_minutes=ferry,
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    for a, b in pairs:
+        if (a.id, b.id) not in legs and a.located and b.located:
+            km = places.distance_km(a.point, b.point) * 1.3
+            legs[(a.id, b.id)] = engine.PLeg(km / 35 * 60, km, [])
+    fact_texts: dict[int, list[str]] = {}
+    for f in session.scalars(
+        select(TripFact).where(TripFact.trip_id == trip.id, TripFact.kind == "opening_hours")
+    ):
+        if f.stop_id:
+            fact_texts.setdefault(f.stop_id, []).append(f"{f.text} {f.value_text or ''}")
+    checks = {(int(c["stop_id"]), c.get("kind")): c for c in estimate.get("checks") or [] if c.get("stop_id")}
+    new_facts: list[engine.Fact] = []
+    web_notes: list[str] = []
+    for check in estimate.get("checks") or []:
+        if not check.get("hours") and not check.get("last_time") and check.get("text"):
+            name = by_id[int(check["stop_id"])].title if int(check["stop_id"]) in by_id else "Một điểm"
+            web_notes.append(f"{name}: {check['text']}"[:300])  # tìm web không ra: hiện lý do cho người dùng
+    for d in days:
+        for p in d.stops:
+            p.hours = hours_from_text(*_hour_sentences(by_id.get(p.id), stops), *fact_texts.get(p.id, []))
+            web_hours = checks.get((p.id, "opening_hours"))
+            if web_hours and web_hours.get("hours"):
+                p.hours = web_hours["hours"]  # không có thì để None: R2 không báo (QĐ-36)
+            ferry = checks.get((p.id, "ferry_last"))
+            last = ferry.get("last_time") if ferry else None
+            if isinstance(last, str) and last:
+                last = time.fromisoformat(last)
+            already = last and session.scalar(
+                select(TripFact.id).where(
+                    TripFact.trip_id == trip.id,
+                    TripFact.stop_id == p.id,
+                    TripFact.kind == "ferry_last",
+                    TripFact.value_time == (last if not isinstance(last, str) else time.fromisoformat(last)),
+                )
+            )
+            if last and already:
+                new_facts.append(engine.Fact("ferry_last", d.day_no, last, p.id, ""))
+            elif last:
+                text_ = (ferry.get("text") or "Chuyến phà cuối (tìm trên web)")[:900]
+                if ferry.get("source_url"):
+                    text_ += f" ({ferry['source_url']})"
+                session.add(
+                    TripFact(
+                        user_id=trip.user_id,
+                        trip_id=trip.id,
+                        kind="ferry_last",
+                        stop_id=p.id,
+                        day_no=d.day_no,
+                        value_time=last,
+                        text=text_,
+                    )
+                )
+                new_facts.append(engine.Fact("ferry_last", d.day_no, last, p.id, text_))
+    return legs, new_facts, web_notes
+
+
 def run_evaluate(session: Session, job) -> dict:
     trip = _get(session, job.user_id, job.payload["trip_id"], lock=True)
     previous_status = "planned" if trip.chosen_option_id else "draft"
@@ -925,15 +1059,22 @@ def run_evaluate(session: Session, job) -> dict:
             days, order_changes = _reorder(days)
             legs = _route_legs(session, days)
             _fetch_hours(days)
+            web_notes = []
         else:
-            order_changes, legs = [], {}
+            # QĐ-36: không có Maps Platform; AI ước tính chặng, giờ mở cửa đọc từ chữ (và tìm web khi nghĩ kỹ).
+            cfg.by_stop_id = cfg.estimated = True
+            order_changes = []
+            legs, web_facts, web_notes = _estimate_legs(
+                session, trip, stops, days, cfg, web=job.payload.get("mode") == "think"
+            )
+            facts = web_facts + facts  # mốc tìm trên web đứng trước mốc cũ cùng điểm
         base_results, base_risks = _evaluate_days(days, legs, facts, cfg, now_iso)
         options = engine.build_options(days, base_risks, order_changes)
         session.execute(delete(TripOption).where(TripOption.trip_id == trip.id))
         trip.chosen_option_id = None
         created: list[tuple[TripOption, dict]] = []
         for opt in options:
-            opt_legs = engine.bridge_legs(opt.days, legs, days)
+            opt_legs = engine.bridge_legs(opt.days, legs, days, cfg)
             results, risks = _evaluate_days(opt.days, opt_legs, facts, cfg, now_iso)
             data = {
                 "name": opt.name,
@@ -990,8 +1131,9 @@ def run_evaluate(session: Session, job) -> dict:
         trip.evaluation = {
             "evaluated_at": now_iso,
             "risks": base_risks,
-            "advice": tips[:8] or None,
+            "advice": (tips[:8] + web_notes[:8]) or None,
             "plan": _plan_json(base_results),
+            "estimated": cfg.estimated,
             "total_km": round(sum(r.km for r in base_results), 1),
         }
         trip.status, trip.error = "draft", None
@@ -1196,8 +1338,14 @@ def export_docx(session: Session, user: UserContext, trip_id: int, save_to_drive
     )
     trip.export_file_id = stored.get("id") or stored.get("file_id")
     session.flush()
-    # Lưu lên Drive (save_to_drive) nối ở Phase 5 qua POST /files/{id}/drive.
-    return {"file_id": trip.export_file_id, "download_url": stored.get("url") or stored.get("download_url")}
+    drive_queued = bool(
+        save_to_drive and bridge.request_drive_upload(session, user.user_id, trip.export_file_id)
+    )
+    return {
+        "file_id": trip.export_file_id,
+        "download_url": stored.get("url") or stored.get("download_url"),
+        "drive_queued": drive_queued,
+    }
 
 
 def to_calendar(session: Session, user: UserContext, trip_id: int) -> dict:

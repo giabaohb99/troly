@@ -108,7 +108,9 @@ class ReminderStore(context: Context) {
                     fireAt = fireAt,
                     title = item.optString("title").ifEmpty { "Nhắc" },
                     body = if (item.isNull("body")) null else item.optString("body").takeIf { it.isNotEmpty() },
-                    kind = item.optString("kind", "normal"),
+                    // QĐ-39: kiểu báo thức chỉ khi nhắc có cờ alarm (người dùng nói rõ *báo thức*); máy chủ cũ chưa có
+                    // cờ thì đọc kind.
+                    kind = if (item.has("alarm")) (if (item.optBoolean("alarm")) "alarm" else "normal") else item.optString("kind", "normal"),
                     deepLink = if (item.isNull("deep_link")) null else item.optString("deep_link"),
                 )
             }

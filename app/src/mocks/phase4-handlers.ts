@@ -52,7 +52,7 @@ const trip: Trip & { deleted?: boolean } = {
       day_no: 2, date: shift(start, 1), weekday_text: null, title: 'Bến Tre đi Trà Vinh', total_km: 72, ride_minutes: 150,
       stops: [
         stop(201, 2, 1, 'Phà Cổ Chiên', { category: 'pha', planned_start: at(shift(start, 1), '10:00'), fixed: true, leg_km: 40, leg_minutes: 70 }),
-        stop(202, 2, 2, 'Ao Bà Om', { planned_start: at(shift(start, 1), '13:00'), leg_km: 32, leg_minutes: 80 }),
+        stop(202, 2, 2, 'Ao Bà Om', { planned_start: at(shift(start, 1), '13:00'), leg_km: 32, leg_minutes: 80, lat: null, lng: null, place_id: null, place_query: 'Ao Bà Om, Trà Vinh', resolve_status: 'not_found' }),
         stop(203, 2, 3, 'Bảo tàng Văn hóa Khmer', { planned_start: at(shift(start, 1), '15:00'), leg_km: 1, leg_minutes: 5, optional: true }),
       ],
     },
@@ -78,6 +78,7 @@ const trip: Trip & { deleted?: boolean } = {
   ],
   evaluation: {
     evaluated_at: new Date().toISOString(),
+    estimated: true,
     risks: [
       { code: 'R4', level: 'yellow', day_no: 1, stop_id: 103, message: 'Chạy liền 2 giờ 10 từ phà tới quán ăn', suggestion: 'Nghỉ 15 phút ở Mỏ Cày', checked_at: null },
       { code: 'R2', level: 'red', day_no: 2, stop_id: 203, message: 'Bảo tàng Văn hóa Khmer đóng cửa từ 16:00, tới 15:00 chỉ còn 60 phút', suggestion: 'Đi trước Ao Bà Om hoặc bỏ điểm này', checked_at: null },
@@ -129,6 +130,9 @@ const settings: SettingValues = {
   'trip.night_end': '05:30',
   'trip.ride_break_minutes': 90,
   'trip.speed_factor': 1.2,
+  'notify.new_transaction': false,
+  'notify.important_message': true,
+  'calendar.app_reminds_google': false,
   'trip.ferries': [{ name: 'Cát Lái', place_query: 'Bến phà Cát Lái', first_time: '04:00', last_time: '23:00', hotline: '028 3742 2222', note: null, updated_at: '2026-03-01' }],
 }
 

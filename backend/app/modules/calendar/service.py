@@ -177,6 +177,7 @@ def serialize(
         "task_id": e.task_id,
         "sync_status": e.sync_status,
         "google_html_link": e.google_html_link,
+        "meet_url": e.meet_url,
     }
 
 
@@ -317,6 +318,7 @@ def _exception_for(
             google_account_id=master.google_account_id,
             google_calendar_id=master.google_calendar_id,
             google_html_link=master.google_html_link,
+            meet_url=master.meet_url,
             sync_status="local_only",
             **times,
         )
@@ -393,6 +395,17 @@ def _remind_minutes(session: Session, user_id: int, value) -> list[int]:
     minutes = sorted({int(m) for m in value})
     if len(minutes) > 5 or any(m < 0 or m > 40320 for m in minutes):
         raise ValidationError(fields={"remind_minutes": "Tối đa 5 mốc, mỗi mốc từ 0 tới 40320 phút."})
+    return minutes
+
+
+def _default_safe_minutes(session: Session, user_id: int, value, times: dict) -> list[int]:
+    """Không chỉ định phút nhắc mà mốc mặc định đã qua (sự kiện *3 phút nữa*): nhắc thêm đúng giờ (0)."""
+    minutes = _remind_minutes(session, user_id, value)
+    if value is None and not times["all_day"]:
+        now = clock.now()
+        future = [m for m in minutes if times["start_at"] - timedelta(minutes=m) > now]
+        if times["start_at"] > now and len(future) < len(minutes):
+            minutes = future or [0]
     return minutes
 
 
@@ -487,7 +500,7 @@ def create_event(
         timezone=user.timezone,
         status="confirmed",
         attendees=guests,
-        remind_minutes=_remind_minutes(session, user.user_id, data.get("remind_minutes")),
+        remind_minutes=_default_safe_minutes(session, user.user_id, data.get("remind_minutes"), times),
         remind_source="app",
         is_alarm=bool(data.get("is_alarm")),
         source="app",
@@ -499,7 +512,10 @@ def create_event(
     )
     session.add(e)
     session.flush()
-    enqueue(session, user.user_id, "insert", e, {"send_updates": "all"} if guests else None)
+    payload = {"send_updates": "all"} if guests else {}
+    if data.get("meet"):
+        payload["meet"] = True  # integrations gửi conferenceData.createRequest (hangoutsMeet)
+    enqueue(session, user.user_id, "insert", e, payload or None)
     return {"event": serialize(e)}
 
 
@@ -529,7 +545,10 @@ def update_event(
     row = _get(session, user.user_id, event_id)
     if isinstance(occurrence_start, str):
         occurrence_start = datetime.fromisoformat(occurrence_start)
+    want_meet = bool(changes.pop("meet", False))
     content_changes = set(changes) - LOCAL_FIELDS
+    if want_meet:
+        content_changes.add("meet")
     if row.recurrence and occurrence_start is None and content_changes:
         raise RecurringSeriesEdit(data={"google_html_link": row.google_html_link})
     if row.is_organizer is False and content_changes:
@@ -549,7 +568,11 @@ def update_event(
                 session,
                 user,
                 "update_event",
-                {"event_id": event_id, "occurrence_start": occurrence_start, "changes": changes},
+                {
+                    "event_id": event_id,
+                    "occurrence_start": occurrence_start,
+                    "changes": {**changes, **({"meet": True} if want_meet else {})},
+                },
                 "Sửa sự kiện có khách mời",
                 draft,
                 guests,
@@ -583,9 +606,13 @@ def update_event(
             setattr(target, key, changes[key])
     if "attendees" in changes:
         target.attendees = guests
+    reminders_changed = alarm_changed = False
     if "remind_minutes" in changes:
-        target.remind_minutes = _remind_minutes(session, user.user_id, changes["remind_minutes"])
+        new_minutes = _remind_minutes(session, user.user_id, changes["remind_minutes"])
+        reminders_changed = new_minutes != list(target.remind_minutes or [])
+        target.remind_minutes = new_minutes
     if "is_alarm" in changes:
+        alarm_changed = bool(changes["is_alarm"]) != bool(target.is_alarm)
         target.is_alarm = bool(changes["is_alarm"])
     source_changed = "remind_source" in changes and changes["remind_source"] != target.remind_source
     if source_changed:
@@ -610,9 +637,20 @@ def update_event(
         payload = {}
         if target.attendees:
             payload["send_updates"] = "all"
+        if want_meet and not target.meet_url:
+            payload["meet"] = True
         if source_changed:
             payload["remind_source_changed"] = True
+        if reminders_changed and target.remind_source == "google":
+            payload["reminders_changed"] = True
         enqueue(session, user.user_id, "patch", target, payload or None)
+    elif (reminders_changed and target.remind_source == "google") or alarm_changed:
+        # QĐ-39: Google nhắc thì phút nhắc lên Google (popup); cờ báo thức giữ trên Google để đồng bộ lại
+        # (410) không mất. Không cần duyệt.
+        payload = (
+            {"reminders_changed": True} if reminders_changed and target.remind_source == "google" else None
+        )
+        enqueue(session, user.user_id, "patch", target, payload)
     if target is not row:
         return serialize(
             target, display_id=row.id, occurrence_start=_utc(occurrence_start), is_recurring=True
@@ -750,8 +788,19 @@ def list_reminders(session: Session, user: UserContext, start: datetime, days: i
     end = start + timedelta(days=days)
     tz = ZoneInfo(user.timezone)
     items = []
+    # QĐ-38: bật `calendar.app_reminds_google` thì app nhắc cả sự kiện tạo trên Google.
+    with_google = bool(setting_service.get_value(session, user.user_id, "calendar.app_reminds_google"))
+    default_minutes = list(
+        setting_service.get_value(session, user.user_id, "calendar.default_remind_minutes")
+    )
     for row, occ in collect(session, user, start, end + timedelta(days=28)):
-        if row.remind_source != "app" or not row.remind_minutes:
+        if row.remind_source == "app":
+            minutes_list = list(row.remind_minutes or [])
+        elif with_google:
+            minutes_list = list(row.remind_minutes or []) or default_minutes
+        else:
+            continue
+        if not minutes_list:
             continue
         begin = (
             datetime.combine(occ["start_date"], time.min, tzinfo=tz) if occ["all_day"] else occ["start_at"]
@@ -759,7 +808,7 @@ def list_reminders(session: Session, user: UserContext, start: datetime, days: i
         occ_key = (occ["occurrence_start"] or begin).astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
         when = f"{begin.astimezone(tz):%H:%M}" if not occ["all_day"] else "Cả ngày"
         body = f"{when} - {row.location}" if row.location else when
-        for minutes in row.remind_minutes:
+        for minutes in minutes_list:
             fire = begin - timedelta(minutes=minutes)
             if not (start <= fire < end):
                 continue

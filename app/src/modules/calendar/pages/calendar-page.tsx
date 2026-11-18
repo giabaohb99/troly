@@ -20,6 +20,7 @@ import { OfflineBanner } from '@/shared/components/offline-banner'
 import { PageHeader } from '@/shared/components/page-header'
 import { SkeletonList } from '@/shared/components/skeleton-list'
 import { queryKeys } from '@/shared/constants/query-keys'
+import { useDefaultRemind } from '@/shared/hooks/use-default-remind'
 import { needsReconnect, useGoogleStatus } from '@/shared/hooks/use-google-status'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { Button } from '@/shared/ui/button'
@@ -72,6 +73,7 @@ export function CalendarPage() {
   const done = useTasks('done')
   const google = useGoogleStatus()
   const permissions = usePermissions()
+  const defaultRemind = useDefaultRemind()
 
   const byDay = useMemo(() => eventsByDay((events.data ?? []).filter((e) => e.task_id === null)), [events.data])
   const groups = useMemo(() => groupTasks([...(todo.data ?? []), ...(done.data ?? [])], todayKey), [todo.data, done.data, todayKey])
@@ -328,7 +330,7 @@ export function CalendarPage() {
         </DialogContent>
       </Dialog>
 
-      {editing?.kind === 'event' && <EventDialog key={editing.key} event={editing.event} dayKey={dayKey} open onOpenChange={(open) => !open && closeEditing()} />}
+      {editing?.kind === 'event' && <EventDialog key={editing.key} event={editing.event} defaultRemind={defaultRemind} dayKey={dayKey} open onOpenChange={(open) => !open && closeEditing()} />}
       {editing?.kind === 'task' && <TaskDialog key={editing.key} task={editing.task} dayKey={dayKey} open onOpenChange={(open) => !open && closeEditing()} />}
     </div>
   )

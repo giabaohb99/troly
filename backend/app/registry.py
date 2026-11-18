@@ -16,6 +16,7 @@ ENABLED_MODULES = [
     "trip",
     "search",
     "report",
+    "notice",
     "system",
 ]
 # Tích hợp ngoài ở app/integrations/<tên>/; không import modules, module cài store cho nó (10 mục 3.4).
@@ -69,6 +70,9 @@ def register_integrations() -> None:
     task = _import_if_exists("app.modules.task.google_store")
     if task is not None:
         google_stores.register_task_store(task.STORE)
+    files = _import_if_exists("app.modules.file.google_store")
+    if files is not None and hasattr(google_stores, "register_file_store"):
+        google_stores.register_file_store(files.STORE)
 
 
 def approval_executor(tool_name: str):

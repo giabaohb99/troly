@@ -220,12 +220,17 @@ def cmd_export_inbox_samples(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_reprocess_inbox(args: argparse.Namespace) -> int:
-    """Đọc lại tin trong hộp tin từ tab_device_event sau khi sửa luật bóc tách (tin cũ bị xóa, tạo lại;
-    trạng thái đã xem, xong của các tin đó mất). Chỉ tin đến từ thông báo, trong `--days` ngày."""
-    from datetime import timedelta
+def cmd_reparse_inbox(args: argparse.Namespace) -> int:
+    """Bóc tách lại hộp tin từ tab_device_event gốc sau khi sửa luật (ví dụ nhóm Zalo, thông báo hệ thống).
 
-    from sqlalchemy import delete, select
+    Với mỗi sự kiện đã sinh tin: xóa tin cũ của sự kiện rồi đọc lại theo luật hiện tại, trong một giao dịch.
+    Chạy lại nhiều lần cho cùng kết quả (không nhân đôi). Giữ trạng thái: tin mới của một sự kiện nhận
+    trạng thái thấp nhất của các tin cũ cùng sự kiện (còn tin chưa xem thì vẫn là chưa xem).
+    `--since` (ngày hoặc giờ ISO) chỉ đọc lại tin hiện từ lúc đó; bỏ trống thì đọc lại tất cả.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import delete, select, update
 
     from app.core.context import UserContext
     from app.core.models import User
@@ -234,31 +239,43 @@ def cmd_reprocess_inbox(args: argparse.Namespace) -> int:
     from app.modules.inbox import service as inbox_service
     from app.modules.inbox.models import InboxMessage
 
-    since = clock.now() - timedelta(days=args.days)
+    since = None
+    if args.since:
+        since = datetime.fromisoformat(args.since)
+        since = since if since.tzinfo else since.replace(tzinfo=UTC)
+    elif args.days:
+        since = clock.now() - timedelta(days=args.days)
+    rank = {"new": 0, "seen": 1, "done": 2}
     with SessionLocal() as session:
-        event_ids = sorted(
-            set(
-                session.scalars(
-                    select(InboxMessage.device_event_id).where(
-                        InboxMessage.device_event_id.is_not(None), InboxMessage.posted_at >= since
-                    )
-                )
-            )
+        stmt = select(InboxMessage.device_event_id, InboxMessage.status).where(
+            InboxMessage.device_event_id.is_not(None)
         )
+        if since is not None:
+            stmt = stmt.where(InboxMessage.posted_at >= since)
+        old_status: dict[int, str] = {}
+        for event_id, status in session.execute(stmt):
+            current = old_status.get(event_id)
+            old_status[event_id] = status if current is None or rank[status] < rank[current] else current
+        event_ids = sorted(old_status)
         removed = session.execute(
             delete(InboxMessage).where(InboxMessage.device_event_id.in_(event_ids))
         ).rowcount
-        created = 0
+        created = ignored = 0
+        zones: dict[int, str] = {}
         for ev in session.scalars(
-            select(DeviceEvent).where(DeviceEvent.id.in_(event_ids)).order_by(DeviceEvent.id)
+            select(DeviceEvent)
+            .where(DeviceEvent.id.in_(event_ids))
+            .order_by(DeviceEvent.posted_at, DeviceEvent.id)
         ):
-            tz = session.scalar(select(User.timezone).where(User.id == ev.user_id))
+            if ev.user_id not in zones:
+                zones[ev.user_id] = session.scalar(select(User.timezone).where(User.id == ev.user_id))
             app = device_service.resolve_listened_app(session, ev.user_id, ev.device_id, ev.app_package)
             if app is None or app.purpose != "inbox":
+                ignored += 1
                 continue
             out = inbox_service.ingest_notification(
                 session,
-                UserContext(user_id=ev.user_id, timezone=tz),
+                UserContext(user_id=ev.user_id, timezone=zones[ev.user_id]),
                 parser=app.parser,
                 app_package=ev.app_package,
                 payload=ev.payload,
@@ -273,9 +290,20 @@ def cmd_reprocess_inbox(args: argparse.Namespace) -> int:
                 out.get("result_id"),
                 None if out["status"] == "done" else out.get("reason"),
             )
+            if out["status"] != "done":
+                ignored += 1
             created += out.get("created", 0)
+            if old_status[ev.id] != "new":
+                session.execute(
+                    update(InboxMessage)
+                    .where(InboxMessage.device_event_id == ev.id)
+                    .values(status=old_status[ev.id])
+                )
         session.commit()
-    print(f"Đã đọc lại {len(event_ids)} thông báo: xóa {removed} tin cũ, tạo {created} tin.")
+    print(
+        f"Đã bóc tách lại {len(event_ids)} thông báo: xóa {removed} tin cũ, tạo {created} tin, "
+        f"{ignored} thông báo nay không vào hộp tin."
+    )
     return 0
 
 
@@ -310,9 +338,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default="inbox-samples.yaml")
     p.set_defaults(func=cmd_export_inbox_samples)
 
-    p = sub.add_parser("reprocess-inbox", help="Đọc lại hộp tin từ sự kiện thiết bị sau khi sửa luật")
-    p.add_argument("--days", type=int, default=7)
-    p.set_defaults(func=cmd_reprocess_inbox)
+    for name in ("reparse-inbox", "reprocess-inbox"):  # reprocess-inbox: tên cũ, giữ để không gãy lệnh đã ghi
+        p = sub.add_parser(name, help="Bóc tách lại hộp tin từ sự kiện thiết bị gốc sau khi sửa luật")
+        p.add_argument("--since", help="Ngày hoặc giờ ISO, ví dụ 2026-11-18 hoặc 2026-11-18T08:00:00+07:00")
+        p.add_argument("--days", type=int, help="Hoặc số ngày gần đây")
+        p.set_defaults(func=cmd_reparse_inbox)
 
     args = parser.parse_args(argv)
     return args.func(args)

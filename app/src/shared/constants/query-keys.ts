@@ -28,6 +28,7 @@ export const queryKeys = {
     notifyStatus: ['device', 'notify-status'] as const,
     listenedApps: ['device', 'listened-apps'] as const,
     alarms: ['device', 'alarms'] as const,
+    notifyPrefs: ['device', 'notify-prefs'] as const,
   },
   calendar: {
     all: ['calendar'] as const,

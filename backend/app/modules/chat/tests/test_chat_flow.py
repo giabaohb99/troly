@@ -144,3 +144,51 @@ def test_failed_turn_left_out_of_next_history(auth_client, fake_claude, monkeypa
     texts = [b.get("text") for m in sent if isinstance(m["content"], list) for b in m["content"]]
     assert "lượt hỏng" not in texts
     assert "lượt sau" in texts
+
+
+def test_turn_finishes_when_app_disconnects_and_notice_lists_it(db, user, fake_claude):
+    """QĐ-41: app ngắt giữa chừng thì lượt vẫn chạy hết, tin được lưu, máy nhận notice chat_done."""
+    import time
+
+    from app.modules.notice import service as notice_service
+
+    cursor = notice_service.list_notices(db, user.user_id, None)["cursor"]
+    fake_claude.script.append(text_reply("Em đã tổng hợp xong chi tiêu tháng 11."))
+    prepared = service.prepare_turn(db, user, "tổng hợp chi tiêu tháng này", None, uuid.uuid4(), [])
+    stream = service.stream_turn(prepared)
+    assert next(stream).startswith("event: message.created")
+    # App ngắt: không đọc tiếp luồng SSE nữa; luồng nền vẫn chạy hết lượt.
+    answer = None
+    for _ in range(100):
+        answer = db.scalar(select(Message).where(Message.role == "assistant", Message.status == "complete"))
+        if answer is not None:
+            break
+        time.sleep(0.1)
+    assert answer is not None and answer.text == "Em đã tổng hợp xong chi tiêu tháng 11."
+    notices = notice_service.list_notices(db, user.user_id, cursor)["items"]
+    done = [n for n in notices if n["kind"] == "chat_done"]
+    assert done and done[0]["message_id"] == answer.id
+    stream.close()
+
+
+def test_exported_file_shows_as_assistant_attachment():
+    msg = Message(
+        role="assistant",
+        text="Em đã xuất báo cáo.",
+        attachment_file_ids=None,
+        actions=[
+            {
+                "id": "a1",
+                "type": "file",
+                "label": "Bao-cao.pdf",
+                "file_id": 9,
+                "name": "Bao-cao.pdf",
+                "mime": "application/pdf",
+                "size_bytes": 2048,
+            },
+            {"id": "a2", "type": "open_screen", "label": "Mở Báo cáo", "screen": "report", "params": {}},
+        ],
+    )
+    assert service.serialize_message(msg)["attachments"] == [
+        {"file_id": 9, "mime": "application/pdf", "name": "Bao-cao.pdf", "size_bytes": 2048}
+    ]

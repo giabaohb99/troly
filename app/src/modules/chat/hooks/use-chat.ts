@@ -1,7 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '@/core/api/api-error'
 import { postEventStream } from '@/core/api/sse'
+import { Alarm } from '@/core/native/alarm'
+import { isAppActive, onAppActiveChange } from '@/core/native/app-state'
 import { getChatStatus, getChatToday } from '@/modules/chat/api/chat-api'
 import type { ChatMessage, ChatMode, ChatToday } from '@/modules/chat/types/chat'
 import { applyTurnEvent, finishTurnWithoutCompletion, startTurn, type ChatTurn } from '@/modules/chat/utils/turn-reducer'
@@ -28,18 +30,30 @@ export function useChatTurn() {
   const busyRef = useRef(false)
   const lastInputRef = useRef<SendInput | null>(null)
 
+  // Gửi tin rồi rời app khi lượt chưa xong: nhờ lớp gốc hỏi notice chat_done dày hơn vài phút, phòng khi WebView
+  // bị dừng lúc chạy nền (QĐ-41).
+  useEffect(
+    () =>
+      onAppActiveChange((active) => {
+        if (!active && busyRef.current) void Alarm.startNoticeBurst()
+      }),
+    [],
+  )
+
   const run = useCallback(
     async (input: SendInput, clientMessageId: string) => {
       if (busyRef.current) return
       busyRef.current = true
       lastInputRef.current = input
       let current = startTurn(clientMessageId, input.text)
+      let usedTool = false
       setTurn(current)
       try {
         await postEventStream(
           '/chat/messages',
           { client_message_id: clientMessageId, text: input.text, attachment_file_ids: input.fileIds, mode: input.mode },
           (event) => {
+            if (event.event === 'tool.started') usedTool = true
             current = applyTurnEvent(current, event)
             setTurn(current)
           },
@@ -51,9 +65,28 @@ export function useChatTurn() {
       } finally {
         busyRef.current = false
       }
+      // Trợ lý vừa chạy công cụ (có thể đã tạo, sửa lịch, việc, nhắc): tải lại nhắc ngay để đặt báo thức, kể cả
+      // nhắc chỉ còn vài phút; lịch, việc trên màn cũng tải lại.
+      if (usedTool) {
+        void Alarm.sync()
+        void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
+      }
 
       if (current.status === 'done' && current.assistant) {
         const done = current
+        // Lượt xong khi app không ở màn hình: tự báo ngay; lớp gốc chống báo trùng theo id tin.
+        if (!isAppActive() && done.assistant && done.assistant.id > 0) {
+          const id = done.assistant.id
+          const link = `troly://?${done.conversationId ? `phien=${done.conversationId}&` : ''}tin=${id}`
+          const fileAction = done.assistant.actions?.find((a) => a.type === 'file')
+          const file = fileAction && fileAction.type === 'file' ? { file_id: fileAction.file_id, name: fileAction.name } : done.assistant.attachments?.[0]
+          void Alarm.notifyChatDone({
+            messageId: String(id),
+            deepLink: link,
+            body: done.assistant.text.slice(0, 120) || (file ? `Đã xuất ${file.name}` : null),
+            fileLink: file ? `${link}&mo-tep=${file.file_id}` : null,
+          })
+        }
         const userMessage: ChatMessage = done.userMessage ?? {
           id: -Date.now(),
           role: 'user',

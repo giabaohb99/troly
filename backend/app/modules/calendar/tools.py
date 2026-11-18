@@ -45,6 +45,7 @@ def _brief(e: dict, tz: str) -> dict:
         "is_recurring": e.get("is_recurring", False),
         "guests": len(e.get("attendees") or []),
         "remind_minutes": e.get("remind_minutes"),
+        "meet_url": e.get("meet_url"),
     }
 
 
@@ -110,6 +111,7 @@ class AddEventInput(BaseModel):
     attendee_emails: list[str] | None = Field(
         description="Email khách mời; có khách thì cần người dùng duyệt"
     )
+    meet: bool | None = Field(default=None, description="true: tạo link Google Meet cho cuộc họp")
 
 
 class UpdateEventInput(BaseModel):
@@ -127,6 +129,7 @@ class UpdateEventInput(BaseModel):
     attendee_emails: list[str] | None = Field(
         description="Danh sách khách mới (thay cả danh sách); null là giữ"
     )
+    meet: bool | None = Field(default=None, description="true: thêm link Google Meet nếu chưa có")
 
 
 class ListEventsInput(BaseModel):
@@ -154,13 +157,18 @@ class ReminderInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(description="Nhắc việc gì")
     remind_at: datetime = Field(description="Lúc nhắc, ISO 8601 có múi giờ")
+    alarm: bool | None = Field(
+        default=None, description="true chỉ khi người dùng nói rõ báo thức; mặc định là thông báo thường"
+    )
 
 
 # ---------- Hàm chạy ----------
 
 
 def run_add_event(ctx: ToolContext, data: AddEventInput) -> ToolOutput:
-    payload = data.model_dump(exclude_none=True, exclude={"attendee_emails"})
+    payload = data.model_dump(exclude_none=True, exclude={"attendee_emails", "meet"})
+    if data.meet:
+        payload["meet"] = True
     if data.attendee_emails:
         payload["attendees"] = [{"email": e} for e in data.attendee_emails]
     out = service.create_event(ctx.session, ctx.user, payload, conversation_id=ctx.conversation_id)
@@ -174,7 +182,11 @@ def run_add_event(ctx: ToolContext, data: AddEventInput) -> ToolOutput:
 
 
 def run_update_event(ctx: ToolContext, data: UpdateEventInput) -> ToolOutput:
-    changes = data.model_dump(exclude_none=True, exclude={"event_id", "occurrence_start", "attendee_emails"})
+    changes = data.model_dump(
+        exclude_none=True, exclude={"event_id", "occurrence_start", "attendee_emails", "meet"}
+    )
+    if data.meet:
+        changes["meet"] = True
     if data.attendee_emails is not None:
         changes["attendees"] = [{"email": e} for e in data.attendee_emails]
     if not changes:
@@ -309,7 +321,7 @@ def run_set_reminder(ctx: ToolContext, data: ReminderInput) -> ToolOutput:
             "start_at": data.remind_at,
             "end_at": data.remind_at + timedelta(minutes=15),
             "remind_minutes": [0],
-            "is_alarm": True,
+            "is_alarm": bool(data.alarm),  # QĐ-39
         },
     )
     e = out.get("event", out)
@@ -325,7 +337,8 @@ TOOLS = [
         label="Đang thêm lịch",
         description=(
             "Thêm hẹn, họp, sự kiện có giờ vào lịch (đồng bộ Google Calendar). Có khách mời thì chỉ tạo thẻ xác "
-            "nhận, Google gửi thư mời khi người dùng bấm Duyệt. Kết quả có trung_lich nếu trùng giờ: báo ngắn."
+            "nhận, Google gửi thư mời khi người dùng bấm Duyệt. Kết quả có trung_lich nếu trùng giờ: báo ngắn. "
+            "meet = true tạo link Google Meet; meet_url null là link chưa về, có sau lần đồng bộ tới."
         ),
         input_model=AddEventInput,
         run=run_add_event,
@@ -367,7 +380,10 @@ TOOLS = [
     ToolSpec(
         name="set_reminder",
         label="Đang đặt nhắc",
-        description="Nhắc một việc vào giờ cụ thể (máy kêu đúng giờ). Gọi khi người dùng nói nhắc lúc mấy giờ.",
+        description=(
+            "Nhắc một việc vào giờ cụ thể bằng thông báo. Gọi khi người dùng nói nhắc lúc mấy giờ; "
+            "alarm = true chỉ khi người dùng nói rõ báo thức."
+        ),
         input_model=ReminderInput,
         run=run_set_reminder,
         phase=3,

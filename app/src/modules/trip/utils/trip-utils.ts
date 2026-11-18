@@ -40,9 +40,14 @@ export function groupStops(stops: Stop[]): Stop[] {
   return result
 }
 
-// Điểm có Dẫn đường: điểm chính hoặc đi qua đã có tọa độ.
+// Điểm có Dẫn đường: điểm chính hoặc đi qua. Không có tọa độ thì dẫn đường theo tên (QĐ-36).
 export function canNavigate(stop: Stop): boolean {
-  return stop.lat !== null && stop.lng !== null && (stop.role === 'main' || stop.role === 'via')
+  return stop.role === 'main' || stop.role === 'via'
+}
+
+export function navigationTarget(stop: Stop): { lat: number | null; lng: number | null; query: string | null } {
+  if (stop.lat !== null && stop.lng !== null) return { lat: stop.lat, lng: stop.lng, query: null }
+  return { lat: null, lng: null, query: stop.place_query || stop.title }
 }
 
 // Chuyến đang đi đứng đầu, rồi chuyến sắp tới (gần nhất trước), rồi chuyến đã qua (mới nhất trước) (31 mục 3.5).

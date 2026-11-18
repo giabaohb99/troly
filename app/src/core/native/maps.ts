@@ -9,6 +9,8 @@ export interface NavigateOptions {
   // `l` xe hai bánh, `d` ô tô, `w` đi bộ; `avoid: 'h'` tránh cao tốc.
   mode: string
   avoid: string | null
+  // Lệnh google.navigation: dựng sẵn ở máy chủ (QĐ-36); có thì mở thẳng.
+  uri?: string | null
   fallbackUrl?: string | null
 }
 

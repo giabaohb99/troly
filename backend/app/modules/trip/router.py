@@ -64,6 +64,10 @@ class ResolveIn(BaseModel):
     place_query: str
 
 
+class EvaluateIn(BaseModel):
+    mode: str = "normal"  # think: AI tìm thêm giờ mở cửa trên web (QĐ-36)
+
+
 class ExportIn(BaseModel):
     save_to_drive: bool = False
 
@@ -166,9 +170,13 @@ def resolve_stop(
 
 @router.post("/{trip_id}/evaluate", status_code=202)
 def evaluate(
-    trip_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+    trip_id: int,
+    body: EvaluateIn | None = None,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> dict:
-    return ok(service.evaluate_trip(session, user, trip_id), "Đang đánh giá chuyến đi.")
+    mode = body.mode if body else "normal"
+    return ok(service.evaluate_trip(session, user, trip_id, mode), "Đang đánh giá chuyến đi.")
 
 
 @router.post("/{trip_id}/options/{option_id}/choose")

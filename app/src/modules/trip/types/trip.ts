@@ -128,7 +128,8 @@ export interface Trip {
   needs_confirmation: NeedsConfirmation[]
   facts: TripFact[]
   options: TripOption[]
-  evaluation: { evaluated_at: string; risks: Risk[] } | null
+  // estimated: km và giờ chạy do AI ước tính (QĐ-36, chưa có Maps Platform).
+  evaluation: { evaluated_at: string; risks: Risk[]; estimated?: boolean } | null
 }
 
 // GET /trips/{id}/map-links: hành động phẳng như của chat (12 mục 3.9).
@@ -149,6 +150,7 @@ export interface MapNavigation {
   query: string | null
   mode: string
   avoid: string | null
+  uri?: string | null
   fallback_url: string
 }
 

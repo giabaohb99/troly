@@ -93,5 +93,7 @@ def test_phuoc_hai_tra_vinh():
     kinds = {k for k, _ in facts}
     assert {"checkin", "checkout", "ferry_last"} <= kinds
     assert any("17:00" in v for k, v in facts if k == "ferry_last")
-    assert any("bảo tàng" in s.title.lower() or any("bảo tàng" in p.label.lower() for p in s.places)
-               for s in result.days[2].stops)
+    assert any(
+        "bảo tàng" in s.title.lower() or any("bảo tàng" in p.label.lower() for p in s.places)
+        for s in result.days[2].stops
+    )

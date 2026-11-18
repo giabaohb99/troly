@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDayTitle, formatModelLabel, formatMoney, formatMoneyShort, formatTime, formatWhen, parseMoney, toDateKey } from '@/shared/utils/format'
+import { formatDayTitle, formatModelLabel, formatMoney, formatMoneyShort, formatTime, formatUsd, formatWhen, parseMoney, toDateKey } from '@/shared/utils/format'
 
 describe('parseMoney', () => {
   it.each([
@@ -56,5 +56,18 @@ describe('formatWhen', () => {
   it('hôm nay ra giờ, ngày khác ra ngày tháng', () => {
     expect(formatWhen('2026-11-18T02:05:00Z', '2026-11-18')).toBe('09:05')
     expect(formatWhen('2026-11-16T02:05:00Z', '2026-11-18')).toBe('16/11')
+  })
+})
+
+describe('formatUsd', () => {
+  it('dưới 1 USD hiện 4 chữ số lẻ để thấy được chi phí từng câu', () => {
+    expect(formatUsd(0.0012)).toBe('0,0012 USD')
+    expect(formatUsd(0.00042)).toBe('0,0004 USD')
+    expect(formatUsd(0)).toBe('0,00 USD')
+  })
+
+  it('từ 1 USD hiện 2 chữ số lẻ', () => {
+    expect(formatUsd(1.384)).toBe('1,38 USD')
+    expect(formatUsd(200)).toBe('200,00 USD')
   })
 })

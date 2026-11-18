@@ -110,6 +110,18 @@
   html {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Khung app cao đúng màn hình; chỉ vùng nội dung cuộn, không kéo dãn cả trang (lỗi trên S25+). */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #root {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CalendarPlus, ChevronLeft, FileDown, Lightbulb, Loader2, Map as MapIcon, MapPinOff, MessageCircle, MoreHorizontal, RefreshCw, Scale, Trash2, TriangleAlert } from 'lucide-react'
+import { Brain, CalendarPlus, ChevronLeft, FileDown, Lightbulb, Loader2, Map as MapIcon, MapPinOff, MessageCircle, MoreHorizontal, RefreshCw, Scale, Trash2, TriangleAlert } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -113,6 +113,7 @@ export function TripPage() {
   const redCount = data?.evaluation?.risks.filter((r) => r.level === 'red').length ?? 0
   const riskCount = data?.evaluation?.risks.length ?? 0
   const chosen = data?.options.find((o) => o.id === data.chosen_option_id)
+  const estimated = data?.evaluation?.estimated === true
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.trip.all })
@@ -134,19 +135,22 @@ export function TripPage() {
 
   const menu = (data: Trip) => [
     { icon: Scale, label: 'So sánh phương án', onClick: () => setPanel('options'), disabled: data.options.length === 0 },
-    {
-      icon: RefreshCw,
-      label: 'Đánh giá lại',
+    ...([
+      { icon: RefreshCw, label: 'Đánh giá lại', mode: 'normal' as const, done: 'Đang đánh giá lại' },
+      { icon: Brain, label: 'Nghĩ kỹ (tìm giờ mở cửa trên web)', mode: 'think' as const, done: 'Đang đánh giá kỹ, lâu hơn một chút' },
+    ].map((item) => ({
+      icon: item.icon,
+      label: item.label,
       onClick: () =>
         run(
-          () => evaluateTrip(tripId),
+          () => evaluateTrip(tripId, item.mode),
           () => {
-            toast.success('Đang đánh giá lại')
+            toast.success(item.done)
             invalidate()
           },
         ),
       disabled: BUSY.has(data.status),
-    },
+    }))),
     { icon: CalendarPlus, label: 'Đưa vào lịch', onClick: () => run(() => sendToCalendar(tripId), (r) => toast.success(`Đã đưa ${r.event_ids.length} mục vào lịch`)) },
     { icon: FileDown, label: 'Xuất Word', onClick: () => run(() => exportDocx(tripId), (r) => void openExternal(r.download_url)) },
     { icon: MessageCircle, label: 'Hỏi trợ lý', onClick: () => navigate(`/?hoi=${encodeURIComponent(`Về chuyến ${data.title}: `)}`) },
@@ -220,11 +224,12 @@ export function TripPage() {
               {(day.title || day.total_km || day.ride_minutes) && (
                 <p className="text-xs text-muted-foreground">
                   {[day.title, formatKm(day.total_km), day.ride_minutes ? `chạy ${formatDuration(day.ride_minutes)}` : null].filter(Boolean).join(' · ')}
+                  {estimated && (day.total_km || day.ride_minutes) ? ' (ước tính)' : ''}
                 </p>
               )}
               <div className="divide-y">
                 {groupStops(day.stops).map((stop) => (
-                  <StopRow key={stop.id} stop={stop} risks={risks.get(stop.id) ?? []} facts={data.facts.filter((f) => f.stop_id === stop.id)} />
+                  <StopRow key={stop.id} stop={stop} estimated={estimated} risks={risks.get(stop.id) ?? []} facts={data.facts.filter((f) => f.stop_id === stop.id)} />
                 ))}
               </div>
               {day.stops.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Ngày này chưa có điểm nào.</p>}
@@ -232,7 +237,9 @@ export function TripPage() {
           )}
 
           {day && day.stops.length > 1 && !BUSY.has(data.status) && <DayRouteButtons tripId={tripId} dayNo={day.day_no} />}
-          <p className="text-xs text-muted-foreground">Thời gian xe máy do Google ước tính (bản thử nghiệm), có thể lệch.</p>
+          <p className="text-xs text-muted-foreground">
+            {estimated ? 'Km và giờ chạy do trợ lý ước tính, chưa có số liệu Google Maps; có thể lệch.' : 'Thời gian xe máy do Google ước tính (bản thử nghiệm), có thể lệch.'}
+          </p>
 
           <Dialog open={panel === 'menu'} onOpenChange={(open) => !open && setPanel(null)}>
             <DialogContent className="top-auto bottom-[calc(4.5rem+env(safe-area-inset-bottom))] translate-y-0">

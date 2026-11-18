@@ -123,6 +123,7 @@ def build_sample_extract(text: str | None = None) -> TripExtract:
                     "places": places,
                     "optional": "nếu còn" in plain or "có thể" in plain,
                     "phone": (re.search(r"SĐT ([\d ]+)", plain) or [None, None])[1],
+                    "note": plain if len(plain) > len(plain.split(". ")[0]) + 2 else None,
                 }
             )
             if len(day["stops"]) == 1:

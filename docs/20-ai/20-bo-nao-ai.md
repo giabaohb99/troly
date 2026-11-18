@@ -239,6 +239,9 @@ Luật chung:
 | search | `search_everything` | Hỏi lại điều đã lưu, đã nói, đã nhận | mục 3.8 | mục 3.8 | Không | 1 |
 | file | `list_files` | Tìm tệp đã gửi, đã xuất | `purpose`, `query`, `limit` | `[{file_id, name, mime, created_at}]` | Không | 1 |
 | file | `get_file_link` | Mở tệp | `file_id` | `open_link` | Không | 1 |
+| file | `export_document` | Xuất PDF, Word, Excel (QĐ-41) | `format` (`pdf` mặc định, `docx`, `xlsx`), `title`, `blocks` (`heading`, `paragraph`, `bullets`, `table` có `title`, `header`, `rows`) | Hành động `file`; dựng bằng `file.service.save_generated_file` | Không | 4 |
+| file | `save_file_to_drive` | Lưu tệp vào Drive của mình | `file_id` | Việc nền; chưa nối Google thì `open_screen` `settings_google` | Không | 5 |
+| file | `share_drive_file` | Chia sẻ tệp Drive cho người khác | `file_id`, `email`, `role` (`reader` mặc định, `commenter`, `writer`), `message` | `confirm` (thẻ nêu tệp, người nhận, quyền); duyệt xong chat chạy `file/approvals.py` | **Có** (QĐ-38) | 5 |
 | expense | `add_expense` | Kể một khoản chi, thu, chuyển giữa tài khoản mình | `amount_vnd`; `kind` (`expense`, `income`, `transfer`); `account` (`vcb`, `tcb`, `momo`, `cash`, `card`, `other`, null = `cash`); `to_account`; `category` (tên, null thì service đoán); `merchant`, `place`, `note`, `spent_at` | `{expense_id, today_total_vnd}` + `open_screen` `expense_detail` | Không | 1 |
 | expense | `update_expense` | Sửa khoản đã ghi | `expense_id` + trường đổi | Bản ghi mới | Không | 1 |
 | expense | `delete_expense` | Xóa khoản đã ghi | `expense_ids` (1 tới 50), `reason` | 1 mục: xóa, `undo`; từ 2 mục: `confirm` | Từ 2 mục | 1 |
@@ -251,11 +254,11 @@ Luật chung:
 | task | `update_task` | Sửa, xong, dời hạn | `task_id` + trường đổi, `status` (`todo`, `done`, `cancelled`) | Bản ghi mới | Không | 3 |
 | task | `list_tasks` | Việc còn lại, hôm nay, quá hạn | `status`, `due_before`, `limit` | Danh sách | Không | 3 |
 | task | `delete_task` | Xóa việc | `task_ids`, `reason` | Như `delete_expense` | Từ 2 mục | 3 |
-| calendar | `add_event` | Hẹn, họp có giờ | `title`, `start_at`, `end_at`, `all_day`, `location`, `remind_minutes`, `attendee_emails` | Không khách: `{event_id, conflicts}`; có khách: `confirm` | Có khách mời (QĐ-23) | 3 |
-| calendar | `update_event` | Dời giờ, đổi chỗ, thêm bớt khách | `event_id` + trường đổi | Bản ghi + `conflicts`; có khách: `confirm` | Có khách mời | 3 |
+| calendar | `add_event` | Hẹn, họp có giờ | `title`, `start_at`, `end_at`, `all_day`, `location`, `remind_minutes`, `attendee_emails`, `meet` (Phase 5) | Không khách: `{event_id, conflicts}`; có khách: `confirm` | Có khách mời (QĐ-23) | 3 |
+| calendar | `update_event` | Dời giờ, đổi chỗ, thêm bớt khách | `event_id` + trường đổi, `meet` | Bản ghi + `conflicts`, `meet_url` (null tới lần đồng bộ sau); có khách: `confirm` | Có khách mời | 3 |
 | calendar | `list_events` | Hỏi lịch | `from`, `to`, `query` | Danh sách | Không | 3 |
 | calendar | `delete_event` | Xóa sự kiện | `event_ids`, `reason` | Như `delete_expense` | Từ 2 mục, hoặc có khách mời | 3 |
-| calendar | `set_reminder` | Nhắc vào giờ cụ thể | `text`, `remind_at` | `{event_id}` | Không | 3 |
+| calendar | `set_reminder` | Nhắc vào giờ cụ thể | `text`, `remind_at`, `alarm` (chỉ true khi người dùng nói rõ báo thức, QĐ-39) | `{event_id}`; mặc định là thông báo thường | Không | 3 |
 | trip | `import_trip` | Gửi tệp lịch trình, hoặc đã dựng nháp từ câu mô tả | `file_id` hoặc `draft` (lược đồ 41 mục 4.2), `travel_mode`, `start_date` | Việc nền; `open_screen` `trip_detail` | Không | 4 |
 | trip | `evaluate_trip` | Kiểm rủi ro, đề xuất phương án | `trip_id` | Việc nền; rủi ro và phương án theo 41 | Không | 4 |
 | trip | `save_trip` | Chọn phương án | `trip_id`, `option_id` | `{status: planned}` | Không | 4 |
@@ -283,7 +286,8 @@ Luật chung:
   - công tắc tắt AI cho hộp tin thì trả `INBOX_AI_DISABLED`;
   - đặt `contains_third_party`.
 - **Gửi thư chỉ một đường:** `send_gmail_draft` (hoặc màn nháp thư) tạo `tab_pending_action` `tool_name = send_gmail_draft`; duyệt mới gửi.
-- **Không có công cụ** đổi app được nghe, ngắt Google, thu hồi thiết bị, chia sẻ tệp Drive, xóa ghi chú, xóa tệp. Xóa ghi chú và xóa tệp làm trên app.
+- **Hoãn sau V1 (QĐ-40):** các công cụ Phase 5 của Gmail, danh bạ, Sheets (`search_gmail`, `get_gmail_thread`, `create_gmail_draft`, `send_gmail_draft`, `lookup_contact`, `export_expenses_to_sheets`) chưa viết. Meet và Drive (QĐ-38) đã có.
+- **Không có công cụ** đổi app được nghe, ngắt Google, thu hồi thiết bị, xóa ghi chú, xóa tệp. Xóa ghi chú và xóa tệp làm trên app.
 
 ### 3.8 Tìm tài liệu: `search_everything` (QĐ-27 mục 11)
 
@@ -380,6 +384,7 @@ Mỗi hành động: `{id, type, label, ...trường riêng}`. `id` duy nhất t
 | `undo` | `text`, `resource` (`expense`, `task`, `event`), `ids`, `expires_at` | Sau khi xóa một mục: dòng *Đã xóa ...* kèm *Hoàn tác* (10 phút) |
 | `memory_changed` | `version`, `text`, `undo_version` | *Đã ghi nhớ* kèm *Hoàn tác* |
 | `choices` | `options` (`[{label, value}]`, tối đa 5) | Hàng nút gợi ý; chạm thì gửi `value` như tin người dùng |
+| `file` | `file_id`, `name`, `mime`, `size_bytes` | Tệp bot xuất (QĐ-41). Chat dựng `attachments` của tin trợ lý (`file_id`, `mime`, `name`, `size_bytes`) từ hành động này; app vẽ thẻ theo `attachments`, mở bằng `GET /files/{id}` |
 
 Link bản đồ do trip service dựng từ tọa độ trong DB, không lấy URL do AI viết. Claude chỉ thấy một dòng như *Đã tạo nút Dẫn đường tới Bún nước lèo Ba Lấu*.
 
@@ -440,8 +445,8 @@ Theo 11; chỉ ghi phần thêm hoặc đổi.
   - Thêm `mode` (`chat`, `think`, `research`, `summary`), `web_search_requests` (int), `fallback_used` (boolean).
 - **`tab_message`:** thêm `model` (text) và `citations` (jsonb, `[{title, url}]`) cho tin `assistant`.
 - **`tab_pending_action`:**
-  - `tool_name` gồm `delete_expense`, `delete_task`, `delete_event`, `delete_trip`, `add_event`, `update_event`, `send_gmail_draft`.
-  - Bỏ `delete_note`, `delete_file`, `share_drive_file`, `update_setting`.
+  - `tool_name` gồm `delete_expense`, `delete_task`, `delete_event`, `delete_trip`, `add_event`, `update_event`, `send_gmail_draft`, `share_drive_file` (QĐ-38).
+  - Bỏ `delete_note`, `delete_file`, `update_setting`.
   - Bỏ cột `require_unlock` (QĐ-27).
 - **Chữ trích từ tệp (bảng mới, module `file`):** `tab_file_text` gồm `file_id` (PK, FK `tab_file` CASCADE), `user_id`, `content` (text, tối đa 200.000 ký tự), `method` (`docx`, `pdf_text`, `ai_ocr`), `page_count`, `search_vector` (sinh với `troly_vn`, GIN), `extracted_at`.
 - **Tìm chat:** `tab_message` thêm `search_vector` sinh từ `text` (chỉ mục GIN một phần `WHERE hidden = false`).

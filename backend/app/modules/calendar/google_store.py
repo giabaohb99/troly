@@ -79,8 +79,13 @@ class CalendarStore:
         e.recurring_event_id, e.original_start_at = event.recurring_event_id, original
         e.attendees = event.attendees or []
         e.is_organizer = event.organizer_self
-        if e.remind_source == "google":
-            e.remind_minutes = [] if event.reminders_use_default else sorted(set(event.reminder_minutes))[:5]
+        # QĐ-39: phút nhắc đồng bộ hai chiều. Integrations đã tính sẵn phút popup (useDefault lấy nhắc mặc
+        # định của lịch). Sự kiện app nhắc thì Google im (overrides rỗng): chỉ lấy phút khi người dùng đặt
+        # nhắc trên Google, integrations tự đẩy lại để Google im, tránh hai thông báo.
+        if e.remind_source == "google" or event.reminder_minutes:
+            e.remind_minutes = list(event.reminder_minutes)
+        if getattr(event, "is_alarm", None) is not None:
+            e.is_alarm = event.is_alarm
         e.google_account_id, e.google_calendar_id, e.google_event_id = (
             account_id,
             calendar_id,
@@ -88,6 +93,8 @@ class CalendarStore:
         )
         e.google_etag, e.google_updated_at = event.etag, event.updated
         e.google_html_link = event.html_link or e.google_html_link
+        if hasattr(event, "meet_url"):
+            e.meet_url = event.meet_url
         e.sync_status, e.sync_error, e.deleted_at = "synced", None, None
         session.flush()
         if e.task_id is not None and not e.all_day and e.status != "cancelled":
@@ -178,7 +185,14 @@ class CalendarStore:
             attendees=e.attendees or [],
             remind_minutes=list(e.remind_minutes or []),
             remind_source=e.remind_source,
+            # Phải gửi đúng cờ: thiếu thì lần đẩy ghi troly_alarm = "0", đọc về sẽ tắt báo thức.
+            is_alarm=bool(e.is_alarm),
             deleted=e.deleted_at is not None or (bool(e.recurring_event_id) and e.status == "cancelled"),
+        )
+
+    def save_meet_url(self, session, user_id, local_id, url):
+        session.execute(
+            update(Event).where(Event.id == local_id, Event.user_id == user_id).values(meet_url=url)
         )
 
     def save_push_result(self, session, user_id, local_id, google_event_id, etag, updated):

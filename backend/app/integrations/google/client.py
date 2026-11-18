@@ -22,20 +22,28 @@ class GoogleApi:
         *,
         params: dict | None = None,
         json: dict | None = None,
+        content: bytes | None = None,
         headers: dict | None = None,
         ok: tuple[int, ...] = (200,),
-    ) -> dict:
+        return_location: bool = False,
+    ):
+        """Trả JSON của phản hồi; return_location=True thì trả header Location (phiên tải resumable)."""
         token = oauth.access_token(self.session, self.account)
-        response = http.send(method, url, params=params, json=json, headers=self._headers(token, headers))
+        extra = (
+            {"params": params, "json": json} if content is None else {"params": params, "content": content}
+        )
+        response = http.send(method, url, headers=self._headers(token, headers), **extra)
         if response.status_code == 401:
             token = oauth.access_token(self.session, self.account, force_refresh=True)
-            response = http.send(method, url, params=params, json=json, headers=self._headers(token, headers))
+            response = http.send(method, url, headers=self._headers(token, headers), **extra)
         if response.status_code == 403 and http.error_reason(response) in (
             "insufficientPermissions",
             "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
         ):
             raise GoogleScopeMissing()
         http.raise_for(response, ok)
+        if return_location:
+            return response.headers.get("location", "")
         if response.status_code == 204 or not response.content:
             return {}
         return response.json()

@@ -15,7 +15,7 @@ interface ActionBase {
 }
 
 export type ChatAction =
-  | (ActionBase & { type: 'open_map_navigation'; lat: number | null; lng: number | null; query: string | null; mode: string; avoid: string | null; fallback_url: string })
+  | (ActionBase & { type: 'open_map_navigation'; lat: number | null; lng: number | null; query: string | null; mode: string; avoid: string | null; uri?: string | null; fallback_url: string })
   | (ActionBase & { type: 'open_map_directions'; urls: string[]; segment_labels: string[] })
   | (ActionBase & { type: 'open_map_place'; query: string; place_id: string | null })
   | (ActionBase & { type: 'open_link'; url: string; kind: 'file' | 'gmail' | 'sheet' | 'web' })
@@ -24,13 +24,17 @@ export type ChatAction =
   | (ActionBase & { type: 'undo'; text: string; resource: 'expense' | 'task' | 'event'; ids: number[]; expires_at: string })
   | (ActionBase & { type: 'memory_changed'; version: number; text: string; undo_version: number })
   | (ActionBase & { type: 'choices'; options: { label: string; value: string }[] })
+  // Tệp bot xuất (QĐ-41, agent AI): label bằng name.
+  | (ActionBase & { type: 'file'; file_id: number; name: string; mime: string; size_bytes: number | null })
 
-export const KNOWN_ACTION_TYPES = new Set(['open_map_navigation', 'open_map_directions', 'open_map_place', 'open_link', 'open_screen', 'confirm', 'undo', 'memory_changed', 'choices'])
+export const KNOWN_ACTION_TYPES = new Set(['open_map_navigation', 'open_map_directions', 'open_map_place', 'open_link', 'open_screen', 'confirm', 'undo', 'memory_changed', 'choices', 'file'])
 
 export interface Attachment {
   file_id: number
   mime: string
   name: string
+  // Tệp bot xuất (QĐ-41) có cỡ; tệp người dùng gửi có thể không.
+  size_bytes?: number | null
 }
 
 export interface ChatMessage {

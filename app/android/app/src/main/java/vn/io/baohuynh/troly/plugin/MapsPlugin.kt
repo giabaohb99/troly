@@ -13,7 +13,8 @@ import java.util.Locale
 
 /**
  * Mở Google Maps (30 mục 3.12, 41 mục 7). Dẫn đường: `google.navigation:` chế độ xe hai bánh (`mode=l`), tránh
- * cao tốc (`avoid=h`), gắn gói Maps. Không có Maps thì mở link chỉ đường https bằng trình duyệt.
+ * cao tốc (`avoid=h`), gắn gói Maps. Máy chủ có thể gửi sẵn `uri` (QĐ-36: điểm thường không có tọa độ, dẫn đường
+ * theo tên). Không có Maps thì mở link chỉ đường https bằng trình duyệt.
  */
 @CapacitorPlugin(name = "Maps")
 class MapsPlugin : Plugin() {
@@ -30,18 +31,21 @@ class MapsPlugin : Plugin() {
         val query = call.getString("query")?.trim()?.takeIf { it.isNotEmpty() }
         val mode = call.getString("mode")?.takeIf { it in MODES } ?: "l"
         val avoid = call.getString("avoid")?.takeIf { it.matches(Regex("^[htf]{1,3}$")) }
+        val serverUri = call.getString("uri")?.takeIf { it.startsWith("google.navigation:") }
         val target = when {
             lat != null && lng != null -> String.format(Locale.US, "%.6f,%.6f", lat, lng)
             query != null -> Uri.encode(query)
+            serverUri != null -> null
             else -> return call.reject("Thiếu tọa độ hoặc tên điểm.")
         }
         if (isMapsInstalled(context)) {
-            val uri = Uri.parse("google.navigation:q=$target&mode=$mode" + (avoid?.let { "&avoid=$it" } ?: ""))
+            val uri = Uri.parse(serverUri ?: "google.navigation:q=$target&mode=$mode" + (avoid?.let { "&avoid=$it" } ?: ""))
             val intent = Intent(Intent.ACTION_VIEW, uri).setPackage(MAPS_PACKAGE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (start(intent)) return call.resolve(JSObject().put("opened", "maps"))
         }
         val fallback = call.getString("fallbackUrl")?.takeIf { it.startsWith("https://") }
-            ?: "https://www.google.com/maps/dir/?api=1&destination=$target&travelmode=two-wheeler&dir_action=navigate"
+            ?: target?.let { "https://www.google.com/maps/dir/?api=1&destination=$it&travelmode=two-wheeler&dir_action=navigate" }
+            ?: return call.reject("Không mở được bản đồ.")
         if (openBrowser(fallback)) call.resolve(JSObject().put("opened", "browser")) else call.reject("Không mở được bản đồ.")
     }
 

@@ -15,11 +15,13 @@ import { Switch } from '@/shared/ui/switch'
 import { Textarea } from '@/shared/ui/textarea'
 import { cn } from '@/shared/utils/cn'
 
-const REMIND_OPTIONS = [0, 5, 15, 30, 60]
+const REMIND_OPTIONS = [0, 5, 10, 15, 30, 60]
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 interface EventDialogProps {
   event: CalendarEvent | null
+  // Nhắc mặc định (calendar.default_remind_minutes) cho sự kiện mới.
+  defaultRemind?: number | null
   // Ngày đang xem, dùng làm ngày mặc định khi thêm mới.
   dayKey: string
   open: boolean
@@ -42,7 +44,7 @@ function plusHour(local: string): string {
 
 // Hộp sửa sự kiện (31 mục 3.5). Có khách: lưu xong hiện thẻ duyệt ngay trong hộp (QĐ-23), duyệt rồi mới ghi.
 // Sự kiện người khác mời: chỉ đổi được Ai nhắc.
-export function EventDialog({ event, dayKey, open, onOpenChange }: EventDialogProps) {
+export function EventDialog({ event, defaultRemind = 15, dayKey, open, onOpenChange }: EventDialogProps) {
   const invalidate = useInvalidateCalendar()
   const remove = useDeleteEvent()
   const readOnly = event?.is_organizer === false
@@ -56,7 +58,7 @@ export function EventDialog({ event, dayKey, open, onOpenChange }: EventDialogPr
   const [attendees, setAttendees] = useState<string[]>(() => (event?.attendees ?? []).filter((a) => !a.is_self).map((a) => a.email))
   const [guestText, setGuestText] = useState('')
   const [remindSource, setRemindSource] = useState<RemindSource>(event?.remind_source ?? 'app')
-  const [remindMinutes, setRemindMinutes] = useState<number | null>(event ? (event.remind_minutes.length ? Math.min(...event.remind_minutes) : null) : 15)
+  const [remindMinutes, setRemindMinutes] = useState<number | null>(event ? (event.remind_minutes.length ? Math.min(...event.remind_minutes) : null) : defaultRemind)
   const [isAlarm, setIsAlarm] = useState(event?.is_alarm ?? false)
   const [description, setDescription] = useState(event?.description ?? '')
   const [error, setError] = useState('')
@@ -275,7 +277,7 @@ export function EventDialog({ event, dayKey, open, onOpenChange }: EventDialogPr
                 <label className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <AlarmClock className="size-4 text-muted-foreground" />
-                    Báo thức (kêu cả khi máy đang ngủ)
+                    Kiểu báo thức (kêu liên tục tới khi tắt)
                   </span>
                   <Switch checked={isAlarm} disabled={!!pending || remindMinutes === null} onCheckedChange={setIsAlarm} />
                 </label>

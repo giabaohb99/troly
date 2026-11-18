@@ -44,8 +44,25 @@ function words(text: string) {
 }
 
 // Trả lời giả theo nội dung câu, mô phỏng đủ kiểu sự kiện và hành động.
+// Tệp bot xuất (QĐ-41) trong chế độ giả.
+const EXPORT_FILES: Record<string, { mime: string; ext: string }> = {
+  pdf: { mime: 'application/pdf', ext: 'pdf' },
+  word: { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ext: 'docx' },
+  excel: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' },
+}
+export const mockFiles = new Map<number, { id: number; name: string; mime: string; size_bytes: number }>()
+
 function planReply(text: string, mode: string) {
   const lower = text.toLowerCase()
+  const exportKind = lower.includes('xuất') ? (['excel', 'word', 'pdf'].find((k) => lower.includes(k)) ?? 'pdf') : null
+  if (exportKind) {
+    const spec = EXPORT_FILES[exportKind]
+    const file = { id: nextId(), name: `chi-tieu-thang-11.${spec.ext}`, mime: spec.mime, size_bytes: 48_000 }
+    mockFiles.set(file.id, file)
+    const actions: ChatAction[] = [{ id: 'a1', type: 'file', label: file.name, file_id: file.id, name: file.name, mime: file.mime, size_bytes: file.size_bytes }]
+    // Như máy chủ: hành động file (hiện thẻ sớm khi đang chạy) và attachments của tin (thẻ chính, lịch sử).
+    return { tool: { name: 'export_document', label: 'Đang xuất tệp' }, reply: `Em đã xuất chi tiêu tháng 11 ra tệp ${exportKind === 'excel' ? 'Excel' : exportKind === 'word' ? 'Word' : 'PDF'}.`, model: 'claude-haiku-5-5', actions, citations: null, attachments: [{ file_id: file.id, mime: file.mime, name: file.name, size_bytes: file.size_bytes }] }
+  }
   const amount = parseMoney(lower.match(/(\d[\d.,]*\s*(k|tr|triệu|nghìn)?)\s*$/)?.[1] ?? '')
   if (amount && !lower.includes('xóa')) {
     const merchant = text.replace(/\d[\d.,]*\s*(k|tr|triệu|nghìn)?\s*$/i, '').trim() || 'Khoản chi'
@@ -172,14 +189,15 @@ export const handlers = [
     if (body.text.toLowerCase().includes('lỗi mạng')) return fail(502, 'AI_UNAVAILABLE', 'Trợ lý đang lỗi, thử lại sau.')
     const userMessage = message('user', body.text)
     const plan = planReply(body.text, body.mode ?? 'chat')
-    const assistant = message('assistant', plan.reply, { model: plan.model, citations: plan.citations, actions: plan.actions })
+    const attachments = 'attachments' in plan ? (plan.attachments as ChatMessage['attachments']) : null
+    const assistant = message('assistant', plan.reply, { model: plan.model, citations: plan.citations, actions: plan.actions, attachments })
     mockDb.messages.push(userMessage, assistant)
     return sse([
       { event: 'message.created', data: { user_message: userMessage, conversation_id: 52 } },
       ...(plan.tool ? [{ event: 'tool.started', data: plan.tool, wait: 200 }, { event: 'tool.finished', data: { name: plan.tool.name, ok: true }, wait: 700 }] : []),
       ...words(plan.reply),
       ...plan.actions.map((action) => ({ event: 'action', data: action })),
-      { event: 'message.completed', data: { assistant_message: { id: assistant.id, model: plan.model, citations: plan.citations }, usage: { input_tokens: 3120, output_tokens: 24, cache_read_tokens: 2900, cost_usd: 0.0003 } } },
+      { event: 'message.completed', data: { assistant_message: { id: assistant.id, model: plan.model, citations: plan.citations, attachments }, usage: { input_tokens: 3120, output_tokens: 24, cache_read_tokens: 2900, cost_usd: 0.0003 } } },
     ])
   }),
   http.post(`${API}/chat/actions/:id/approve`, async ({ params }) => {
@@ -222,6 +240,12 @@ export const handlers = [
 
   http.post(`${API}/files/upload-url`, () => ok({ file_id: nextId(), upload_url: '/mock-r2/upload', upload_headers: null, expires_at: new Date(Date.now() + 300_000).toISOString() })),
   http.put('/mock-r2/upload', () => new HttpResponse(null, { status: 200 })),
+  http.get(`${API}/files/:id`, ({ params }) => {
+    const file = mockFiles.get(Number(params.id))
+    if (!file) return fail(404, 'NOT_FOUND', 'Không tìm thấy tệp.')
+    return ok({ ...file, download_url: `/mock-files/${file.name}` })
+  }),
+  http.get('/mock-files/:name', ({ params }) => new HttpResponse(`Tệp giả ${String(params.name)}`, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })),
   http.post(`${API}/files/:id/complete`, ({ params }) => ok({ id: Number(params.id), status: 'ready' })),
 
   http.get(`${API}/expenses/categories`, () => ok({ items: mockDb.categories })),

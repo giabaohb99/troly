@@ -64,6 +64,8 @@ def serialize(f: File, with_url: bool = False) -> dict:
         "status": f.status,
         "extract_status": f.extract_status,
         "created_at": f.created_at,
+        "drive_file_id": f.drive_file_id,
+        "drive_url": f.drive_web_view_link,
     }
     if with_url and f.status == "ready":
         data["download_url"] = storage.presign_get(_bucket(), f.r2_key, f.original_name)
@@ -382,3 +384,30 @@ def claim_pending_extracts(session: Session, limit: int) -> list[File]:
             .with_for_update(skip_locked=True)
         )
     )
+
+
+def request_drive_upload(session: Session, user_id: int, file_id: int) -> dict:
+    """Đưa tệp lên thư mục Trợ lý trên Drive (chạy nền qua push_google_outbox, 5-01)."""
+    f = _get(session, user_id, file_id)
+    if f.status != "ready":
+        raise ValidationError("Tệp chưa tải lên xong.")
+    try:
+        from app.integrations.google import drive
+    except ModuleNotFoundError as exc:
+        raise AppError("Chưa nối Google Drive.", code="GOOGLE_NOT_CONNECTED", status=409) from exc
+    return drive.request_upload(session, user_id, file_id)
+
+
+def save_generated_file(
+    session: Session, user, fmt: str, title: str, blocks: list, purpose: str = "document"
+) -> dict:
+    """Dựng tệp PDF, Word, Excel cho công cụ `export_document` (QĐ-41), lưu R2 `files/` như tệp tải lên.
+
+    Trả `{file_id, name, mime, size_bytes}`; app mở bằng `GET /files/{id}` (link ký sẵn).
+    """
+    from app.modules.file import render
+
+    data, mime, ext = render.render_document(fmt, title, blocks)
+    name = render.file_name(title, ext)
+    f = store_generated_file(session, user.user_id, data, mime, name, purpose)
+    return {"file_id": f["id"], "name": name, "mime": mime, "size_bytes": f["size_bytes"]}

@@ -77,6 +77,7 @@ Job một module nằm ở `modules/<x>/jobs.py`; job điều phối nhiều mod
 | `chat` | `memory`, `file`, `setting`; gọi `ai.loop` |
 | `search` | `memory`, `chat`, `inbox`, `trip`, `file` (chỉ đọc) |
 | `report` | `expense`, `task`, `calendar`, `inbox`, `file`, `setting`; gọi `ai.cost` |
+| `notice` | `setting`; đọc `tab_expense`, `tab_inbox_message`, `tab_message`, `tab_file` bằng SQL cho `/device/notices` |
 
 Việc đã duyệt: module có `approvals.py` khai `EXECUTORS = {tool_name: hàm(session, user, input)}`; `chat.decide_action` tìm qua `app.registry.approval_executor` trước, không có mới dùng `execute` của công cụ AI, nên thẻ tạo từ API và từ chat chạy cùng một hàm. Đồng bộ Google ở `integrations/google/` không import modules: `calendar`, `task` cài `CalendarStore`, `TaskStore` (khai ở `integrations/google/stores.py`) trong `google_store.py` của mình, `app.registry.register_integrations()` đăng ký lúc api và worker khởi động; module ghi sang Google qua `google.outbox.enqueue` cùng giao dịch. Sự kiện thiết bị điều phối ở `worker/jobs/device_events.py`: theo `kind` và `app_package` gọi `expense`, `inbox`, `task`, `calendar`; `device` không phụ thuộc module nào.
 

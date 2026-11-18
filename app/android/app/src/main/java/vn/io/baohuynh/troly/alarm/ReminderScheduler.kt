@@ -8,8 +8,8 @@ import android.net.Uri
 import android.os.Build
 
 /**
- * Đặt báo thức theo [ReminderPlan] (30 mục 3.9). Nhắc thường: setExactAndAllowWhileIdle; loại báo thức:
- * setAlarmClock (hệ thống thoát Doze để kêu); thiếu quyền báo thức chính xác: setWindow 10 phút.
+ * Hẹn giờ theo [ReminderPlan] (30 mục 3.9). Nhắc thường (mặc định, QĐ-39): setExactAndAllowWhileIdle để thông
+ * báo hiện đúng giờ; chỉ nhắc có cờ alarm mới dùng setAlarmClock; thiếu quyền chính xác: setWindow 10 phút.
  * Gọi lại mỗi khi danh sách đổi, khi mở app, sau khởi động máy, cập nhật app, đổi giờ, đổi múi giờ.
  */
 object ReminderScheduler {

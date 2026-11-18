@@ -12,6 +12,7 @@ import { LoginPage } from '@/modules/auth/pages/login-page'
 import { ChatPage } from '@/modules/chat/pages/chat-page'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { Toaster } from '@/shared/ui/sonner'
+import { deepLinkToRoute } from '@/shared/utils/deep-link'
 
 const ExpensePage = lazyPage(() => import('@/modules/expense/pages/expense-page').then((m) => m.ExpensePage))
 const SearchPage = lazyPage(() => import('@/modules/search/pages/search-page').then((m) => m.SearchPage))
@@ -23,6 +24,7 @@ const CalendarPage = lazyPage(() => import('@/modules/calendar/pages/calendar-pa
 const GooglePage = lazyPage(() => import('@/modules/setting/pages/google-page').then((m) => m.GooglePage))
 const AiCostPage = lazyPage(() => import('@/modules/setting/pages/ai-cost-page').then((m) => m.AiCostPage))
 const InboxSettingsPage = lazyPage(() => import('@/modules/setting/pages/inbox-settings-page').then((m) => m.InboxSettingsPage))
+const NotifySettingsPage = lazyPage(() => import('@/modules/setting/pages/notify-settings-page').then((m) => m.NotifySettingsPage))
 const TripSettingsPage = lazyPage(() => import('@/modules/setting/pages/trip-settings-page').then((m) => m.TripSettingsPage))
 const TripListPage = lazyPage(() => import('@/modules/trip/pages/trip-list-page').then((m) => m.TripListPage))
 const TripPage = lazyPage(() => import('@/modules/trip/pages/trip-page').then((m) => m.TripPage))
@@ -50,14 +52,14 @@ const queryClient: QueryClient = new QueryClient({
   },
 })
 
-// Đường dẫn sâu troly://<đường dẫn> (thông báo nhắc, trang kết nối Google).
+// Đường dẫn sâu troly://<đường dẫn> (thông báo nhắc, trang kết nối Google, thông báo trợ lý trả lời).
 function DeepLinks() {
   const navigate = useNavigate()
   useAndroidBack()
   useEffect(() => {
     const handle = CapApp.addListener('appUrlOpen', ({ url }) => {
       const match = url.match(/^troly:\/\/(.*)$/)
-      if (match) navigate(`/${match[1]}`)
+      if (match) navigate(deepLinkToRoute(match[1]))
     })
     return () => {
       void handle.then((h) => h.remove())
@@ -89,6 +91,7 @@ export function App() {
                 <Route path="lich/viec/:taskId" element={<CalendarPage />} />
                 <Route path="cai-dat/chi-phi" element={<AiCostPage />} />
                 <Route path="cai-dat/hop-tin" element={<InboxSettingsPage />} />
+                <Route path="cai-dat/thong-bao" element={<NotifySettingsPage />} />
                 <Route path="cai-dat/lich-trinh" element={<TripSettingsPage />} />
                 <Route path="lich-trinh" element={<TripListPage />} />
                 <Route path="lich-trinh/:tripId" element={<TripPage />} />

@@ -84,6 +84,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Nhắc kiểu báo thức hiện toàn màn hình (QĐ-39); Android 14 trở lên người dùng có thể phải tự cho phép. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <!-- Gói cần biết đã cài hay chưa (Android 11+, không dùng QUERY_ALL_PACKAGES). -->

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Risk, Stop, TripBrief } from '@/modules/trip/types/trip'
-import { canNavigate, defaultDayNo, formatDuration, formatKm, groupStops, risksByStop, sortTrips } from '@/modules/trip/utils/trip-utils'
+import { canNavigate, defaultDayNo, formatDuration, formatKm, groupStops, navigationTarget, risksByStop, sortTrips } from '@/modules/trip/utils/trip-utils'
 
 const brief = (id: number, start: string | null, end: string | null): TripBrief => ({
   id, title: `Chuyến ${id}`, start_date: start, end_date: end, nights: null, travel_mode: 'motorbike', status: 'planned', total_km: null, red_count: 0, yellow_count: 0, needs_confirmation_count: 0,
@@ -35,11 +35,17 @@ describe('rủi ro và dẫn đường', () => {
     expect(map.size).toBe(1)
   })
 
-  it('chỉ điểm chính hoặc đi qua có tọa độ mới có Dẫn đường', () => {
+  it('điểm chính hoặc đi qua có Dẫn đường, kể cả khi chưa có tọa độ', () => {
     expect(canNavigate(stop({}))).toBe(true)
-    expect(canNavigate(stop({ lat: null, lng: null, resolve_status: 'manual' }))).toBe(false)
+    expect(canNavigate(stop({ lat: null, lng: null, resolve_status: 'manual' }))).toBe(true)
     expect(canNavigate(stop({ role: 'alternative' }))).toBe(false)
     expect(canNavigate(stop({ role: 'via' }))).toBe(true)
+  })
+
+  it('không có tọa độ thì dẫn đường theo tên tìm, rồi theo tên điểm', () => {
+    expect(navigationTarget(stop({}))).toEqual({ lat: 10.1, lng: 106.2, query: null })
+    expect(navigationTarget(stop({ lat: null, lng: null, place_query: 'Ao Bà Om, Trà Vinh' }))).toEqual({ lat: null, lng: null, query: 'Ao Bà Om, Trà Vinh' })
+    expect(navigationTarget(stop({ lat: null, lng: null, title: 'Chùa Âng' })).query).toBe('Chùa Âng')
   })
 })
 

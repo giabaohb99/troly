@@ -13,6 +13,7 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import org.json.JSONArray
 import org.json.JSONObject
+import vn.io.baohuynh.troly.alarm.NoticeSync
 import vn.io.baohuynh.troly.notify.DeviceState
 import java.util.concurrent.TimeUnit
 
@@ -38,6 +39,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : Worker(context,
                     val otp = (0 until (rejected?.length() ?: 0)).count { rejected!!.getJSONObject(it).optString("code") == "OTP_DETECTED" }
                     if (otp > 0) state.otpRejectedByServer = state.otpRejectedByServer + otp
                     queue.delete(batch.map { it.clientEventId })
+                    // Máy chủ có thể vừa ghi giao dịch hoặc gặp tin quan trọng: hỏi thông báo sau ít phút.
+                    NoticeSync.checkSoon(applicationContext)
                 }
                 result.status == 0 || result.status >= 500 || result.status == 429 -> return Result.retry()
                 DeviceSync.handleRevoked(applicationContext, result) -> return Result.failure()

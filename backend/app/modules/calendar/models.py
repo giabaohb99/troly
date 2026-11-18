@@ -80,6 +80,8 @@ class Event(UserOwnedMixin, Base):
     google_etag: Mapped[str | None] = mapped_column(Text)
     google_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     google_html_link: Mapped[str | None] = mapped_column(Text)
+    # Link Google Meet (`hangoutLink`); Google có khi tạo chậm, lần đồng bộ sau mới có.
+    meet_url: Mapped[str | None] = mapped_column(Text)
     sync_status: Mapped[str] = mapped_column(Text, server_default="local_only")
     sync_error: Mapped[str | None] = mapped_column(Text)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

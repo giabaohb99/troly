@@ -41,8 +41,12 @@ class RemoteEvent:
     attendees: list[dict] = field(default_factory=list)
     organizer_self: bool = True
     reminders_use_default: bool = True
+    # Phút nhắc kiểu popup đã tính sẵn: useDefault thì lấy nhắc mặc định của lịch (calendarList).
     reminder_minutes: list[int] = field(default_factory=list)
+    # Cờ báo thức của app giữ ở extendedProperties.private.troly_alarm; None khi Google không có.
+    is_alarm: bool | None = None
     html_link: str | None = None
+    meet_url: str | None = None  # hangoutLink của Google Meet
 
 
 @dataclass
@@ -69,7 +73,9 @@ class LocalEvent:
     attendees: list[dict] = field(default_factory=list)
     remind_minutes: list[int] = field(default_factory=list)
     remind_source: str = "app"
+    is_alarm: bool = False
     deleted: bool = False
+    meet_url: str | None = None
 
 
 @dataclass
@@ -169,6 +175,19 @@ class TaskStore(Protocol):
     def on_disconnect(self, session: Session, user_id: int, keep_data: bool) -> None: ...
 
 
+class FileStore(Protocol):
+    """Module file cài: đọc nội dung tệp của app và ghi kết quả lên Drive (40 mục 8)."""
+
+    def file_bytes(self, session: Session, user_id: int, file_id: int) -> tuple[bytes, str, str | None]: ...
+
+    def drive_file_id(self, session: Session, user_id: int, file_id: int) -> str | None: ...
+
+    def save_drive_result(
+        self, session: Session, user_id: int, file_id: int, drive_file_id: str, web_view_link: str | None
+    ) -> None: ...
+
+
+_file_store: FileStore | None = None
 _calendar_store: CalendarStore | None = None
 _task_store: TaskStore | None = None
 
@@ -189,3 +208,12 @@ def calendar_store() -> CalendarStore | None:
 
 def task_store() -> TaskStore | None:
     return _task_store
+
+
+def register_file_store(store: FileStore | None) -> None:
+    global _file_store
+    _file_store = store
+
+
+def file_store() -> FileStore | None:
+    return _file_store

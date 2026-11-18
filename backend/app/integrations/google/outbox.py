@@ -159,6 +159,12 @@ def _push_one(session: Session, row: GoogleOutbox) -> None:
             if stores.task_store() is None:
                 raise StoreMissing()
             tasks_sync.push_task(session, account, row)
+        elif row.service == "drive" and row.op == "file_upload":
+            from app.integrations.google import drive
+
+            if stores.file_store() is None:
+                raise StoreMissing()
+            drive.push_upload(session, account, row)
         else:
             raise RuntimeError(f"Chưa hỗ trợ dịch vụ {row.service}")
         _finish(row)

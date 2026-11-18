@@ -63,7 +63,7 @@ const events: (CalendarEvent & { deleted?: boolean })[] = [
     is_organizer: false,
     attendees: [self, { email: 'doitac@example.com', name: 'Đối tác', response_status: 'accepted', is_self: false }],
   }),
-  makeEvent(205, 'Giờ phà Cần Thơ', { start_at: at(shift(today, 3), '05:30'), end_at: at(shift(today, 3), '06:00'), remind_minutes: [30], is_alarm: true, location: 'Bến phà' }),
+  makeEvent(205, 'Giờ phà Cần Thơ', { start_at: at(shift(today, 3), '05:30'), end_at: at(shift(today, 3), '06:00'), remind_minutes: [30], location: 'Bến phà' }),
   makeEvent(206, 'Gọi lại anh Hùng', { start_at: at(today, '17:00'), end_at: at(today, '17:15'), remind_minutes: [10], task_id: 105 }),
 ]
 

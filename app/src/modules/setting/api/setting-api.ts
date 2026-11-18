@@ -62,6 +62,12 @@ export interface SettingValues {
   'trip.ride_break_minutes': number
   'trip.speed_factor': number
   'trip.ferries'?: Ferry[]
+  // QĐ-38: máy chủ lọc /device/notices và /calendar/reminders theo các khóa này.
+  'notify.new_transaction'?: boolean
+  'notify.important_message'?: boolean
+  'calendar.app_reminds_google'?: boolean
+  // QĐ-41: notice chat_done khi trợ lý trả lời lúc app chạy nền.
+  'notify.chat_done'?: boolean
   [key: string]: unknown
 }
 

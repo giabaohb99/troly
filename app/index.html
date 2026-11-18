@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="vi" class="dark">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0d12" />
+    <meta name="theme-color" content="#0f1115" />
+    <script>
+      // Áp giao diện trước khi vẽ để không chớp màu (cùng khóa với src/core/theme.ts, QĐ-37).
+      ;(function () {
+        var pref = localStorage.getItem('troly.theme')
+        var dark = pref === 'dark' || (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) document.documentElement.classList.add('dark')
+      })()
+    </script>
     <title>Trợ lý</title>
   </head>
   <body>

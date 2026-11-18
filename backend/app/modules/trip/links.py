@@ -1,7 +1,8 @@
 """Link Google Maps dựng ở máy chủ, app chỉ mở (41 mục 7, 12 mục 5.7). Không cần khóa, không tính tiền.
 
 Chia đoạn: cắt ở điểm nghỉ dài (khách sạn, ở lại từ 90 phút), mỗi đoạn tối đa max_waypoints điểm dừng,
-điểm cuối đoạn trước là điểm đầu đoạn sau, link tối đa 2.048 ký tự; dùng tọa độ thay tên cho link ngắn.
+điểm cuối đoạn trước là điểm đầu đoạn sau, link tối đa 2.048 ký tự; có tọa độ thì dùng tọa độ cho link ngắn,
+không có thì dùng tên kèm địa chỉ (QĐ-36: V1 không có Maps Platform, app Google Maps tự tìm theo tên).
 """
 
 from dataclasses import dataclass
@@ -28,9 +29,20 @@ class LinkStop:
     def located(self) -> bool:
         return self.lat is not None and self.lng is not None
 
+    @property
+    def query(self) -> str:
+        return (self.place_query or self.title or "").strip()
+
+    @property
+    def routable(self) -> bool:
+        return self.located or bool(self.query)
+
 
 def _coord(s: LinkStop) -> str:
-    return f"{float(s.lat):.6f},{float(s.lng):.6f}"
+    """Điểm trong link: tọa độ nếu có, không thì chuỗi tìm theo tên."""
+    if s.located:
+        return f"{float(s.lat):.6f},{float(s.lng):.6f}"
+    return s.query
 
 
 def directions_url(points: list[LinkStop], navigate: bool = False) -> str:
@@ -72,7 +84,7 @@ def _is_long_rest(s: LinkStop) -> bool:
 
 
 def split_segments(stops: list[LinkStop], max_waypoints: int = 9) -> list[list[LinkStop]]:
-    points = [s for s in stops if s.located]
+    points = [s for s in stops if s.routable]
     if len(points) < 2:
         return []
     groups: list[list[LinkStop]] = []
@@ -117,16 +129,17 @@ def day_actions(day_no: int, stops: list[LinkStop], max_waypoints: int) -> dict:
     out_stops = []
     for s in stops:
         nav = None
-        if s.located:
+        if s.routable:
             nav = {
                 "id": f"n{s.id}",
                 "type": "open_map_navigation",
                 "label": f"Dẫn đường tới {s.title}",
-                "lat": float(s.lat),
-                "lng": float(s.lng),
-                "query": s.place_query,
+                "lat": float(s.lat) if s.located else None,
+                "lng": float(s.lng) if s.located else None,
+                "query": s.query,
                 "mode": "l",
                 "avoid": "h",
+                "uri": navigation_target(s),
                 "fallback_url": navigate_url(s),
             }
         out_stops.append(
@@ -150,3 +163,10 @@ def day_actions(day_no: int, stops: list[LinkStop], max_waypoints: int) -> dict:
 def navigation_uri(lat: float, lng: float) -> str:
     """Lệnh Android app ghép (Maps.navigate): xe hai bánh, tránh cao tốc (41 mục 7)."""
     return f"google.navigation:q={lat},{lng}&mode=l&avoid=h"
+
+
+def navigation_target(s: LinkStop) -> str:
+    """google.navigation theo tọa độ nếu có, không thì theo tên kèm địa chỉ (QĐ-36)."""
+    if s.located:
+        return navigation_uri(float(s.lat), float(s.lng))
+    return f"google.navigation:q={quote(s.query)}&mode=l&avoid=h"

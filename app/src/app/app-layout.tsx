@@ -20,8 +20,7 @@ const MORE_ITEMS = [
   { to: '/cai-dat', label: 'Cài đặt', icon: Settings },
 ]
 
-const navClass = (active: boolean) =>
-  cn('flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-medium text-muted-foreground transition-colors', active && 'text-primary')
+const navClass = (active: boolean) => cn('flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-medium text-muted-foreground transition-colors', active && 'text-primary')
 
 export function AppLayout() {
   const { pathname } = useLocation()
@@ -30,22 +29,27 @@ export function AppLayout() {
   useDeviceStartup()
   const moreActive = MORE_ITEMS.some((item) => pathname.startsWith(item.to))
 
+  // Màn chat tự chia khung: tiêu đề và ô nhập đứng yên, chỉ danh sách tin cuộn.
+  const isChat = pathname === '/'
+
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
-      <main className="flex-1 px-4 pt-[max(env(safe-area-inset-top),1rem)] pb-28">
-        <Suspense
-          fallback={
-            <div className="flex justify-center py-16 text-muted-foreground">
-              <Loader2 className="size-6 animate-spin" />
-            </div>
-          }
-        >
-          <ErrorBoundary key={pathname}>
-            <Outlet />
-          </ErrorBoundary>
-        </Suspense>
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        <div className={cn('mx-auto flex w-full max-w-lg flex-1 flex-col px-4 pt-[max(env(safe-area-inset-top),1rem)]', isChat ? 'min-h-0' : 'pb-24')}>
+          <Suspense
+            fallback={
+              <div className="flex justify-center py-16 text-muted-foreground">
+                <Loader2 className="size-6 animate-spin" />
+              </div>
+            }
+          >
+            <ErrorBoundary key={pathname}>
+              <Outlet />
+            </ErrorBoundary>
+          </Suspense>
+        </div>
       </main>
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <nav className="z-40 shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]">
         <ul className="mx-auto grid max-w-lg grid-cols-5">
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <li key={to}>

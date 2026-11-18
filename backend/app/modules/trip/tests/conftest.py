@@ -5,7 +5,7 @@ import pytest
 from app.integrations.google import http
 from app.integrations.google.settings import get_google_settings
 from app.modules.trip import bridge
-from app.modules.trip.tests.fake_maps import FakeMaps
+from app.modules.trip.tests.fake_maps import FakeMaps, area_of, km
 from app.modules.trip.tests.sample_extract import build_sample_extract, sample_bytes
 
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -25,9 +25,20 @@ def maps_fake(monkeypatch):
 
 @pytest.fixture
 def no_maps(monkeypatch):
+    """Đường chính V1 (QĐ-36): không có khóa Maps; mọi lời gọi HTTP ra Google đều là lỗi."""
+    import httpx
+
     monkeypatch.delenv("GOOGLE_MAPS_API_KEY", raising=False)
     get_google_settings.cache_clear()
-    yield
+    seen: list = []
+
+    def refuse(request):
+        seen.append(request)
+        raise AssertionError(f"Không được gọi Maps khi chưa có khóa: {request.url}")
+
+    http.set_transport(httpx.MockTransport(refuse))
+    yield seen
+    http.set_transport(None)
     get_google_settings.cache_clear()
 
 
@@ -92,8 +103,81 @@ def fake_ai(monkeypatch):
             for o in options
         }
 
+    def estimate(user_id, trip_title, region, stops, legs, think, travel_mode="motorbike"):
+        """Ước tính giả theo vùng trong tên (như AI đoán): chim bay nhân 1,3, xe máy 35 km/giờ."""
+        calls.setdefault("estimate", []).append({"web": think, "stops": stops, "legs": legs})
+        by_id = {st["stop_id"]: st for st in stops}
+        out = []
+        for pair in legs:
+            a, b = by_id[pair["from_stop_id"]], by_id[pair["to_stop_id"]]
+            pa = (a["lat"], a["lng"]) if a["lat"] is not None else area_of(a["place_query"] or a["title"])
+            pb = (b["lat"], b["lng"]) if b["lat"] is not None else area_of(b["place_query"] or b["title"])
+            d = km(pa, pb) * 1.3
+            ferry = 30 if b["category"] == "pha" else 0
+            note = "theo QL1A" if pa[1] < 106.5 and pb[1] < 106.9 else ""
+            out.append(
+                {
+                    "from_stop_id": a["stop_id"],
+                    "to_stop_id": b["stop_id"],
+                    "km": round(d, 1),
+                    "minutes": round(d / 35 * 60) + ferry,
+                    "ferry_minutes": ferry,
+                    "estimated": True,
+                    "adjusted": False,
+                    "note": note,
+                }
+            )
+        checks = []
+        if think:
+            for st in stops:
+                if "Chùa Hang" in st["title"]:
+                    periods = [
+                        {
+                            "open": {"day": dd, "hour": 7, "minute": 0},
+                            "close": {"day": dd, "hour": 17, "minute": 0},
+                        }
+                        for dd in range(7)
+                        if dd != 1
+                    ]
+                    checks.append(
+                        {
+                            "stop_id": st["stop_id"],
+                            "kind": "opening_hours",
+                            "hours": {"regular": {"periods": periods}},
+                            "last_time": None,
+                            "text": "Nghỉ thứ Hai",
+                            "source_url": "https://example.test",
+                        }
+                    )
+                if st["category"] == "pha" and "Bình Khánh" in st["title"]:
+                    checks.append(
+                        {
+                            "stop_id": st["stop_id"],
+                            "kind": "ferry_last",
+                            "hours": None,
+                            "last_time": "16:00",
+                            "text": "Phà Bình Khánh chuyến cuối 16:00",
+                            "source_url": "https://example.test/pha",
+                        }
+                    )
+        if think:
+            hang = next((st for st in stops if "Ao Bà Om" in st["title"]), None)
+            if hang:
+                checks.append(
+                    {
+                        "stop_id": hang["stop_id"],
+                        "kind": "opening_hours",
+                        "hours": None,
+                        "last_time": None,
+                        "text": "Không tìm được giờ mở cửa trên web",
+                        "source_url": None,
+                    }
+                )
+        return {"legs": out, "checks": checks, "sources": []}
+
     monkeypatch.setattr(bridge, "extract_trip", extract)
     monkeypatch.setattr(bridge, "summarize_options", summaries)
+    monkeypatch.setattr(bridge, "estimate_legs", estimate)
     return calls
 
 

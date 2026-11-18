@@ -66,6 +66,13 @@ def delete_file(
     return ok(None)
 
 
+@router.post("/files/{file_id}/drive", status_code=202)
+def post_drive(
+    file_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(service.request_drive_upload(session, user.user_id, file_id))
+
+
 @router.post("/files/{file_id}/restore")
 def restore_file(
     file_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)

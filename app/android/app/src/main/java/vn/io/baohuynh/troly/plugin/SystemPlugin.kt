@@ -4,9 +4,12 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.view.WindowCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
@@ -108,6 +111,47 @@ class SystemPlugin : Plugin() {
             false
         }
         call.resolve(JSObject().put("opened", opened))
+    }
+
+    private fun isSystemDark(configuration: Configuration = context.resources.configuration): Boolean =
+        (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+    /** Chế độ tối của máy, cho lựa chọn giao diện Theo máy (QĐ-37). */
+    @PluginMethod
+    fun getSystemTheme(call: PluginCall) = call.resolve(JSObject().put("dark", isSystemDark()))
+
+    /**
+     * Thanh trạng thái và thanh điều hướng theo giao diện: chữ, biểu tượng sáng trên nền tối và ngược lại.
+     * Android 15 trở lên vẽ app tràn viền nên chỉ đổi màu biểu tượng và nền cửa sổ; máy cũ đổi cả màu thanh.
+     */
+    @PluginMethod
+    fun setBarStyle(call: PluginCall) {
+        val dark = call.getBoolean("dark", true) ?: true
+        val color = call.getString("color")?.let { runCatching { Color.parseColor(it) }.getOrNull() }
+        activity.runOnUiThread {
+            val window = activity.window
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+            if (color != null) {
+                window.decorView.setBackgroundColor(color)
+                bridge.webView.setBackgroundColor(color)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                    @Suppress("DEPRECATION")
+                    window.statusBarColor = color
+                    @Suppress("DEPRECATION")
+                    window.navigationBarColor = color
+                }
+            }
+            call.resolve()
+        }
+    }
+
+    // Máy đổi sáng, tối (Activity không tạo lại vì configChanges có uiMode): báo giao diện.
+    override fun handleOnConfigurationChanged(newConfig: Configuration) {
+        super.handleOnConfigurationChanged(newConfig)
+        notifyListeners("systemThemeChanged", JSObject().put("dark", isSystemDark(newConfig)))
     }
 
     // Người dùng quay lại từ trang cài đặt: báo giao diện kiểm lại.

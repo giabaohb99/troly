@@ -52,7 +52,35 @@ def _point(raw: dict | None) -> tuple[datetime | None, date | None]:
     return parse_time(raw.get("dateTime")), None
 
 
-def to_remote(item: dict) -> RemoteEvent:
+def popup_minutes(reminders: list[dict] | None) -> list[int]:
+    """Chỉ nhắc kiểu popup (bỏ email); tối đa 5 mốc như Google."""
+    return sorted({int(r.get("minutes", 0)) for r in reminders or [] if r.get("method", "popup") == "popup"})[
+        :5
+    ]
+
+
+def uses_default(item: dict) -> bool:
+    return bool((item.get("reminders") or {}).get("useDefault", True))
+
+
+def calendar_default_minutes(api: GoogleApi, calendar_id: str) -> list[int]:
+    """Nhắc mặc định của lịch (calendarList.defaultReminders); lỗi thì coi như không có."""
+    try:
+        data = api.request(
+            "GET", f"{CALENDAR}/users/me/calendarList/{calendar_id}", params={"fields": "defaultReminders"}
+        )
+    except GoogleHttpError as exc:
+        log.info("Không đọc được nhắc mặc định của lịch", extra={"status": exc.status})
+        return []
+    return popup_minutes(data.get("defaultReminders"))
+
+
+def _alarm_of(item: dict) -> bool | None:
+    value = ((item.get("extendedProperties") or {}).get("private") or {}).get("troly_alarm")
+    return None if value is None else value == "1"
+
+
+def to_remote(item: dict, default_minutes: list[int] | None = None) -> RemoteEvent:
     start_at, start_date = _point(item.get("start"))
     end_at, end_date = _point(item.get("end"))
     original = item.get("originalStartTime") or {}
@@ -86,9 +114,13 @@ def to_remote(item: dict) -> RemoteEvent:
             for a in item.get("attendees") or []
         ],
         organizer_self=bool((item.get("organizer") or {}).get("self", True)),
-        reminders_use_default=bool(reminders.get("useDefault", True)),
-        reminder_minutes=[o.get("minutes", 0) for o in reminders.get("overrides") or []],
+        reminders_use_default=uses_default(item),
+        reminder_minutes=list(default_minutes or [])
+        if uses_default(item)
+        else popup_minutes(reminders.get("overrides")),
+        is_alarm=_alarm_of(item),
         html_link=item.get("htmlLink"),
+        meet_url=meet_url_of(item),
     )
 
 
@@ -107,23 +139,59 @@ def to_google_body(event: LocalEvent, payload: dict) -> dict:
         "start": start,
         "end": end,
         "status": event.status if event.status in ("confirmed", "tentative") else "confirmed",
-        "extendedProperties": {"private": {"troly_event_id": str(event.id)}},
+        "extendedProperties": {
+            "private": {"troly_event_id": str(event.id), "troly_alarm": "1" if event.is_alarm else "0"}
+        },
     }
     if event.recurrence and not event.recurring_event_id:
         body["recurrence"] = event.recurrence
     if event.attendees:
         body["attendees"] = [{"email": a["email"]} for a in event.attendees if a.get("email")]
     # Một nguồn nhắc (40 mục 4.5): app nhắc thì Google im; Google nhắc thì chỉ gửi khi người dùng đổi nguồn.
+    # Google nhắc mà người dùng sửa phút trên app thì đẩy overrides kiểu popup (QĐ-39).
     if event.remind_source == "app":
         body["reminders"] = {"useDefault": False, "overrides": []}
+    elif payload.get("reminders_changed"):
+        body["reminders"] = {
+            "useDefault": False,
+            "overrides": [{"method": "popup", "minutes": m} for m in sorted(set(event.remind_minutes))[:5]],
+        }
     elif payload.get("remind_source_changed"):
         body["reminders"] = {"useDefault": True}
     return body
 
 
 def _send_params(payload: dict) -> dict:
+    params: dict = {}
     value = payload.get("send_updates")
-    return {"sendUpdates": value} if value in ("all", "externalOnly") else {}
+    if value in ("all", "externalOnly"):
+        params["sendUpdates"] = value
+    if payload.get("meet"):
+        params["conferenceDataVersion"] = 1  # thiếu tham số này Google bỏ qua conferenceData
+    return params
+
+
+def meet_url_of(item: dict) -> str | None:
+    """Link Google Meet: hangoutLink, không có thì entryPoint kiểu video trong conferenceData."""
+    if item.get("hangoutLink"):
+        return item["hangoutLink"]
+    for entry in (item.get("conferenceData") or {}).get("entryPoints") or []:
+        if entry.get("entryPointType") == "video" and entry.get("uri"):
+            return entry["uri"]
+    return None
+
+
+def _meet_request(event: LocalEvent) -> dict:
+    """conferenceData.createRequest cho Google Meet; requestId duy nhất theo sự kiện, gửi lại không tạo trùng."""
+    return {
+        "createRequest": {"requestId": f"troly-{event.id}", "conferenceSolutionKey": {"type": "hangoutsMeet"}}
+    }
+
+
+def _save_meet(session: Session, store, user_id: int, local_id: int, data: dict) -> None:
+    url = meet_url_of(data)
+    if url and hasattr(store, "save_meet_url"):
+        store.save_meet_url(session, user_id, local_id, url)
 
 
 # ---------- Kéo về ----------
@@ -191,13 +259,17 @@ def _pull(
     else:
         base = {"singleEvents": "false", "syncToken": state.sync_token, "maxResults": PAGE_SIZE}
     count, page_token = 0, None
+    defaults: list[int] | None = None
     while True:
         params = dict(base)
         if page_token:
             params["pageToken"] = page_token
         data = api.request("GET", f"{CALENDAR}/calendars/{calendar_id}/events", params=params)
-        for item in data.get("items", []):
-            apply_item(session, store, account, calendar_id, item)
+        items = data.get("items", [])
+        if defaults is None and any(i.get("status") != "cancelled" and uses_default(i) for i in items):
+            defaults = calendar_default_minutes(api, calendar_id)  # một lần mỗi lượt kéo
+        for item in items:
+            apply_item(session, store, account, calendar_id, item, defaults)
             count += 1
         page_token = data.get("nextPageToken")
         if not page_token:
@@ -205,9 +277,14 @@ def _pull(
 
 
 def apply_item(
-    session: Session, store: stores.CalendarStore, account: GoogleAccount, calendar_id: str, item: dict
+    session: Session,
+    store: stores.CalendarStore,
+    account: GoogleAccount,
+    calendar_id: str,
+    item: dict,
+    default_minutes: list[int] | None = None,
 ) -> None:
-    remote = to_remote(item)
+    remote = to_remote(item, default_minutes)
     user_id = account.user_id
     local = store.find_by_google_id(session, user_id, calendar_id, remote.google_event_id)
     waiting = outbox.waiting_row(session, "event", local.id) if local else None
@@ -224,6 +301,18 @@ def apply_item(
     if waiting is not None and waiting.status == "pending":
         outbox.mark_conflict(waiting, store.snapshot(session, user_id, local.id))
     store.write_remote(session, user_id, account.id, calendar_id, remote, local.id if local else None)
+    if local is not None and remote.reminder_minutes:
+        _silence_if_app_reminds(session, store, user_id, local.id)
+
+
+def _silence_if_app_reminds(
+    session: Session, store: stores.CalendarStore, user_id: int, local_id: int
+) -> None:
+    """Sự kiện app nhắc mà trên Google có nhắc (người dùng đặt trên Google): app đã lấy phút đó,
+    đẩy lại để Google im, tránh hai thông báo (40 mục 4.5)."""
+    event = store.get_for_push(session, user_id, local_id)
+    if event is not None and event.remind_source == "app" and not event.deleted:
+        outbox.enqueue(session, user_id, "calendar", "patch", "event", local_id)
 
 
 # ---------- Đẩy lên ----------
@@ -264,6 +353,8 @@ def push_event(session: Session, account: GoogleAccount, row: GoogleOutbox) -> N
         return
 
     body = to_google_body(event, payload)
+    if payload.get("meet") and not event.meet_url:
+        body["conferenceData"] = _meet_request(event)
     if not event.google_etag:
         google_id = event.google_event_id or outbox.new_event_id()
         try:
@@ -275,6 +366,7 @@ def push_event(session: Session, account: GoogleAccount, row: GoogleOutbox) -> N
         store.save_push_result(
             session, user_id, event.id, data["id"], data.get("etag"), parse_time(data.get("updated"))
         )
+        _save_meet(session, store, user_id, event.id, data)
         return
     try:
         data = api.request(
@@ -294,6 +386,7 @@ def push_event(session: Session, account: GoogleAccount, row: GoogleOutbox) -> N
     store.save_push_result(
         session, user_id, event.id, data["id"], data.get("etag"), parse_time(data.get("updated"))
     )
+    _save_meet(session, store, user_id, event.id, data)
 
 
 def _resolve_instance(api: GoogleApi, url: str, event: LocalEvent) -> None:
@@ -327,7 +420,8 @@ def _take_google(
     """412: Google làm gốc. Ghi bản Google vào app, ném PushConflict kèm thay đổi bị bỏ."""
     snapshot = {**store.snapshot(session, account.user_id, event.id), **(extra or {})}
     item = api.request("GET", f"{url}/{event.google_event_id}")
-    store.write_remote(session, account.user_id, account.id, calendar_id, to_remote(item), event.id)
+    defaults = calendar_default_minutes(api, calendar_id) if uses_default(item) else None
+    store.write_remote(session, account.user_id, account.id, calendar_id, to_remote(item, defaults), event.id)
     raise outbox.PushConflict(snapshot)
 
 

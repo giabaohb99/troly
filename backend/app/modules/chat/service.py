@@ -87,6 +87,15 @@ def completed_turns(rows: list[Message], current_turn: UUID | None = None) -> li
     return [m for m in rows if m.turn_id in answered or m.turn_id == current_turn]
 
 
+def _attachments(m: Message) -> list[dict]:
+    """Tin người dùng: tệp đính kèm. Tin trợ lý: tệp bot xuất (QĐ-41), lấy từ hành động `file` đã lưu."""
+    items = [{"file_id": fid} for fid in (m.attachment_file_ids or [])]
+    for a in m.actions or []:
+        if isinstance(a, dict) and a.get("type") == "file" and a.get("file_id"):
+            items.append({k: a.get(k) for k in ("file_id", "mime", "name", "size_bytes")})
+    return items
+
+
 def serialize_message(m: Message) -> dict:
     return {
         "id": m.id,
@@ -94,7 +103,7 @@ def serialize_message(m: Message) -> dict:
         "text": m.text,
         "model": m.model,
         "citations": m.citations or [],
-        "attachments": [{"file_id": fid} for fid in (m.attachment_file_ids or [])],
+        "attachments": _attachments(m),
         "actions": m.actions or [],
         "status": m.status,
         "created_at": m.created_at,

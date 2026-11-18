@@ -189,7 +189,9 @@ def test_day_actions_shape():
     nav = data["stops"][0]["navigation"]
     assert nav["type"] == "open_map_navigation" and nav["mode"] == "l" and nav["avoid"] == "h"
     assert "dir_action=navigate" in nav["fallback_url"]
-    assert data["stops"][2]["navigation"] is None and data["stops"][2]["place"]["type"] == "open_map_place"
+    by_name = data["stops"][2]["navigation"]  # QĐ-36: không có tọa độ thì dẫn đường theo tên
+    assert by_name["lat"] is None and by_name["uri"] == "google.navigation:q=Qu%C3%A1n&mode=l&avoid=h"
+    assert data["stops"][2]["place"]["type"] == "open_map_place"
     assert links.navigation_uri(10.1, 106.1) == "google.navigation:q=10.1,106.1&mode=l&avoid=h"
 
 

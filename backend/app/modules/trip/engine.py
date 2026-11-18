@@ -24,6 +24,8 @@ class Settings:
     ride_break_minutes: int = 90
     speed_factor: float = 1.2
     ferries: list[dict] = field(default_factory=list)
+    by_stop_id: bool = False  # QĐ-36: chặng theo cặp điểm (AI ước tính), không theo tọa độ
+    estimated: bool = False  # số km, phút là ước tính: câu rủi ro ghi rõ
 
 
 @dataclass
@@ -56,9 +58,10 @@ class PStop:
 
 @dataclass
 class PLeg:
-    minutes: float
+    minutes: float  # phút chạy xe
     km: float
     instructions: list[str] = field(default_factory=list)
+    wait_minutes: float = 0  # chờ, qua phà: cộng vào giờ đến nhưng không tính là chạy xe (R4, R5, R6)
 
 
 @dataclass
@@ -119,6 +122,15 @@ def leg_key(a: PStop, b: PStop) -> LegKey:
     return (round(a.point[0], 5), round(a.point[1], 5)), (round(b.point[0], 5), round(b.point[1], 5))
 
 
+def stop_key(a: PStop, b: PStop, cfg: "Settings | None" = None):
+    """Khóa chặng: theo cặp id điểm khi số liệu do AI ước tính, theo tọa độ khi có Routes."""
+    return (a.id, b.id) if cfg is not None and cfg.by_stop_id else leg_key(a, b)
+
+
+def routable(s: PStop, cfg: "Settings | None" = None) -> bool:
+    return s.located or bool(cfg is not None and cfg.by_stop_id and s.place_query)
+
+
 # ---------- Mô phỏng ----------
 
 
@@ -135,12 +147,14 @@ def simulate(day: PDay, legs: dict[LegKey, PLeg], cfg: Settings) -> DayResult:
             arrive = stop.planned_start or default_start
         else:
             arrive = clock
-            if stop.located and prev_located is not None:
-                leg = legs.get(leg_key(prev_located, stop))
+            if routable(stop, cfg) and prev_located is not None:
+                leg = legs.get(stop_key(prev_located, stop, cfg))
                 if leg is not None and leg.minutes > 0:
                     ride = timedelta(minutes=leg.minutes * cfg.speed_factor)
                     rides.append(Ride(clock, clock + ride, leg.km, leg.instructions, stop.id))
                     arrive = clock + ride
+                if leg is not None and leg.wait_minutes > 0:
+                    arrive += timedelta(minutes=leg.wait_minutes)
         begin = max(arrive, stop.planned_start) if stop.planned_start else arrive
         depart = begin + timedelta(minutes=stop.stay_minutes or 0)
         timed.append(
@@ -154,7 +168,7 @@ def simulate(day: PDay, legs: dict[LegKey, PLeg], cfg: Settings) -> DayResult:
             )
         )
         clock = depart
-        if stop.located:
+        if routable(stop, cfg):
             prev_located = stop
     return DayResult(day.day_no, timed, rides)
 
@@ -215,6 +229,8 @@ def _hours_status(hours: dict, begin: datetime, stay: int, cfg: Settings) -> tup
     if any("close" not in p for p in periods):
         return None, ""  # mở 24 giờ
     if not today:
+        if hours.get("maybe"):
+            return "yellow", f"có thể đóng cửa {WEEKDAY_VI[local.weekday()]}"
         return "red", f"đóng cửa {WEEKDAY_VI[local.weekday()]}"
     minute = local.hour * 60 + local.minute
     for p in today:
@@ -250,6 +266,8 @@ def check_day(day: PDay, result: DayResult, facts: list[Fact], cfg: Settings, no
     d = day.day_no
 
     def add(code, level, stop_id, message, suggestion):
+        if cfg.estimated and code in ("R1", "R4", "R5", "R6"):
+            message += " (ước tính)"
         risks.append(_risk(code, level, d, stop_id, message, suggestion, now_iso))
 
     # R9 thứ lệch ngày
@@ -324,7 +342,7 @@ def check_day(day: PDay, result: DayResult, facts: list[Fact], cfg: Settings, no
                         "Gọi hotline xác nhận giờ",
                     )
         # R8 chưa định vị
-        if s.role == "main" and s.place_query and not s.located:
+        if s.role == "main" and s.place_query and not s.located and not cfg.by_stop_id:
             add("R8", "yellow", s.id, f"{s.title}: chưa định vị", "Chọn địa điểm ở mục Điểm cần xác nhận")
 
     # R4 chạy liên tục
@@ -511,25 +529,28 @@ def build_options(base: list[PDay], risks: list[dict], extra_changes: list[str])
     return unique
 
 
-def bridge_legs(days: list[PDay], legs: dict[LegKey, PLeg], full: list[PDay]) -> dict[LegKey, PLeg]:
+def bridge_legs(days: list[PDay], legs: dict, full: list[PDay], cfg: Settings | None = None) -> dict:
     """Bỏ điểm thì chặng mới xấp xỉ bằng tổng các chặng đi qua điểm bị bỏ (không gọi Routes thêm)."""
     out = dict(legs)
     for day in days:
-        whole = [s for s in next(d for d in full if d.day_no == day.day_no).stops if s.located]
-        kept = [s for s in day.stops if s.located]
+        whole = [s for s in next(d for d in full if d.day_no == day.day_no).stops if routable(s, cfg)]
+        kept = [s for s in day.stops if routable(s, cfg)]
         for a, b in zip(kept, kept[1:], strict=False):
-            key = leg_key(a, b)
+            key = stop_key(a, b, cfg)
             if key in out:
                 continue
             try:
                 i, j = whole.index(a), whole.index(b)
             except ValueError:
                 continue
-            parts = [legs.get(leg_key(x, y)) for x, y in zip(whole[i:j], whole[i + 1 : j + 1], strict=False)]
+            parts = [
+                legs.get(stop_key(x, y, cfg)) for x, y in zip(whole[i:j], whole[i + 1 : j + 1], strict=False)
+            ]
             if all(parts) and i < j:
                 out[key] = PLeg(
                     sum(p.minutes for p in parts),
                     sum(p.km for p in parts),
                     [x for p in parts for x in p.instructions],
+                    sum(p.wait_minutes for p in parts),
                 )
     return out

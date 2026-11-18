@@ -96,6 +96,11 @@ def validate_request(kwargs: dict) -> str | None:
         return f"Schemas contains too many parameters with union types ({union} parameters)"
     if optional > MAX_OPTIONAL_PARAMS:
         return f"Schemas contains too many optional parameters ({optional} parameters)"
+    web = any(
+        str(t.get("type", "")).startswith(("web_search", "web_fetch")) for t in kwargs.get("tools") or []
+    )
+    if web and (kwargs.get("output_format") or (kwargs.get("output_config") or {}).get("format")):
+        return "Citations are not supported when structured output is enabled"
     return None
 
 

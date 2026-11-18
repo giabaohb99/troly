@@ -71,8 +71,10 @@ export function formatModelLabel(model: string | null | undefined): string | nul
   return `${match[1].charAt(0).toUpperCase()}${match[1].slice(1)} ${match[2]}.${match[3]}`
 }
 
+// Từ 1 USD: 2 chữ số lẻ. Dưới 1 USD: 4 chữ số lẻ, vì mỗi câu chat chỉ tốn khoảng 0,0004 USD.
 export function formatUsd(value: number): string {
-  return `${value.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+  const digits = Math.abs(value) >= 1 || value === 0 ? 2 : 4
+  return `${value.toLocaleString('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits })} USD`
 }
 
 // Giờ nếu là hôm nay, không thì ngày "dd/mm" (danh sách hộp tin).

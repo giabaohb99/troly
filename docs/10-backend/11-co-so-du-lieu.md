@@ -99,10 +99,14 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`. Sự kiện m�
 | Khóa | Mặc định |
 |---|---|
 | `ui.voice_reply` | `false` |
-| `calendar.default_remind_minutes` | `[15]` |
+| `calendar.default_remind_minutes` | `[15]`; tạo sự kiện không ghi phút nhắc mà mốc mặc định đã qua (*3 phút nữa*) thì nhắc đúng giờ (`[0]`) |
 | `calendar.week_start` | `1` (thứ Hai) |
 | `expense.default_account` | `cash` |
 | `inbox.ai_enabled` | `true` (tắt thì hộp tin không gửi Claude) |
+| `notify.new_transaction` | `false`: máy báo khi ghi giao dịch mới (QĐ-38) |
+| `notify.important_message` | `true`: máy báo khi có tin quan trọng (QĐ-38) |
+| `notify.chat_done` | `true`: lượt chat xong khi app không ở màn hình thì máy báo (QĐ-41) |
+| `calendar.app_reminds_google` | `false`: bật thì app nhắc cả sự kiện tạo trên Google, theo `remind_minutes` của sự kiện hoặc mặc định (QĐ-38) |
 | `inbox.quiet_hours` | `null` |
 | `trip.default_travel_mode` | `motorbike` |
 | `trip.night_start`, `trip.night_end` | `18:00`, `05:30` |
@@ -220,7 +224,7 @@ Chỉ mục `(conversation_id, id)`; GIN `search_vector` một phần `WHERE hid
 |---|---|---|
 | (cột chung) | | |
 | conversation_id, message_id | bigint FK SET NULL | |
-| tool_name | text NN | `delete_expense`, `delete_task`, `delete_event` (từ 2 mục), `delete_trip`, `add_event`, `update_event` (có khách mời), `send_gmail_draft`; kiểm trong mã theo registry |
+| tool_name | text NN | `delete_expense`, `delete_task`, `delete_event` (từ 2 mục), `delete_trip`, `add_event`, `update_event` (có khách mời), `send_gmail_draft`, `share_drive_file` (QĐ-38); kiểm trong mã theo registry, không có CHECK trong DB |
 | input | jsonb NN | Đầu vào đã kiểm |
 | payload_hash | text NN | SHA-256 của `tool_name` + `input` chuẩn hóa (K7) |
 | title, summary | text NN | |
@@ -272,6 +276,9 @@ Chỉ mục `(user_id, created_at)`; `(created_at)` cho cảnh báo `AI_MONTHLY_
 | status | text NN CK `pending_upload`, `ready`, `deleted` | |
 | extract_status | text NN CK `none`, `pending`, `done`, `failed`, `skipped` default `none` | Hàng đợi của job `extract_file_text` |
 | drive_file_id | text | |
+| drive_web_view_link | text | Link mở tệp trên Drive (thư mục *Trợ lý*) |
+
+Tệp bot xuất (QĐ-41): `file/render.py` dựng PDF (fpdf2, font DejaVu Sans trong image), Word (python-docx), Excel (openpyxl, mỗi bảng một trang tính, cột số là số); `file.service.save_generated_file(session, user, fmt, title, blocks)` lưu `files/` với `purpose = document`, tên tệp là tiêu đề bỏ dấu.
 | deleted_at | timestamptz | |
 
 Chỉ mục `(user_id, purpose, created_at DESC) WHERE status = 'ready'`; `(extract_status) WHERE extract_status = 'pending'`.
@@ -373,13 +380,14 @@ Nhóm Zalo không đặt `conversation_title`, `is_group_conversation`: tiêu đ
 | google_calendar_id, google_event_id, google_etag | text | UQ một phần `(user_id, google_calendar_id, google_event_id)` |
 | google_updated_at | timestamptz | |
 | google_html_link | text | Link mở trên Google Calendar (lỗi `RECURRING_SERIES_EDIT`) |
+| meet_url | text | Link Google Meet (`hangoutLink`); Google có khi tạo chậm, lần đồng bộ sau mới có (5-01) |
 | sync_status | text NN CK `local_only`, `pending`, `synced`, `conflict`, `error` | |
 | sync_error | text | |
 | deleted_at | timestamptz | |
 
 CK `(all_day AND start_date IS NOT NULL AND end_date > start_date) OR (NOT all_day AND start_at IS NOT NULL AND end_at >= start_at)`. Chỉ mục `(user_id, start_at) WHERE deleted_at IS NULL`; `(user_id) WHERE recurrence IS NOT NULL AND deleted_at IS NULL`; `(user_id, recurring_event_id)`.
 
-Sự kiện có khách mời chỉ ghi sau khi duyệt (QĐ-23); dữ liệu chờ nằm trong `tab_pending_action.input` (`add_event`: `{data}`; `update_event`: `{event_id, occurrence_start, changes}`; `delete_event`: `{event_id, occurrence_start}`), chạy bằng `modules/calendar/approvals.py`. Sự kiện lặp chỉ đến từ Google; sửa, xóa một lần tạo dòng ngoại lệ (xóa một lần là ngoại lệ `status = cancelled`, không đặt `deleted_at`). Khóa lần lặp là `original_start_at` theo UTC; lần lặp cả ngày dùng 00:00 UTC của ngày. App tạo sự kiện thì đặt sẵn `google_event_id`, `google_calendar_id = primary`. Đổi `remind_source`, `remind_minutes`, `is_alarm` của bản gốc áp luôn cho các ngoại lệ.
+Sự kiện có khách mời chỉ ghi sau khi duyệt (QĐ-23); dữ liệu chờ nằm trong `tab_pending_action.input` (`add_event`: `{data}`; `update_event`: `{event_id, occurrence_start, changes}`; `delete_event`: `{event_id, occurrence_start}`), chạy bằng `modules/calendar/approvals.py`. Sự kiện lặp chỉ đến từ Google; sửa, xóa một lần tạo dòng ngoại lệ (xóa một lần là ngoại lệ `status = cancelled`, không đặt `deleted_at`). Khóa lần lặp là `original_start_at` theo UTC; lần lặp cả ngày dùng 00:00 UTC của ngày. App tạo sự kiện thì đặt sẵn `google_event_id`, `google_calendar_id = primary`. Đổi `remind_source`, `remind_minutes`, `is_alarm` của bản gốc áp luôn cho các ngoại lệ. Phút nhắc đồng bộ hai chiều (QĐ-39): sự kiện Google nhắc lấy phút popup Google gửi, sửa phút trong app thì đẩy `reminders`; sự kiện app nhắc thì Google im, chỉ lấy phút khi người dùng đặt nhắc trên Google. `is_alarm` lưu trên Google ở `extendedProperties.private.troly_alarm` để đồng bộ lại không mất.
 
 **`tab_task`**
 

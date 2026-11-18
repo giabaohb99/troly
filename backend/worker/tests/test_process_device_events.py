@@ -163,7 +163,7 @@ def test_reprocess_inbox_and_export_structure_only(db, user, device, tmp_path):
     )
     device_events.process_device_events()
     db.execute(text("UPDATE tab_inbox_message SET sender = 'sai', conversation_title = 'sai'"))
-    assert cli.main(["reprocess-inbox"]) == 0
+    assert cli.main(["reprocess-inbox", "--days", "7"]) == 0
     [row] = db.query(InboxMessage).all()
     assert (row.sender, row.conversation_title, row.is_group, row.device_event_id) == (
         "Tuấn",
@@ -177,3 +177,65 @@ def test_reprocess_inbox_and_export_structure_only(db, user, device, tmp_path):
     [item] = yaml.safe_load(out.read_text(encoding="utf-8"))
     assert item["payload"]["title"] == "Nhóm: Người 1" and item["payload"]["text"] == "Người 2: (nội dung)"
     assert "cafe" not in out.read_text(encoding="utf-8") and "Tuấn" not in out.read_text(encoding="utf-8")
+
+
+def test_reparse_inbox_is_idempotent_keeps_status_and_drops_system(db, user, device):
+    from app import cli
+
+    group = add_event(
+        db,
+        device,
+        "com.zing.zalo",
+        {
+            "title": "Nhóm: zalo bot",
+            "messages": [
+                {"sender": "Nhóm: zalo bot", "text": "An: chào nhóm"},
+                {"sender": None, "text": "Bình: chào"},
+            ],
+        },
+        NOW,
+    )
+    system = add_event(
+        db, device, "com.zing.zalo", {"title": "Zalo", "text": "Đăng nhập Zalo trên máy tính thành công"}, NOW
+    )
+    # Giả lập tin lưu bởi luật cũ: sai người gửi, có tin hệ thống, đã xem.
+    for ev, sender, body in (
+        (group, "Nhóm: zalo bot", "An: chào nhóm"),
+        (system, "Zalo", "Đăng nhập Zalo trên máy tính thành công"),
+    ):
+        db.add(
+            InboxMessage(
+                user_id=user.user_id,
+                source="notification",
+                app="zalo",
+                app_package="com.zing.zalo",
+                device_id=device.id,
+                device_event_id=ev.id,
+                sender=sender,
+                sender_key=f"zalo:{sender}",
+                conversation_key=f"k{ev.id}",
+                conversation_title=sender,
+                text=body,
+                posted_at=NOW,
+                status="seen",
+                dedupe_hash=f"old{ev.id}",
+            )
+        )
+    db.flush()
+
+    def snapshot():
+        return sorted(
+            (m.sender, m.conversation_title, m.text, m.status, m.is_group)
+            for m in db.query(InboxMessage).all()
+        )
+
+    assert cli.main(["reparse-inbox", "--since", "2026-01-01"]) == 0
+    first = snapshot()
+    assert first == [
+        ("An", "zalo bot", "chào nhóm", "seen", True),
+        ("Bình", "zalo bot", "chào", "seen", True),
+    ]
+    assert cli.main(["reparse-inbox"]) == 0
+    assert snapshot() == first
+    db.refresh(system)
+    assert system.status == "ignored"

@@ -74,6 +74,8 @@ services:
       - ../testdata:/testdata:ro
       - ./android-builder/build:/out
       - android-gradle:/root/.gradle
+      # Khóa ký debug cố định (ngoài kho) để cài đè bản thử lên điện thoại không lỗi chữ ký.
+      - ${TROLY_SECRETS:-D:/giabao/troly-secrets}/android-debug:/root/.android
     profiles: ["android"]
 
 networks:

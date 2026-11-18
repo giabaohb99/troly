@@ -1,0 +1,42 @@
+# Bộ mẫu ước tính chặng xe máy (QĐ-36) cho app.ai.trip_legs.estimate_legs. Chạy tay: pytest -m ai_eval.
+# Số chuẩn là quãng đường xe máy tránh cao tốc, tra tay trên Google Maps ngày 18/11/2026, làm tròn;
+# chấp nhận lệch theo `tolerance` (mặc định 0,35). minutes_range là khoảng hợp lý gồm cả chờ phà.
+# think: true thì có thêm bước tìm web. expect.checks: điểm phải có dòng kiểm (tìm được hoặc ghi rõ không rõ);
+# expect.found: điểm phải tìm được giờ. Phà Cát Lái chạy gần như suốt ngày, nguồn mâu thuẫn: chấp nhận không rõ.
+
+- id: can-tho-di-cat-lai
+  stops:
+    - {stop_id: 1, title: "Bến Ninh Kiều", category: khac, address: "Ninh Kiều, Cần Thơ"}
+    - {stop_id: 2, title: "Phà Cát Lái", category: pha, address: "Cát Lái, Thủ Đức, TP. Hồ Chí Minh"}
+  legs: [[1, 2]]
+  expect: {km: [170], minutes_range: [[210, 360]]}
+
+- id: cat-lai-di-phuoc-hai
+  stops:
+    - {stop_id: 1, title: "Phà Cát Lái (bờ Nhơn Trạch)", category: pha, address: "Phú Hữu, Nhơn Trạch, Đồng Nai"}
+    - {stop_id: 2, title: "Khu du lịch Phước Hải", category: khach_san, address: "Phước Hải, Đất Đỏ, Bà Rịa - Vũng Tàu"}
+  legs: [[1, 2]]
+  expect: {km: [95], minutes_range: [[120, 210]]}
+
+- id: phuoc-hai-trong-thi-tran
+  stops:
+    - {stop_id: 1, title: "Khách sạn ở Phước Hải", category: khach_san, lat: 10.4477939, lng: 107.2709}
+    - {stop_id: 2, title: "Chợ Phước Hải", category: an_uong, lat: 10.4470, lng: 107.2650}
+  legs: [[1, 2]]
+  expect: {km: [1.5], minutes_range: [[2, 15]], tolerance: 1.5}
+
+- id: vung-tau-qua-pha-ve-tra-vinh
+  stops:
+    - {stop_id: 1, title: "Thành phố Vũng Tàu", category: khac, address: "Vũng Tàu, Bà Rịa - Vũng Tàu"}
+    - {stop_id: 2, title: "Bến phà Vũng Tàu - Bến Tre (Cần Giờ)", category: pha, address: "Cần Giờ, TP. Hồ Chí Minh"}
+    - {stop_id: 3, title: "Ao Bà Om", category: tham_quan, address: "Phường 8, Trà Vinh"}
+  legs: [[1, 2], [2, 3]]
+  expect: {km: [null, null], total_km_range: [120, 260], minutes_range: [[20, 240], [120, 360]]}
+
+- id: nghi-ky-gio-pha-va-bao-tang
+  think: true
+  stops:
+    - {stop_id: 1, title: "Phà Cát Lái", category: pha, address: "Cát Lái, Thủ Đức, TP. Hồ Chí Minh", visit_date: "2026-11-21"}
+    - {stop_id: 2, title: "Bảo tàng Văn hóa dân tộc Khmer", category: tham_quan, address: "Ao Bà Om, Trà Vinh", visit_date: "2026-11-23"}
+  legs: [[1, 2]]
+  expect: {minutes_range: [[180, 420]], checks: [1, 2], found: [2], closed_weekday: {2: 1}}

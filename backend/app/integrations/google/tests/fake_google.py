@@ -53,6 +53,11 @@ class FakeGoogle:
         self.min_valid_token = 0
         self.channels: dict[str, dict] = {}
         self.stopped: list[str] = []
+        self.default_reminders: list[dict] = [{"method": "popup", "minutes": 30}]
+        # Drive
+        self.drive_files: dict[str, dict] = {}
+        self.permissions: list[dict] = []
+        self.upload_sessions: dict[str, dict] = {}
         # Tasks
         self.lists: dict[str, dict] = {}
         self.tasks: dict[str, dict[str, dict]] = {}
@@ -125,6 +130,10 @@ class FakeGoogle:
         expires = self.access_tokens.get(auth)
         if expires is None or expires < _now():
             return _err(401, "authError")
+        if url.host == "www.googleapis.com" and (
+            path.startswith("/drive/v3") or path.startswith("/upload/drive/v3")
+        ):
+            return self._drive(request, path)
         if url.host == "www.googleapis.com" and path.startswith("/calendar/v3"):
             return self._calendar(request, path.removeprefix("/calendar/v3"))
         if url.host == "tasks.googleapis.com":
@@ -171,6 +180,8 @@ class FakeGoogle:
             self.stopped.append(body["id"])
             self.channels.pop(body["id"], None)
             return httpx.Response(204)
+        if path.startswith("/users/me/calendarList/") and method == "GET":
+            return httpx.Response(200, json={"defaultReminders": self.default_reminders})
         m = re.fullmatch(r"/calendars/([^/]+)/events(?:/([^/]+))?(?:/(instances|watch))?", path)
         if not m:
             return _err(404, "notFound")
@@ -201,6 +212,7 @@ class FakeGoogle:
                 return _err(409, "duplicate", "The requested identifier already exists.")
             body["id"] = new_id
             body["organizer"] = {"self": True}
+            self._conference(body, params)
             return httpx.Response(200, json=self._public(self.put_event(body)))
         event = self.events.get(event_id)
         if event is None or (event.get("status") == "cancelled" and method != "GET"):
@@ -212,11 +224,28 @@ class FakeGoogle:
             return httpx.Response(200, json=self._public(event))
         if method == "PATCH":
             body = json.loads(request.content)
+            self._conference(body, params)
             return httpx.Response(200, json=self._public(self.put_event({**body, "id": event_id})))
         if method == "DELETE":
             self.cancel_event(event_id)
             return httpx.Response(204)
         return _err(405, "methodNotAllowed")
+
+    def _conference(self, body: dict, params: dict) -> None:
+        """Như Google: chỉ tạo Meet khi có conferenceDataVersion=1, không thì bỏ qua conferenceData."""
+        request = (body.get("conferenceData") or {}).get("createRequest")
+        if not request:
+            return
+        if params.get("conferenceDataVersion") != "1":
+            body.pop("conferenceData")
+            return
+        code = request["requestId"][-3:].rjust(3, "x")
+        uri = f"https://meet.google.com/abc-defg-{code}"
+        body["conferenceData"] = {
+            "createRequest": {**request, "status": {"statusCode": "success"}},
+            "entryPoints": [{"entryPointType": "video", "uri": uri}],
+        }
+        body["hangoutLink"] = uri
 
     @staticmethod
     def _public(event: dict) -> dict:
@@ -268,6 +297,63 @@ class FakeGoogle:
                 }
             )
         return httpx.Response(200, json={"items": [self._public(self.events[inst_id])]})
+
+    # ---------- Drive ----------
+
+    def _new_drive_file(self, meta: dict, size: int) -> dict:
+        fid = f"drv-{uuid.uuid4().hex[:8]}"
+        item = {
+            "id": fid,
+            "name": meta.get("name"),
+            "mimeType": meta.get("mimeType"),
+            "parents": meta.get("parents", []),
+            "size": size,
+            "webViewLink": f"https://drive.google.com/file/d/{fid}/view",
+        }
+        self.drive_files[fid] = item
+        return item
+
+    @staticmethod
+    def _fields(item: dict, params: dict) -> dict:
+        wanted = [f for f in params.get("fields", "id").split(",") if f]
+        return {k: item[k] for k in wanted if k in item}
+
+    def _drive(self, request: httpx.Request, path: str) -> httpx.Response:
+        method = request.method
+        params = dict(request.url.params)
+        if path == "/upload/drive/v3/files" and params.get("uploadType") == "multipart":
+            raw = request.content
+            boundary = request.headers["content-type"].split("boundary=")[1]
+            parts = raw.split(f"--{boundary}".encode())
+            meta = json.loads(parts[1].split(b"\r\n\r\n", 1)[1].strip())
+            data = parts[2].split(b"\r\n\r\n", 1)[1][: -len(b"\r\n")]
+            return httpx.Response(200, json=self._fields(self._new_drive_file(meta, len(data)), params))
+        if path == "/upload/drive/v3/files" and params.get("uploadType") == "resumable" and method == "POST":
+            sid = uuid.uuid4().hex[:8]
+            self.upload_sessions[sid] = {"meta": json.loads(request.content), "params": params}
+            location = (
+                f"https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id={sid}"
+            )
+            return httpx.Response(200, headers={"Location": location})
+        if path == "/upload/drive/v3/files" and method == "PUT":
+            sess = self.upload_sessions.pop(params["upload_id"])
+            item = self._new_drive_file(sess["meta"], len(request.content))
+            return httpx.Response(200, json=self._fields(item, sess["params"]))
+        if path == "/drive/v3/files" and method == "POST":
+            return httpx.Response(
+                200, json=self._fields(self._new_drive_file(json.loads(request.content), 0), params)
+            )
+        parts = path.removeprefix("/drive/v3/files/").split("/")
+        item = self.drive_files.get(parts[0])
+        if item is None:
+            return _err(404, "notFound")
+        if len(parts) == 1 and method == "GET":
+            return httpx.Response(200, json=self._fields(item, params))
+        if len(parts) == 2 and parts[1] == "permissions" and method == "POST":
+            body = json.loads(request.content)
+            self.permissions.append({"file_id": item["id"], **body, "params": params})
+            return httpx.Response(200, json={"id": f"perm-{len(self.permissions)}"})
+        return _err(405, "methodNotAllowed")
 
     # ---------- Tasks ----------
 

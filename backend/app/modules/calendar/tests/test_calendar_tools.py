@@ -88,10 +88,12 @@ def test_delete_one_has_undo_and_many_needs_approval(ctx, db):
     assert db.get(Event, b).deleted_at is None
 
 
-def test_set_reminder_is_alarm(ctx, db):
+def test_set_reminder_is_notification_unless_alarm(ctx, db):
     out = _call(tools, ctx, "set_reminder", text="Mua thuốc cho mẹ", remind_at=vn(18, 17))[2]
     e = db.get(Event, out.result["event_id"])
-    assert e.is_alarm is True and e.remind_minutes == [0]
+    assert e.is_alarm is False and e.remind_minutes == [0]
+    out = _call(tools, ctx, "set_reminder", text="Dậy đi sân bay", remind_at=vn(19, 5), alarm=True)[2]
+    assert db.get(Event, out.result["event_id"]).is_alarm is True
 
 
 def _task(ctx, **kw):
@@ -137,3 +139,20 @@ def test_task_delete_rules(ctx):
     spec.execute(ctx, {"task_ids": ids[1:]})
     left = _call(task_tools, ctx, "list_tasks", status=None, due=None, limit=None)[2]
     assert left.result["items"] == []
+
+
+def test_meet_flag_reaches_service(ctx, monkeypatch):
+    from app.modules.calendar import service
+
+    seen = []
+    real = service.create_event
+
+    def spy(session, user, data, **kw):
+        seen.append(data.get("meet"))
+        return real(session, user, data, **kw)
+
+    monkeypatch.setattr(tools.service, "create_event", spy)
+    out = _add(ctx, meet=True)
+    assert seen == [True] and "meet_url" in out.result
+    _add(ctx, title="Không cần Meet", start_at=vn(20, 9))
+    assert seen == [True, None]

@@ -137,7 +137,7 @@ export function RisksDialog({ trip, open, onOpenChange }: DialogProps) {
   )
 }
 
-function OptionCard({ option, onChoose }: { option: TripOption; onChoose: () => void }) {
+function OptionCard({ option, estimated, onChoose }: { option: TripOption; estimated: boolean; onChoose: () => void }) {
   return (
     <div className={cn('flex flex-col gap-1.5 rounded-2xl border p-3 text-sm', option.chosen && 'border-primary')}>
       <span className="flex items-center gap-2 font-semibold">
@@ -153,6 +153,7 @@ function OptionCard({ option, onChoose }: { option: TripOption; onChoose: () => 
         {[formatKm(option.total_km), option.total_ride_minutes ? `chạy ${formatDuration(option.total_ride_minutes)}` : null, option.night_ride_minutes ? `chạy đêm ${formatDuration(option.night_ride_minutes)}` : null]
           .filter(Boolean)
           .join(' · ')}
+        {estimated && (option.total_km || option.total_ride_minutes) ? ' (ước tính)' : ''}
       </span>
       <span className="flex gap-3 text-xs">
         <span className={option.red_count ? 'text-destructive' : 'text-muted-foreground'}>{option.red_count} đỏ</span>
@@ -199,7 +200,7 @@ export function OptionsDialog({ trip, open, onOpenChange }: DialogProps) {
           <div className="flex flex-col gap-3">
             {trip.options.length === 0 && <p className="text-sm text-muted-foreground">Chưa đánh giá nên chưa có phương án.</p>}
             {trip.options.map((option) => (
-              <OptionCard key={option.id} option={option} onChoose={() => setPicked(option)} />
+              <OptionCard key={option.id} option={option} estimated={trip.evaluation?.estimated === true} onChoose={() => setPicked(option)} />
             ))}
           </div>
         </DialogContent>

@@ -1,16 +1,16 @@
-import { useState, type ReactNode } from 'react'
-import { BellRing, ChevronRight, Cloud, Coins, Download, FileText, History, Inbox, Loader2, LogOut, RefreshCw, Route, ShieldCheck, Smartphone } from 'lucide-react'
+import { useState, useSyncExternalStore, type ReactNode } from 'react'
+import { BellRing, ChevronRight, Palette, Cloud, Coins, Download, FileText, History, Inbox, Loader2, LogOut, RefreshCw, Route, ShieldCheck, Smartphone } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { getAppVersion } from '@/core/config'
+import { getAppVersion, isDebugBuild } from '@/core/config'
+import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '@/core/theme'
 import { canInstallApk, startApkDownload } from '@/core/native/update'
 import { useLogout, useSession } from '@/modules/auth/hooks/use-session'
 import { getCostStatus, getProfile } from '@/modules/setting/api/setting-api'
 import { DeviceList } from '@/modules/setting/components/device-list'
 import { ProfileDialog } from '@/modules/setting/components/profile-dialog'
 import { ProfileHistoryDialog } from '@/modules/setting/components/profile-history-dialog'
-import { usePatchSettings, useSettings } from '@/modules/setting/hooks/use-settings'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { PageHeader } from '@/shared/components/page-header'
 import { needsReconnect, useGoogleStatus } from '@/shared/hooks/use-google-status'
@@ -20,7 +20,11 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { formatUsd } from '@/shared/utils/format'
 import { cn } from '@/shared/utils/cn'
 
-const REMIND_OPTIONS = [0, 5, 15, 30, 60]
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: 'system', label: 'Theo máy' },
+  { value: 'light', label: 'Sáng' },
+  { value: 'dark', label: 'Tối' },
+]
 
 function Section({ icon: Icon, title, children, action }: { icon: typeof Coins; title: string; children: ReactNode; action?: ReactNode }) {
   return (
@@ -57,12 +61,10 @@ export function SettingsPage() {
   const cost = useQuery({ queryKey: queryKeys.chat.status, queryFn: getCostStatus, staleTime: 60_000 })
   const release = useRelease()
   const google = useGoogleStatus()
-  const settings = useSettings()
-  const patch = usePatchSettings()
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const version = getAppVersion()
-  const remind = settings.data?.['calendar.default_remind_minutes']?.[0] ?? null
+  const theme = useSyncExternalStore(subscribeTheme, getThemePref)
 
   const checkUpdate = async () => {
     const result = await release.refetch()
@@ -87,6 +89,7 @@ export function SettingsPage() {
       <div className="divide-y rounded-2xl border bg-card">
         <LinkRow icon={ShieldCheck} title="Thiết lập máy" text="Quyền, pin, Samsung, app được nghe, kiểm tra máy" onClick={() => navigate('/thiet-lap')} />
         <LinkRow icon={Cloud} title="Kết nối Google" text={googleText} warn={needsReconnect(google.data) || !!google.data?.failed_outbox_count} onClick={() => navigate('/cai-dat/google')} />
+        <LinkRow icon={BellRing} title="Thông báo" text="Nhắc mặc định, âm thanh, giờ yên lặng, loại thông báo" onClick={() => navigate('/cai-dat/thong-bao')} />
         <LinkRow icon={Inbox} title="Hộp tin" text="Người quan trọng, từ khóa gấp, quyền đọc của trợ lý" onClick={() => navigate('/cai-dat/hop-tin')} />
         <LinkRow icon={Route} title="Lịch trình" text="Luật đánh giá chuyến, giờ phà quen" onClick={() => navigate('/cai-dat/lich-trinh')} />
       </div>
@@ -109,21 +112,21 @@ export function SettingsPage() {
         </button>
       </Section>
 
-      <Section icon={BellRing} title="Nhắc mặc định">
-        <p className="mb-2 text-sm text-muted-foreground">Sự kiện tạo ở app được nhắc trước bao lâu.</p>
-        <div className="flex flex-wrap gap-2">
-          {REMIND_OPTIONS.map((minutes) => (
+      <Section icon={Palette} title="Giao diện">
+        <div className="grid grid-cols-3 gap-2">
+          {THEME_OPTIONS.map((option) => (
             <button
-              key={minutes}
+              key={option.value}
               type="button"
-              disabled={!settings.data || patch.isPending}
-              onClick={() => patch.mutate({ 'calendar.default_remind_minutes': [minutes] })}
-              className={cn('rounded-full border px-3 py-1 text-sm', remind === minutes && 'border-primary bg-primary/15 text-primary')}
+              aria-pressed={theme === option.value}
+              onClick={() => setThemePref(option.value)}
+              className={cn('rounded-xl border py-2 text-sm', theme === option.value && 'border-primary bg-primary/15 text-primary')}
             >
-              {minutes === 0 ? 'Đúng giờ' : `${minutes} phút`}
+              {option.label}
             </button>
           ))}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">Lưu trên máy này. Theo máy: đổi theo chế độ tối của điện thoại.</p>
       </Section>
 
       <Section
@@ -168,7 +171,8 @@ export function SettingsPage() {
               {release.data.latest.notes && <p className="text-muted-foreground">{release.data.latest.notes}</p>}
             </div>
           )}
-          <div className="flex gap-2">
+          {isDebugBuild() && <p className="text-xs text-muted-foreground">Bản thử: không tự kiểm bản mới, cập nhật bằng cách cài APK debug mới.</p>}
+          <div className={isDebugBuild() ? 'hidden' : 'flex gap-2'}>
             <Button variant="secondary" size="sm" disabled={release.isFetching} onClick={() => void checkUpdate()}>
               {release.isFetching ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
               Kiểm tra cập nhật

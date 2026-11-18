@@ -30,6 +30,7 @@ class EventIn(BaseModel):
     end_date: date | None = None
     remind_minutes: list[int] | None = Field(default=None, max_length=5)
     is_alarm: bool = False
+    meet: bool = False
     attendees: list[AttendeeIn] = Field(default_factory=list, max_length=service.MAX_ATTENDEES)
 
 
@@ -45,6 +46,7 @@ class EventPatch(BaseModel):
     remind_minutes: list[int] | None = Field(default=None, max_length=5)
     remind_source: str | None = Field(default=None, pattern="^(app|google)$")
     is_alarm: bool | None = None
+    meet: bool | None = None
     attendees: list[AttendeeIn] | None = Field(default=None, max_length=service.MAX_ATTENDEES)
 
 

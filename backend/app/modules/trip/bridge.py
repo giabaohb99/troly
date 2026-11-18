@@ -78,6 +78,52 @@ def summarize_options(user_id: int, trip_title: str, options: list[dict]) -> dic
     return {i.option_id: {"summary": i.summary, "tips": list(i.tips)} for i in items}
 
 
+def _plain(value):
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "__dataclass_fields__"):
+        from dataclasses import asdict
+
+        return asdict(value)
+    return dict(value)
+
+
+def estimate_legs(
+    user_id: int,
+    trip_title: str,
+    region: str | None,
+    stops: list[dict],
+    legs: list[dict],
+    think: bool,
+    travel_mode: str = "motorbike",
+) -> dict | None:
+    """AI ước tính chặng thay Routes (QĐ-36; app.ai.trip_legs.estimate_legs). think: tìm web giờ mở cửa, phà cuối.
+
+    Trả {legs: [{from_stop_id, to_stop_id, km, minutes, ferry_minutes, note}], checks: [...], sources: [...]}.
+    """
+    mod = _optional("app.ai.trip_legs")
+    if mod is None or not hasattr(mod, "estimate_legs"):
+        return None
+    try:
+        result = mod.estimate_legs(
+            user_id,
+            trip_title=trip_title,
+            region=region,
+            stops=stops,
+            legs=legs,
+            think=think,
+            travel_mode=travel_mode,
+        )
+    except Exception:
+        return None
+    if result is None:
+        return None
+    data = _plain(result)
+    data["legs"] = [_plain(x) for x in data.get("legs") or []]
+    data["checks"] = [_plain(x) for x in data.get("checks") or []]
+    return data
+
+
 def _file_service():
     return importlib.import_module("app.modules.file.service")
 
@@ -102,3 +148,15 @@ def setting_values(session: Session, user_id: int) -> dict:
 
 def create_calendar_event(session: Session, user, data: dict) -> dict:
     return importlib.import_module("app.modules.calendar.service").create_event(session, user, data)
+
+
+def request_drive_upload(session: Session, user_id: int, file_id: int) -> bool:
+    """Đặt lệnh lưu tệp lên thư mục Trợ lý trên Drive; chưa nối gói drive thì trả False (40 mục 8)."""
+    from app.integrations.google import drive
+    from app.integrations.google.errors import GoogleNotConnected
+
+    try:
+        drive.request_upload(session, user_id, file_id)
+    except GoogleNotConnected:
+        return False
+    return True

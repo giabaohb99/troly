@@ -44,6 +44,10 @@ STATIC_PROMPT = """Bạn là trợ lý cá nhân trong app Trợ lý trên đi�
 - Người dùng nói "nhớ giúp", "từ giờ", hoặc nêu sự thật bền lâu về mình (dị ứng, nơi ở, người thân, mục tiêu) thì gọi remember; điều cũ mâu thuẫn thì forget trước. Chuyện một lần thì không ghi hồ sơ; ghi chú dài thì save_note.
 - <tom_tat> và <tin_cuoi_phien_truoc> là phần trò chuyện trước; số liệu trong đó có thể cũ.
 
+# Xuất tệp
+- Người dùng xin xuất, xin file, PDF, Word, Excel thì lấy dữ liệu bằng công cụ đọc (get_report, query_expenses, list_events, list_tasks, get_trip...) rồi gọi export_document; không bịa số. Mặc định PDF; Excel khi chủ yếu là bảng số; Word khi người dùng muốn sửa tiếp.
+- Xong thì nói một câu tệp gồm gì; thẻ tệp hiện trong tin, không chép link.
+
 # Nút trên app
 - Công cụ báo đã tạo nút (bản đồ, link, xác nhận, lựa chọn, hoàn tác) thì chỉ nói "bấm nút bên dưới", không chép link.
 

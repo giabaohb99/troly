@@ -32,6 +32,10 @@ export interface SystemPlugin {
   openSettings(options: { target: SettingsTarget }): Promise<{ opened: boolean }>
   getInstalledApps(options: { packages: string[] }): Promise<{ installed: string[] }>
   addListener(event: 'permissionsChanged', listener: (snapshot: PermissionSnapshot) => void): Promise<PluginListenerHandle>
+  // Giao diện sáng, tối (QĐ-37): màu chữ và nền của thanh trạng thái, thanh điều hướng; chế độ tối của máy.
+  setBarStyle(options: { dark: boolean; color: string }): Promise<void>
+  getSystemTheme(): Promise<{ dark: boolean }>
+  addListener(event: 'systemThemeChanged', listener: (state: { dark: boolean }) => void): Promise<PluginListenerHandle>
 }
 
 class SystemWeb extends WebPlugin {
@@ -68,6 +72,12 @@ class SystemWeb extends WebPlugin {
 
   async getInstalledApps({ packages }: { packages: string[] }) {
     return { installed: packages.filter((p) => p !== 'com.google.android.apps.messaging') }
+  }
+
+  async setBarStyle() {}
+
+  async getSystemTheme() {
+    return { dark: window.matchMedia('(prefers-color-scheme: dark)').matches }
   }
 }
 

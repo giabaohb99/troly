@@ -5,7 +5,6 @@ import {
   Coffee,
   Landmark,
   MapPin,
-  MapPinOff,
   Navigation,
   Phone,
   Ship,
@@ -17,7 +16,7 @@ import {
 import { toast } from 'sonner'
 import { Maps, placeUrl } from '@/core/native/maps'
 import type { Risk, Stop, StopCategory, TripFact } from '@/modules/trip/types/trip'
-import { canNavigate, formatDuration, formatKm } from '@/modules/trip/utils/trip-utils'
+import { canNavigate, formatDuration, formatKm, navigationTarget } from '@/modules/trip/utils/trip-utils'
 import { Button } from '@/shared/ui/button'
 import { formatTime } from '@/shared/utils/format'
 import { cn } from '@/shared/utils/cn'
@@ -58,11 +57,11 @@ async function openMap(open: () => Promise<unknown>) {
 
 // Một điểm trong ngày (31 mục 3.5): giờ, loại, tên, km và giờ chạy từ điểm trước, mốc cứng, rủi ro, Dẫn đường, Xem.
 // Dẫn đường: xe hai bánh, tránh cao tốc (30 mục 3.12).
-export function StopRow({ stop, risks, facts }: { stop: Stop; risks: Risk[]; facts: TripFact[] }) {
+export function StopRow({ stop, risks, facts, estimated }: { stop: Stop; risks: Risk[]; facts: TripFact[]; estimated: boolean }) {
   const Icon = CATEGORY_ICON[stop.category] ?? MapPin
   const role = ROLE_LABEL[stop.role]
-  const leg = [formatKm(stop.leg_km), stop.leg_minutes ? `khoảng ${formatDuration(stop.leg_minutes)}` : null].filter(Boolean).join(' · ')
-  const located = stop.lat !== null && stop.lng !== null
+  const legParts = [formatKm(stop.leg_km), stop.leg_minutes ? `khoảng ${formatDuration(stop.leg_minutes)}` : null].filter(Boolean)
+  const leg = legParts.length ? `${legParts.join(' · ')}${estimated ? ' (ước tính)' : ''}` : ''
   const secondary = stop.role !== 'main' && stop.role !== 'via'
   return (
     <div className={cn('flex gap-3 py-3', secondary && 'pl-6 opacity-80')}>
@@ -101,23 +100,17 @@ export function StopRow({ stop, risks, facts }: { stop: Stop; risks: Risk[]; fac
         ))}
         {stop.note && <span className="text-xs text-muted-foreground">{stop.note}</span>}
         {stop.cost_note && <span className="text-xs text-muted-foreground">{stop.cost_note}</span>}
-        {!located && stop.role === 'main' && (
-          <span className="flex items-center gap-1.5 text-xs text-warning">
-            <MapPinOff className="size-3.5" />
-            chưa định vị
-          </span>
-        )}
         <div className="mt-1 flex flex-wrap gap-2">
           {canNavigate(stop) && (
             <Button
               size="sm"
-              onClick={() => void openMap(() => Maps.navigate({ lat: stop.lat, lng: stop.lng, query: null, mode: 'l', avoid: 'h' }))}
+              onClick={() => void openMap(() => Maps.navigate({ ...navigationTarget(stop), mode: 'l', avoid: 'h' }))}
             >
               <Navigation className="size-4" />
               Dẫn đường
             </Button>
           )}
-          {(located || stop.place_id || stop.place_query) && (
+          {stop.role !== 'generic' && (
             <Button size="sm" variant="outline" onClick={() => void openMap(() => Maps.openUrl({ url: placeUrl(stop.place_query ?? stop.title, stop.place_id) }))}>
               Xem
             </Button>

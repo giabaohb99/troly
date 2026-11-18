@@ -7,7 +7,8 @@ export const getTrip = (id: number) => apiGet<Trip>(`/trips/${id}`)
 // Đổi ngày đi: máy chủ dời giờ các điểm theo và bỏ cờ start_date_suggested.
 export const updateTripStartDate = (id: number, startDate: string) => apiPatch<Trip>(`/trips/${id}`, { start_date: startDate })
 export const deleteTrip = (id: number) => apiDelete<null>(`/trips/${id}`)
-export const evaluateTrip = (id: number) => apiPost<{ job_id: number }>(`/trips/${id}/evaluate`)
+// mode think: AI tìm thêm giờ mở cửa trên web (QĐ-36).
+export const evaluateTrip = (id: number, mode: 'normal' | 'think' = 'normal') => apiPost<{ job_id: number }>(`/trips/${id}/evaluate`, { mode })
 export const chooseOption = (id: number, optionId: number) => apiPost<Trip>(`/trips/${id}/options/${optionId}/choose`)
 export const getMapLinks = (id: number, dayNo: number, maxWaypoints: number) =>
   apiGet<MapLinks>(`/trips/${id}/map-links${toQuery({ day_no: dayNo, max_waypoints: maxWaypoints })}`)

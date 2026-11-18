@@ -51,6 +51,7 @@ class File(UserOwnedMixin, Base):
     status: Mapped[str] = mapped_column(Text, server_default="pending_upload")
     extract_status: Mapped[str] = mapped_column(Text, server_default="none")
     drive_file_id: Mapped[str | None] = mapped_column(Text)
+    drive_web_view_link: Mapped[str | None] = mapped_column(Text)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
