@@ -11,6 +11,13 @@ describe('screenToRoute', () => {
     ['search', { q: 'hợp đồng' }, '/tim?q=h%E1%BB%A3p%20%C4%91%E1%BB%93ng'],
     ['settings_ai_cost', null, '/cai-dat'],
     ['trip_detail', { trip_id: 1 }, '/lich-trinh'],
+    ['calendar_day', { date: '2026-11-20' }, '/lich?ngay=2026-11-20'],
+    ['event_detail', { event_id: 9 }, '/lich/su-kien/9'],
+    ['event_detail', { event_id: 9, occurrence_start: '2026-11-20T01:30:00Z' }, '/lich/su-kien/9?lan=2026-11-20T01%3A30%3A00Z'],
+    ['task_list', null, '/lich?tab=viec'],
+    ['task_detail', { task_id: 4 }, '/lich/viec/4'],
+    ['settings_google', null, '/cai-dat/google'],
+    ['settings_device_check', null, '/thiet-lap'],
     ['man_la', null, '/'],
   ])('%s', (screen, params, route) => {
     expect(screenToRoute(screen, params)).toBe(route)

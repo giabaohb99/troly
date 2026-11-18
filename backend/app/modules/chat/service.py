@@ -121,6 +121,55 @@ def payload_hash(tool_name: str, data: dict) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def create_pending_action(
+    session: Session,
+    user_id: int,
+    tool_name: str,
+    input_: dict,
+    *,
+    title: str,
+    summary: str,
+    details: list[dict],
+    danger: bool = False,
+    conversation_id: int | None = None,
+) -> dict:
+    """Thẻ duyệt tạo từ API (không qua chat), ví dụ sự kiện có khách mời (QĐ-23).
+
+    Trả `PendingAction` cùng hành động `confirm` để app hiện thẻ; duyệt qua /chat/actions/{id}/approve.
+    """
+    from app.ai import actions
+
+    action = repo.add_pending_action(
+        session,
+        PendingAction(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            tool_name=tool_name,
+            input=input_,
+            payload_hash=payload_hash(tool_name, input_),
+            title=title,
+            summary=summary,
+            details=details,
+            danger=danger,
+            expires_at=clock.now() + timedelta(hours=APPROVAL_HOURS),
+        ),
+    )
+    return {
+        **serialize_pending(action),
+        "action": {
+            "id": "a1",
+            **actions.confirm(
+                pending_action_id=action.id,
+                title=title,
+                summary=summary,
+                details=details,
+                danger=danger,
+                expires_at=action.expires_at,
+            ),
+        },
+    }
+
+
 # ---------- Kho lưu cho ai.loop.run_turn (TurnStore của 20 mục 3.2) ----------
 
 
@@ -604,15 +653,23 @@ def decide_action(session: Session, user: UserContext, action_id: int, approve: 
         _system_note(session, action, f"Người dùng đã bỏ: {action.title}.")
         return {"action": serialize_pending(action), "result_text": "Đã bỏ."}
 
-    spec = get_tool(action.tool_name)
-    if spec is None or spec.execute is None:
+    # Module tự chạy việc đã duyệt khi có `approvals.py` (cùng dữ liệu cho thẻ từ API và từ chat).
+    from app.registry import approval_executor
+
+    executor = approval_executor(action.tool_name)
+    spec = None if executor else get_tool(action.tool_name)
+    if executor is None and (spec is None or spec.execute is None):
         raise ConflictError("Công cụ này không còn, không chạy được.")
     ctx = ToolContext(session=session, user=user, conversation_id=action.conversation_id, now=now)
     try:
         with session.begin_nested():
-            output = spec.execute(ctx, action.input)
+            if executor is not None:
+                result = executor(session, user, action.input)
+            else:
+                result = spec.execute(ctx, action.input).result
         action.status = "done"
-        action.result = output.result if isinstance(output.result, dict) else {"result": output.result}
+        result = result if isinstance(result, dict) else {"result": result}
+        action.result = json.loads(json.dumps(result, default=str, ensure_ascii=False))
         result_text = "thành công"
     except AppError as exc:
         action.status = "failed"

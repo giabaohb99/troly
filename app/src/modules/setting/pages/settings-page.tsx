@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, Coins, Download, FileText, Loader2, LogOut, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
+import { ChevronRight, Cloud, Coins, Download, FileText, Loader2, LogOut, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -10,6 +10,7 @@ import { getCostStatus, getProfile, listDevices } from '@/modules/setting/api/se
 import { ProfileDialog } from '@/modules/setting/components/profile-dialog'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { PageHeader } from '@/shared/components/page-header'
+import { needsReconnect, useGoogleStatus } from '@/shared/hooks/use-google-status'
 import { useRelease } from '@/shared/hooks/use-release'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -36,6 +37,7 @@ export function SettingsPage() {
   const cost = useQuery({ queryKey: queryKeys.chat.status, queryFn: getCostStatus, staleTime: 60_000 })
   const devices = useQuery({ queryKey: queryKeys.device.list, queryFn: listDevices })
   const release = useRelease()
+  const google = useGoogleStatus()
   const [profileOpen, setProfileOpen] = useState(false)
   const version = getAppVersion()
 
@@ -54,6 +56,25 @@ export function SettingsPage() {
         <span className="min-w-0 flex-1">
           <span className="block font-semibold">Thiết lập máy</span>
           <span className="block text-sm text-muted-foreground">Quyền đọc thông báo, pin, Samsung, app được nghe</span>
+        </span>
+        <ChevronRight className="size-4 text-muted-foreground" />
+      </button>
+
+      <button type="button" onClick={() => navigate('/cai-dat/google')} className="flex items-center gap-3 rounded-2xl border bg-card p-4 text-left">
+        <Cloud className="size-5 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Kết nối Google</span>
+          <span className={needsReconnect(google.data) || google.data?.failed_outbox_count ? 'block text-sm text-warning' : 'block text-sm text-muted-foreground'}>
+            {!google.data
+              ? 'Lịch và việc'
+              : !google.data.connected
+                ? 'Chưa kết nối'
+                : needsReconnect(google.data)
+                  ? 'Cần kết nối lại'
+                  : google.data.failed_outbox_count
+                    ? `${google.data.email} · ${google.data.failed_outbox_count} lỗi đồng bộ`
+                    : google.data.email}
+          </span>
         </span>
         <ChevronRight className="size-4 text-muted-foreground" />
       </button>

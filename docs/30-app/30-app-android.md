@@ -75,7 +75,7 @@ Luật kiểm được (lọc, OTP, trùng lặp, giờ nhắc) viết thành h�
 | Plugin | Phương thức | Sự kiện |
 |---|---|---|
 | **Notify** (P2) | `getStatus()` trả `{listenerGranted, listenerConnected, lastEventAt, queueSize, droppedToday, otpBlockedToday}`; `flushQueue()` | `listenerStateChanged`, `queueChanged` |
-| **Alarm** (P3) | `syncReminders({revision, items})`; `getScheduled()`; `canScheduleExact()` | `reminderAction` |
+| **Alarm** (P3) | `sync()` (lớp gốc tự tải `/calendar/reminders` bằng mã thiết bị); `getScheduled()` trả `{count, revision, lastSyncAt, exactAllowed, next[]}`; `canScheduleExact()` | `reminderAction` |
 | **Update** (P1) | `checkApk()`; `downloadAndInstall()` (chỉ gọi sau khi người dùng bấm *Cập nhật*); `getVersion()` | `downloadProgress`, `installState` |
 | **Maps** (P4) | `navigate({lat, lng, mode, avoid})`; `openUrl({url})`; `isMapsInstalled()` | |
 | **Secure** (P1) | `storeDeviceToken`, `hasDeviceToken`, `saveRefreshToken`, `loadRefreshToken`, `clearAll` | `deviceRevoked` |
@@ -158,6 +158,7 @@ Android 15 tự che nội dung thông báo có OTP với app nghe thông báo [N
 - Nhắc thường: `setExactAndAllowWhileIdle` (trong Doze tối đa một lần mỗi 9 phút [N8]). Loại **báo thức** (giờ phà, trả phòng): `setAlarmClock`, hệ thống thoát Doze để kêu [N7][N8]. Thiếu quyền: `setWindow` 10 phút.
 - Đặt lại khi: `BOOT_COMPLETED` [N7], `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` [N6], và khi mở app (Android 15 hủy mọi `PendingIntent` khi buộc dừng [N12]).
 - Kênh thông báo `nhac-lich`, `bao-thuc`, `cap-nhat`, `he-thong`; cần `POST_NOTIFICATIONS` [N15]. Nút **Xong** hoặc **Đã biết**, **Hoãn 10 phút**; bấm nút ghi sự kiện `reminder_action`. Chạm mở `troly://lich/su-kien/<id>` hoặc `troly://lich/viec/<id>`.
+- Trên máy (`alarm/`): `ReminderStore` giữ danh sách, `revision`, phần đã bấm Xong hoặc Đã biết, phần hoãn; `ReminderPlan` tính báo thức cần đặt (thuần Kotlin, có JUnit), tối đa 400 báo thức; nhắc lỡ giờ do máy tắt thì hiện bù nếu chưa quá 15 phút. Nhắc của việc (`source = task`) có nút **Xong**, của sự kiện có nút **Đã biết**. Đăng xuất hoặc `DEVICE_REVOKED` thì bỏ danh sách và hủy mọi báo thức.
 - Samsung hạn chế báo thức của app đang ngủ [N28], nên bước *Ứng dụng không bao giờ ngủ* là bắt buộc để nhắc chắc kêu.
 
 ### 3.10 Quyền và các bước Samsung

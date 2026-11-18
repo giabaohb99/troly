@@ -70,14 +70,15 @@ Job một module nằm ở `modules/<x>/jobs.py`; job điều phối nhiều mod
 
 | Module | Gọi service của |
 |---|---|
-| `setting`, `memory`, `expense`, `device`, `calendar`, `inbox`, `file`, `health` | `setting` |
+| `setting`, `memory`, `expense`, `device`, `inbox`, `file`, `health` | `setting` |
+| `calendar` | `setting`; `chat.create_pending_action` cho thẻ duyệt khi có khách mời |
 | `task` | `calendar`, `setting` |
 | `trip` | `calendar`, `file`, `setting` |
 | `chat` | `memory`, `file`, `setting`; gọi `ai.loop` |
 | `search` | `memory`, `chat`, `inbox`, `trip`, `file` (chỉ đọc) |
 | `report` | `expense`, `task`, `calendar`, `inbox`, `file`, `setting`; gọi `ai.cost` |
 
-Đồng bộ Google ở `integrations/google/` không import modules: `calendar`, `task` cài `CalendarStore`, `TaskStore` (khai ở `integrations/google/stores.py`) trong `google_store.py` của mình, `app.registry.register_integrations()` đăng ký lúc api và worker khởi động; module ghi sang Google qua `google.outbox.enqueue` cùng giao dịch. Sự kiện thiết bị điều phối ở `worker/jobs/device_events.py`: theo `kind` và `app_package` gọi `expense`, `inbox`, `task`, `calendar`; `device` không phụ thuộc module nào.
+Việc đã duyệt: module có `approvals.py` khai `EXECUTORS = {tool_name: hàm(session, user, input)}`; `chat.decide_action` tìm qua `app.registry.approval_executor` trước, không có mới dùng `execute` của công cụ AI, nên thẻ tạo từ API và từ chat chạy cùng một hàm. Đồng bộ Google ở `integrations/google/` không import modules: `calendar`, `task` cài `CalendarStore`, `TaskStore` (khai ở `integrations/google/stores.py`) trong `google_store.py` của mình, `app.registry.register_integrations()` đăng ký lúc api và worker khởi động; module ghi sang Google qua `google.outbox.enqueue` cùng giao dịch. Sự kiện thiết bị điều phối ở `worker/jobs/device_events.py`: theo `kind` và `app_package` gọi `expense`, `inbox`, `task`, `calendar`; `device` không phụ thuộc module nào.
 
 ### 3.5 Sự kiện nội bộ
 

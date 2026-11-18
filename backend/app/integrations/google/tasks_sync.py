@@ -66,7 +66,8 @@ def push_task(session: Session, account: GoogleAccount, row: GoogleOutbox) -> No
     api = GoogleApi(session, account)
     tasklist = task.google_tasklist_id or _tasklist_id(session, account)
     url = f"{TASKS}/lists/{tasklist}/tasks"
-    off_tasks = task.deleted or task.due_at is not None  # việc có giờ chuyển sang Calendar
+    # Rời Tasks: đã xóa, đã hủy (Tasks không có trạng thái hủy), hoặc có giờ (chuyển sang Calendar).
+    off_tasks = task.deleted or task.status == "cancelled" or task.due_at is not None
     if off_tasks:
         if task.google_task_id:
             try:

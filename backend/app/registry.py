@@ -3,7 +3,19 @@
 import importlib
 import importlib.util
 
-ENABLED_MODULES = ["setting", "memory", "chat", "file", "device", "expense", "inbox", "search", "system"]
+ENABLED_MODULES = [
+    "setting",
+    "memory",
+    "chat",
+    "file",
+    "device",
+    "expense",
+    "inbox",
+    "calendar",
+    "task",
+    "search",
+    "system",
+]
 # Tích hợp ngoài ở app/integrations/<tên>/; không import modules, module cài store cho nó (10 mục 3.4).
 ENABLED_INTEGRATIONS = ["google"]
 
@@ -55,3 +67,13 @@ def register_integrations() -> None:
     task = _import_if_exists("app.modules.task.google_store")
     if task is not None:
         google_stores.register_task_store(task.STORE)
+
+
+def approval_executor(tool_name: str):
+    """Hàm `(session, user, input) -> dict` chạy việc đã duyệt, khai ở `modules/<tên>/approvals.py`
+    (`EXECUTORS = {tool_name: hàm}`). Không có thì chat dùng `execute` của công cụ AI."""
+    for _name, module in iter_module_parts("approvals"):
+        executor = getattr(module, "EXECUTORS", {}).get(tool_name)
+        if executor is not None:
+            return executor
+    return None

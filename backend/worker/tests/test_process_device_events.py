@@ -122,3 +122,26 @@ def test_expense_source_and_export_samples(db, user, device, tmp_path):
     assert item["package"] == "com.VCB" and item["expect"]["amount_vnd"] == 45_000
     assert item["expect"]["account_last4"] == "9876" and item["parser"] == "regex:vcb"
     assert "2,345,000" not in item["text"]
+
+
+def test_reminder_done_completes_task(db, user, device):
+    from app.modules.task import service as task_service
+
+    task = task_service.create_task(db, user, {"title": "Uống thuốc", "due_at": NOW})
+    ev = add_event(
+        db,
+        device,
+        None,
+        {
+            "reminder_key": f"task:{task['id']}:x:0",
+            "source": "task",
+            "source_id": str(task["id"]),
+            "action": "done",
+        },
+        NOW,
+        kind="reminder_action",
+    )
+    device_events.process_device_events()
+    db.refresh(ev)
+    assert (ev.status, ev.result_kind, ev.result_id) == ("done", "task_updated", task["id"])
+    assert task_service.get_task(db, user, task["id"])["status"] == "done"

@@ -1,3 +1,5 @@
+import type { PendingAction } from '@/shared/types/pending-action'
+
 // Kiểu theo 12-api.md mục 3.9 (hành động, vỏ phẳng) và 5.2 (chat).
 
 export type ChatMode = 'chat' | 'think' | 'research' | 'summary'
@@ -43,19 +45,7 @@ export interface ChatMessage {
   created_at: string
 }
 
-export type PendingStatus = 'pending' | 'done' | 'failed' | 'rejected' | 'expired'
-
-export interface PendingAction {
-  id: number
-  tool_name: string
-  title: string
-  summary: string
-  details: { label: string; value: string }[]
-  danger: boolean
-  status: PendingStatus
-  expires_at: string
-  created_at: string
-}
+export type { PendingAction, PendingStatus } from '@/shared/types/pending-action'
 
 export interface ChatToday {
   conversation: { id: number; local_date: string } | null

@@ -6,6 +6,8 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
+import vn.io.baohuynh.troly.alarm.ReminderScheduler
+import vn.io.baohuynh.troly.alarm.ReminderStore
 import vn.io.baohuynh.troly.queue.UploadScheduler
 import vn.io.baohuynh.troly.secure.SecureStore
 
@@ -53,6 +55,9 @@ class SecurePlugin : Plugin() {
     @PluginMethod
     fun clear(call: PluginCall) {
         SecureStore.clear(context)
+        // Đăng xuất: bỏ nhắc của phiên cũ và hủy báo thức đã đặt.
+        ReminderStore(context).clear()
+        ReminderScheduler.apply(context)
         call.resolve()
     }
 }

@@ -365,18 +365,20 @@ UQ một phần `(user_id, external_id) WHERE source = 'gmail'`. Chỉ mục `(u
 | remind_minutes | int[] NN default `{}` | |
 | remind_source | text NN CK `app`, `google` | Tạo ở app: `app`; tạo trên Google: `google` (Google nhắc) |
 | is_alarm | boolean NN default false | Máy dùng `setAlarmClock` |
+| is_organizer | boolean NN default true | Google `organizer.self`; sự kiện người khác mời chỉ đổi được nhắc |
 | source | text NN CK `app`, `google` | |
 | task_id | bigint | Bản sao để trả API nhanh |
 | google_account_id | bigint FK SET NULL | |
 | google_calendar_id, google_event_id, google_etag | text | UQ một phần `(user_id, google_calendar_id, google_event_id)` |
 | google_updated_at | timestamptz | |
+| google_html_link | text | Link mở trên Google Calendar (lỗi `RECURRING_SERIES_EDIT`) |
 | sync_status | text NN CK `local_only`, `pending`, `synced`, `conflict`, `error` | |
 | sync_error | text | |
 | deleted_at | timestamptz | |
 
 CK `(all_day AND start_date IS NOT NULL AND end_date > start_date) OR (NOT all_day AND start_at IS NOT NULL AND end_at >= start_at)`. Chỉ mục `(user_id, start_at) WHERE deleted_at IS NULL`; `(user_id) WHERE recurrence IS NOT NULL AND deleted_at IS NULL`; `(user_id, recurring_event_id)`.
 
-Sự kiện có khách mời chỉ ghi sau khi duyệt (QĐ-23); dữ liệu chờ nằm trong `tab_pending_action.input`.
+Sự kiện có khách mời chỉ ghi sau khi duyệt (QĐ-23); dữ liệu chờ nằm trong `tab_pending_action.input` (`add_event`: `{data}`; `update_event`: `{event_id, occurrence_start, changes}`; `delete_event`: `{event_id, occurrence_start}`), chạy bằng `modules/calendar/approvals.py`. Sự kiện lặp chỉ đến từ Google; sửa, xóa một lần tạo dòng ngoại lệ (xóa một lần là ngoại lệ `status = cancelled`, không đặt `deleted_at`). Khóa lần lặp là `original_start_at` theo UTC; lần lặp cả ngày dùng 00:00 UTC của ngày. App tạo sự kiện thì đặt sẵn `google_event_id`, `google_calendar_id = primary`. Đổi `remind_source`, `remind_minutes`, `is_alarm` của bản gốc áp luôn cho các ngoại lệ.
 
 **`tab_task`**
 
@@ -400,7 +402,7 @@ Sự kiện có khách mời chỉ ghi sau khi duyệt (QĐ-23); dữ liệu ch�
 | sync_error | text | |
 | deleted_at | timestamptz | |
 
-Nhắc trên máy không có bảng riêng: tính từ `tab_event` có `remind_source = 'app'`, trải cả lần lặp.
+Nhắc trên máy không có bảng riêng: tính từ `tab_event` có `remind_source = 'app'`, trải cả lần lặp. Việc có giờ sinh sự kiện có `task_id`; dời sự kiện thì `due_at`, tên việc đổi theo; bỏ giờ của việc thì xóa mềm sự kiện.
 
 ### 3.12 Google
 

@@ -67,6 +67,7 @@ Danh sách dài dùng con trỏ: `limit` (mặc định 50, tối đa 200), `cur
 | 409 | `CHAT_BUSY` | Lượt trước chưa xong |
 | 409 | `ACTION_NOT_PENDING`, `ACTION_PAYLOAD_CHANGED` | Duyệt lần hai, hết hạn; `payload_hash` lệch |
 | 409 | `RECURRING_SERIES_EDIT` | Sửa bản gốc sự kiện lặp; `data` có `google_html_link` |
+| 409 | `EVENT_NOT_ORGANIZER` | Sửa nội dung sự kiện người khác mời |
 | 409 | `GOOGLE_NOT_CONNECTED`, `GOOGLE_REAUTH_REQUIRED`, `GOOGLE_SCOPE_MISSING` | |
 | 413, 415 | `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_FILE_TYPE` | |
 | 426 | `APP_VERSION_UNSUPPORTED` | Mục 3.6 |
@@ -298,10 +299,10 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 
 ### 5.5 Việc và lịch
 
-- `Task`: `{id, title, note, status, priority, due_date, due_at, completed_at, completed_source, event_id, sync_status}`. Việc có `due_at` sinh sự kiện lịch; bỏ `due_at` thì xóa sự kiện. Google Tasks báo xong thì `done`; báo xóa thì `remote_deleted`, người dùng chọn qua `resolve-remote-delete`.
-- `Event`: `{id, occurrence_start, is_recurring, title, description, location, all_day, start_at, end_at, start_date, end_date, status, remind_minutes, remind_source, is_alarm, attendees, source, task_id, sync_status, google_html_link}`. Lần lặp có `id` của bản gốc và `occurrence_start`; sửa, xóa một lần thì gửi kèm `occurrence_start`.
-- **Khách mời** (QĐ-23): tạo, sửa, xóa sự kiện có `attendees` trả 202 kèm thẻ `confirm`; duyệt xong mới ghi và đẩy Google với `sendUpdates=all`.
-- `Reminder`: `{reminder_key, source, source_id, fire_at (UTC), title, body, kind (normal, alarm), deep_link}`. Chỉ sự kiện `remind_source = app`, trải cả lần lặp. Sự kiện tạo trên Google do Google nhắc (QĐ-26). `revision` là băm danh sách, trùng `If-None-Match` thì 304.
+- `Task`: `{id, title, note, status, priority, due_date, due_at, completed_at, completed_source, event_id, sync_status}`. `GET /tasks` không truyền `status` thì trả mọi trạng thái; xếp theo hạn (việc theo ngày tính 23:59 giờ người dùng, không hạn cuối cùng), trả `next_cursor`; `due = week` là 7 ngày từ hôm nay. Việc có `due_at` sinh sự kiện lịch; bỏ `due_at` thì xóa sự kiện. Google Tasks báo xong thì `done`; báo xóa thì `remote_deleted`, người dùng chọn qua `resolve-remote-delete`.
+- `Event`: `{id, occurrence_start, is_recurring, title, description, location, all_day, start_at, end_at, start_date, end_date, status, remind_minutes, remind_source, is_alarm, attendees, is_organizer, source, task_id, sync_status, google_html_link}`. `is_organizer = false` (người khác mời) thì sửa nội dung trả 409 `EVENT_NOT_ORGANIZER`, chỉ đổi được `remind_source`, `remind_minutes`, `is_alarm`. Lần lặp có `id` của bản gốc và `occurrence_start`; sửa, xóa một lần thì gửi kèm `occurrence_start`.
+- **Khách mời** (QĐ-23): tạo, sửa, xóa sự kiện có `attendees` trả 202 với `data = {pending_action: {id, tool_name, title, summary, details, danger, status, expires_at, action}}`, `action` là hành động `confirm`; duyệt bằng `POST /chat/actions/{id}/approve` mới ghi và đẩy Google với `sendUpdates=all`. Chỉ đổi `remind_minutes`, `is_alarm`, `remind_source` thì không cần duyệt, kể cả trên bản gốc sự kiện lặp.
+- `Reminder`: `{reminder_key, source, source_id, fire_at (UTC), title, body, kind (normal, alarm), deep_link}`. Nhắc của việc có giờ có `source = task`, `source_id` là id việc, `deep_link` `troly://lich/viec/<id>`; còn lại `troly://lich/su-kien/<id>`, lần lặp thêm `?lan=<occurrence_start UTC>`. `reminder_key` ổn định: `event:<id>:<giờ gốc UTC dạng 20261123T020000Z>:<phút>` hoặc `task:<id>:...`; `If-None-Match` nhận cả `revision` trần lẫn có ngoặc kép. Nút *Xong* gửi `reminder_action` `done` thì việc thành `done`. Chỉ sự kiện `remind_source = app`, trải cả lần lặp. Sự kiện tạo trên Google do Google nhắc (QĐ-26). `revision` là băm danh sách, trùng `If-None-Match` thì 304.
 
 ### 5.6 Google
 

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { Alarm } from '@/core/native/alarm'
 import { Notify } from '@/core/native/notify'
 import { System } from '@/core/native/system'
 import { ListenedApps } from '@/modules/device/components/listened-apps'
@@ -40,8 +41,10 @@ export function DeviceSetupPage() {
   const navigate = useNavigate()
   const permissions = usePermissions()
   const status = useQuery({ queryKey: queryKeys.device.notifyStatus, queryFn: async () => ({ ...(await Notify.getStatus()), checkedAt: Date.now() }), refetchInterval: 15_000 })
+  const alarms = useQuery({ queryKey: queryKeys.device.alarms, queryFn: () => Alarm.getScheduled(), refetchInterval: 15_000 })
   const p = permissions.data
   const s = status.data
+  const a = alarms.data
   const silentHours = s?.lastEventAt ? Math.floor((s.checkedAt - s.lastEventAt) / 3_600_000) : null
 
   return (
@@ -82,6 +85,14 @@ export function DeviceSetupPage() {
             <Row label="Đã chặn tin OTP hôm nay" value={s.otpBlockedToday} />
             <Row label="Bỏ vì app ngoài danh sách" value={s.droppedToday} />
             <Row label="Chờ gửi" value={s.queueSize} warn={s.queueSize > 0} />
+            {a && (
+              <>
+                <Row label="Nhắc đã đặt (14 ngày)" value={a.count} />
+                {a.next[0] && <Row label="Nhắc kế tiếp" value={`${formatTime(new Date(a.next[0].fireAt).toISOString())} ${a.next[0].title}`} />}
+                <Row label="Tải nhắc lần cuối" value={a.lastSyncAt ? formatTime(new Date(a.lastSyncAt).toISOString()) : 'Chưa'} warn={!a.lastSyncAt} />
+                {!a.exactAllowed && <p className="mt-2 text-sm text-warning">Chưa có quyền báo thức chính xác: nhắc có thể trễ tới 10 phút.</p>}
+              </>
+            )}
             {!s.deviceRegistered && <p className="mt-2 text-sm text-warning">Máy chưa đăng ký với máy chủ. Đăng xuất rồi đăng nhập lại để đăng ký.</p>}
             {s.otpRejectedByServer > 0 && <p className="mt-2 text-sm text-warning">Máy chủ đã chặn {s.otpRejectedByServer} tin OTP lọt qua bộ lọc trên máy.</p>}
             <Button
@@ -89,9 +100,10 @@ export function DeviceSetupPage() {
               size="sm"
               className="mt-3"
               onClick={() =>
-                void Notify.sync().then(() => {
-                  toast.success('Đang gửi và tải lại danh sách')
+                void Promise.all([Notify.sync(), Alarm.sync()]).then(() => {
+                  toast.success('Đang gửi và tải lại danh sách, nhắc')
                   void status.refetch()
+                  void alarms.refetch()
                 })
               }
             >

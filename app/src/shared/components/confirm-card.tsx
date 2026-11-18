@@ -2,21 +2,26 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Ban, CircleCheck, Clock, Loader2, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { getErrorMessage } from '@/core/api/api-error'
-import { approveAction, rejectAction } from '@/modules/chat/api/chat-api'
-import type { ChatAction, PendingStatus } from '@/modules/chat/types/chat'
+import { approveAction, rejectAction } from '@/shared/api/pending-action-api'
 import { queryKeys } from '@/shared/constants/query-keys'
+import type { ConfirmInfo, PendingStatus } from '@/shared/types/pending-action'
 import { Button } from '@/shared/ui/button'
 import { formatTime } from '@/shared/utils/format'
 import { cn } from '@/shared/utils/cn'
-
-type ConfirmAction = Extract<ChatAction, { type: 'confirm' }>
 
 function hoursLeft(expiresAt: string, now = Date.now()): number {
   return Math.max(0, Math.ceil((Date.parse(expiresAt) - now) / 3_600_000))
 }
 
+interface ConfirmCardProps {
+  action: ConfirmInfo
+  serverStatus?: PendingStatus
+  className?: string
+  onDecided?: (status: PendingStatus) => void
+}
+
 // Thẻ duyệt: chỉ cho gửi ra ngoài, xóa hàng loạt, xóa chuyến (QĐ-27). Duyệt chỉ bằng nút (31 mục 3.3).
-export function ConfirmCard({ action, serverStatus }: { action: ConfirmAction; serverStatus?: PendingStatus }) {
+export function ConfirmCard({ action, serverStatus, className, onDecided }: ConfirmCardProps) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<PendingStatus | null>(null)
   const [sending, setSending] = useState(false)
@@ -33,16 +38,19 @@ export function ConfirmCard({ action, serverStatus }: { action: ConfirmAction; s
     setSending(true)
     setError('')
     try {
+      let next: PendingStatus = 'rejected'
       if (approve) {
         const result = await approveAction(action.pending_action_id)
-        setStatus(result.action.status === 'pending' ? 'done' : result.action.status)
+        next = result.action.status === 'pending' ? 'done' : result.action.status
       } else {
         await rejectAction(action.pending_action_id)
-        setStatus('rejected')
       }
+      setStatus(next)
       setResultAt(new Date().toISOString())
+      onDecided?.(next)
       void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
       void queryClient.invalidateQueries({ queryKey: queryKeys.expense.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
     } catch (err) {
       setError(getErrorMessage(err))
       setStatus('failed')
@@ -79,7 +87,7 @@ export function ConfirmCard({ action, serverStatus }: { action: ConfirmAction; s
   }
 
   return (
-    <div className={cn('w-full max-w-[92%] rounded-2xl border bg-card p-4', action.danger ? 'border-destructive/40' : 'border-primary/40')}>
+    <div className={cn('w-full max-w-[92%] rounded-2xl border bg-card p-4', className, action.danger ? 'border-destructive/40' : 'border-primary/40')}>
       <p className="flex items-center gap-2 font-semibold">
         <ShieldCheck className={cn('size-5 shrink-0', action.danger ? 'text-destructive' : 'text-primary')} />
         {action.title}

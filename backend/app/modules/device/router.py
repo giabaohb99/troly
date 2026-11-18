@@ -120,7 +120,7 @@ def get_config(
 ):
     config = service.device_config(session, device.user_id)
     etag = f'"{config["revision"]}"'
-    if if_none_match and if_none_match.removeprefix("W/").strip() == etag:
+    if if_none_match and if_none_match.removeprefix("W/").strip().strip('"') == etag.strip('"'):
         return Response(status_code=304, headers={"ETag": etag})
     response.headers["ETag"] = etag
     return ok(config)

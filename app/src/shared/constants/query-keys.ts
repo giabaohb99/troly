@@ -27,6 +27,18 @@ export const queryKeys = {
     permissions: ['device', 'permissions'] as const,
     notifyStatus: ['device', 'notify-status'] as const,
     listenedApps: ['device', 'listened-apps'] as const,
+    alarms: ['device', 'alarms'] as const,
+  },
+  calendar: {
+    all: ['calendar'] as const,
+    events: (range: { from: string; to: string }) => ['calendar', 'events', range] as const,
+    event: (id: number, occurrence: string | null) => ['calendar', 'event', id, occurrence] as const,
+    tasks: (status: string) => ['calendar', 'tasks', status] as const,
+    task: (id: number) => ['calendar', 'task', id] as const,
+  },
+  google: {
+    status: ['google', 'status'] as const,
+    outbox: ['google', 'outbox'] as const,
   },
   inbox: {
     all: ['inbox'] as const,

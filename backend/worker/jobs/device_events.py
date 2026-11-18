@@ -1,7 +1,7 @@
 """Xử lý tab_device_event (10 mục 3.9): thông báo sang expense (kể cả ghép cặp chuyển nội bộ) hoặc inbox.
 
 Điều phối ở worker để module device không phụ thuộc module nào (10 mục 3.4). `reminder_action`
-(đánh dấu việc xong từ thông báo nhắc) nối vào task ở Phase 3; tới lúc đó bỏ qua.
+`done` của nhắc việc đánh dấu việc xong; `ack`, `snooze` và nhắc sự kiện chỉ ghi nhận.
 """
 
 import logging
@@ -14,6 +14,7 @@ from app.core.models import User
 from app.modules.device import service as device_service
 from app.modules.expense import service as expense_service
 from app.modules.inbox import service as inbox_service
+from app.modules.task import service as task_service
 
 log = logging.getLogger("troly.device_events")
 BATCH = 200
@@ -27,13 +28,29 @@ def _user(session, user_id: int, cache: dict) -> UserContext:
 
 
 def handle_event(session, ev, user: UserContext) -> dict:
-    if ev.kind != "notification":
+    if ev.kind == "reminder_action":
+        p = ev.payload
+        if (
+            p.get("source") == "task"
+            and p.get("action") == "done"
+            and str(p.get("source_id") or "").isdigit()
+        ):
+            done = task_service.complete_from_reminder(session, user, int(p["source_id"]))
+            if done is not None:
+                return {
+                    "status": "done",
+                    "result_kind": "task_updated",
+                    "result_id": done["id"],
+                    "reason": None,
+                }
         return {
             "status": "ignored",
             "result_kind": "none",
             "result_id": None,
-            "reason": "Chưa xử lý nhắc việc",
+            "reason": "Nhắc không cần xử lý",
         }
+    if ev.kind != "notification":
+        return {"status": "ignored", "result_kind": "none", "result_id": None, "reason": "Loại sự kiện lạ"}
     app = device_service.resolve_listened_app(session, ev.user_id, ev.device_id, ev.app_package)
     if app is None:
         return {

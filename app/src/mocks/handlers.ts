@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
+import { calendarHandlers, calendarPending } from '@/mocks/calendar-handlers'
 import { mockDb } from '@/mocks/db'
 import type { ChatAction, ChatMessage } from '@/modules/chat/types/chat'
 import type { InboxMessage } from '@/modules/inbox/types/inbox'
@@ -131,6 +132,7 @@ const mockListened = [
 ]
 
 export const handlers = [
+  ...calendarHandlers,
   http.post(`${API}/auth/login`, async ({ request }) => {
     const body = (await request.json()) as { email: string; password: string }
     await delay(300)
@@ -171,6 +173,13 @@ export const handlers = [
   }),
   http.post(`${API}/chat/actions/:id/approve`, async ({ params }) => {
     await delay(500)
+    const calendar = calendarPending.get(Number(params.id))
+    if (calendar) {
+      if (calendar.action.status !== 'pending') return fail(409, 'ACTION_NOT_PENDING', 'Hành động này đã được xử lý.')
+      calendar.run()
+      calendar.action.status = 'done'
+      return ok({ action: calendar.action, result_text: 'Đã lưu và gửi thư cho khách.' })
+    }
     const action = mockDb.pending.find((p) => p.id === Number(params.id))
     if (!action || action.status !== 'pending') return fail(409, 'ACTION_NOT_PENDING', 'Hành động này đã được xử lý.')
     action.status = 'done'
@@ -178,6 +187,11 @@ export const handlers = [
     return ok({ action, result_text: 'Đã xóa 2 khoản.' })
   }),
   http.post(`${API}/chat/actions/:id/reject`, ({ params }) => {
+    const calendar = calendarPending.get(Number(params.id))
+    if (calendar) {
+      calendar.action.status = 'rejected'
+      return ok({ action: calendar.action })
+    }
     const action = mockDb.pending.find((p) => p.id === Number(params.id))
     if (!action) return fail(404, 'NOT_FOUND', 'Không tìm thấy.')
     action.status = 'rejected'

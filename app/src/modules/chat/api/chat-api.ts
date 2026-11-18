@@ -1,11 +1,9 @@
 import { apiDelete, apiGet, apiPost } from '@/core/api/http-client'
-import type { ChatAction, ChatStatus, ChatToday, PendingAction } from '@/modules/chat/types/chat'
+import type { ChatAction, ChatStatus, ChatToday } from '@/modules/chat/types/chat'
 
 export const getChatToday = () => apiGet<ChatToday>('/chat/today')
 export const getChatStatus = () => apiGet<ChatStatus>('/chat/status')
 export const deleteConversation = (id: number) => apiDelete<null>(`/chat/conversations/${id}`)
-export const approveAction = (id: number) => apiPost<{ action: PendingAction; result_text: string | null }>(`/chat/actions/${id}/approve`)
-export const rejectAction = (id: number) => apiPost<{ action: PendingAction }>(`/chat/actions/${id}/reject`)
 
 const RESTORE_PATHS = { expense: '/expenses', task: '/tasks', event: '/calendar/events' } as const
 

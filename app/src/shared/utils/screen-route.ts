@@ -19,10 +19,19 @@ export function screenToRoute(screen: string, params: Record<string, string | nu
     case 'inbox_conversation':
       return '/hop-tin'
     case 'calendar_day':
+      return p.date ? `/lich?ngay=${p.date}` : '/lich'
     case 'event_detail':
+      if (!p.event_id) return '/lich'
+      return p.occurrence_start ? `/lich/su-kien/${p.event_id}?lan=${encodeURIComponent(String(p.occurrence_start))}` : `/lich/su-kien/${p.event_id}`
     case 'task_list':
+      return '/lich?tab=viec'
     case 'task_detail':
-      return '/lich'
+      return p.task_id ? `/lich/viec/${p.task_id}` : '/lich?tab=viec'
+    case 'settings_google':
+      return '/cai-dat/google'
+    case 'settings_listened_apps':
+    case 'settings_device_check':
+      return '/thiet-lap'
     case 'trip_list':
     case 'trip_detail':
       return '/lich-trinh'

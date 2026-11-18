@@ -117,3 +117,13 @@ def test_done_task_sends_completed_status(db, fake, account, task_store):
     assert fake.tasks[list_id][row["google_task_id"]]["status"] == "completed"
     body = json.loads(fake.calls("POST", r"/tasks$")[0].content)
     assert body["status"] == "completed"
+
+
+def test_cancelled_task_leaves_google_tasks(db, fake, account, task_store):
+    row = _pushed(db, account, task_store, title="Không làm nữa")
+    row["status"] = "cancelled"
+    outbox.enqueue(db, account.user_id, "tasks", "patch", "task", row["id"])
+    outbox.push_due(db)
+    (list_id,) = fake.lists
+    assert all(t.get("deleted") for t in fake.tasks[list_id].values())
+    assert row["google_task_id"] is None and row["sync_status"] == "local_only"
