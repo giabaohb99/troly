@@ -97,6 +97,12 @@ def _error(code: str, message: str) -> tuple[dict, bool, None]:
     return {"loi": code, "thong_bao": message}, True, None
 
 
+GONE_BEFORE_APPROVAL = (
+    "Mục cần xóa không còn, đã được xóa trước đó; không tạo thẻ duyệt. Báo người dùng một câu là đã được xóa "
+    "trước đó, không gọi lại công cụ."
+)
+
+
 def _run_tool(
     ctx: ToolContext, spec: ToolSpec, raw_input: dict, store: TurnStore
 ) -> tuple[dict, bool, ToolOutput | None]:
@@ -113,6 +119,11 @@ def _run_tool(
             savepoint = ctx.session.begin_nested()
             try:
                 draft = spec.prepare(ctx, data)
+            except Exception as exc:
+                if spec.name.startswith("delete_") and getattr(exc, "code", None) == "NOT_FOUND":
+                    # Đối tượng đã bị xóa (vd. người dùng xóa tay trên app): không tạo thẻ.
+                    return _error("NOT_FOUND", GONE_BEFORE_APPROVAL)
+                raise
             finally:
                 savepoint.rollback()  # prepare không được ghi DB
             pa_id = store.create_pending_action(spec.name, draft)

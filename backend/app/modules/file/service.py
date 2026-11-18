@@ -207,7 +207,10 @@ def restore_file(session: Session, user_id: int, file_id: int) -> dict:
 
 def describe_files(session: Session, user_id: int, file_ids: list[int]) -> dict[int, dict]:
     rows = session.scalars(select(File).where(File.user_id == user_id, File.id.in_(file_ids)))
-    return {f.id: {"file_id": f.id, "mime": f.mime, "name": f.original_name} for f in rows}
+    return {
+        f.id: {"file_id": f.id, "mime": f.mime, "name": f.original_name, "size_bytes": f.size_bytes}
+        for f in rows
+    }
 
 
 # ---------- Khối nội dung cho Claude ----------

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -119,6 +120,7 @@ def serialize_pending(a: PendingAction) -> dict:
         "details": a.details,
         "danger": a.danger,
         "status": a.status,
+        "error": a.error,
         "expires_at": a.expires_at,
         "decided_at": a.decided_at,
         "created_at": a.created_at,
@@ -418,7 +420,7 @@ def _prepare_new_turn(
     return PreparedTurn(
         user=user,
         conversation_id=conversation.id,
-        user_message=serialize_message(message),
+        user_message=with_file_meta(session, user.user_id, [serialize_message(message)])[0],
         user_message_id=message.id,
         text=text,
         mode=mode,
@@ -577,7 +579,7 @@ def get_today(session: Session, user: UserContext) -> dict:
     pending = repo.list_pending_actions(session, user.user_id, ["pending"])
     return {
         "conversation": serialize_conversation(conversation),
-        "messages": [serialize_message(m) for m in rows],
+        "messages": enrich_messages(session, user.user_id, [serialize_message(m) for m in rows]),
         "next_cursor": str(rows[0].id) if has_more and rows else None,
         "pending_actions": [serialize_pending(a) for a in pending],
     }
@@ -609,7 +611,7 @@ def list_messages(
     )
     items = list(reversed(rows[:limit]))
     return {
-        "items": [serialize_message(m) for m in items],
+        "items": enrich_messages(session, user.user_id, [serialize_message(m) for m in items]),
         "next_cursor": str(items[0].id) if len(rows) > limit and items else None,
     }
 
@@ -652,8 +654,15 @@ def decide_action(session: Session, user: UserContext, action_id: int, approve: 
     if action is None:
         raise NotFoundError()
     now = clock.now()
-    if action.status != "pending" or action.expires_at <= now:
-        raise ActionNotPending()
+    if action.status == "pending" and action.expires_at <= now:
+        action.status, action.decided_at = "expired", now
+    if action.status == "failed" and not approve:
+        action.status, action.decided_at = "rejected", now  # thẻ lỗi vẫn cho Bỏ để không kẹt
+        _system_note(session, action, f"Người dùng đã bỏ: {action.title}.")
+        return {"action": serialize_pending(action), "result_text": "Đã bỏ."}
+    if action.status != "pending":
+        # Bấm lại thẻ đã quyết (mạng chập, mở lại lịch sử): trả trạng thái hiện tại, không báo lỗi.
+        return {"action": serialize_pending(action), "result_text": _status_text(action)}
     if action.payload_hash != payload_hash(action.tool_name, action.input):
         raise ActionPayloadChanged()
     action.decided_at = now
@@ -680,12 +689,79 @@ def decide_action(session: Session, user: UserContext, action_id: int, approve: 
         result = result if isinstance(result, dict) else {"result": result}
         action.result = json.loads(json.dumps(result, default=str, ensure_ascii=False))
         result_text = "thành công"
+    except NotFoundError as exc:
+        if not action.tool_name.startswith("delete_"):
+            action.status, action.error = "failed", exc.message
+            result_text = f"thất bại ({exc.message})"
+        else:  # mục đích là xóa, đối tượng đã không còn: coi là xong
+            action.status = "done"
+            action.result = {"ghi_chu": GONE_TEXT}
+            result_text = GONE_TEXT
     except AppError as exc:
         action.status = "failed"
         action.error = exc.message
         result_text = f"thất bại ({exc.message})"
     _system_note(session, action, f"Người dùng đã duyệt: {action.title}. Kết quả: {result_text}.")
-    return {"action": serialize_pending(action), "result_text": action.error or "Đã làm xong."}
+    return {"action": serialize_pending(action), "result_text": _status_text(action)}
+
+
+GONE_TEXT = "Đã không còn, không cần xóa."
+_STATUS_TEXT = {"rejected": "Đã bỏ.", "expired": "Thẻ đã hết hạn.", "pending": "Đang chờ duyệt."}
+
+
+def _status_text(action: PendingAction) -> str:
+    if action.status == "failed":
+        return action.error or "Không làm được."
+    if action.status == "done":
+        return (action.result or {}).get("ghi_chu") or "Đã làm xong."
+    return _STATUS_TEXT.get(action.status, "")
+
+
+def with_file_meta(session: Session, user_id: int, messages: list[dict]) -> list[dict]:
+    """Tệp người dùng đính kèm: thêm mime, name, size_bytes để app vẽ thẻ tệp không phải hỏi thêm."""
+    ids = [a["file_id"] for m in messages for a in m.get("attachments") or [] if "name" not in a]
+    if not ids:
+        return messages
+    meta = file_service.describe_files(session, user_id, ids)
+    for m in messages:
+        m["attachments"] = [
+            {**a, **meta.get(a["file_id"], {})} if "name" not in a else a for a in m.get("attachments") or []
+        ]
+    return messages
+
+
+def enrich_messages(session: Session, user_id: int, messages: list[dict]) -> list[dict]:
+    return with_action_state(session, user_id, with_file_meta(session, user_id, messages))
+
+
+def with_action_state(session: Session, user_id: int, messages: list[dict]) -> list[dict]:
+    """Gắn trạng thái thật hiện tại vào thẻ duyệt trong tin (lịch sử), để app mở lại không hiện nút cho thẻ đã quyết."""
+    ids = {
+        a.get("pending_action_id")
+        for m in messages
+        for a in m.get("actions") or []
+        if a.get("type") == "confirm" and a.get("pending_action_id")
+    }
+    if not ids:
+        return messages
+    rows = {
+        a.id: a
+        for a in session.scalars(
+            select(PendingAction).where(PendingAction.user_id == user_id, PendingAction.id.in_(ids))
+        )
+    }
+    now = clock.now()
+    for m in messages:
+        actions = []
+        for a in m.get("actions") or []:
+            row = rows.get(a.get("pending_action_id")) if a.get("type") == "confirm" else None
+            if row is not None:
+                status = "expired" if row.status == "pending" and row.expires_at <= now else row.status
+                text = _STATUS_TEXT["expired"] if status == "expired" else _status_text(row)
+                a = {**a, "status": status, "error": row.error, "result_text": text}
+            actions.append(a)
+        m["actions"] = actions
+    return messages
 
 
 def expire_actions(session: Session) -> int:

@@ -304,3 +304,30 @@ def test_research_without_citations_falls_back_to_search_results(ctx, store, mak
         {"title": "B", "url": "https://b.vn"},
     ]
     assert done.data["text"] == "Phà chạy từ 6:00."
+
+
+def test_delete_target_already_gone_creates_no_card(ctx, store, make_client, settings, session):
+    """Người dùng đã xóa tay trên app rồi mới nhờ bot xóa: không tạo thẻ, báo đã xóa trước đó."""
+    from app.core.errors import NotFoundError
+
+    def gone(tctx, data):
+        raise NotFoundError()
+
+    spec = _delete_tool([])
+    import dataclasses
+
+    register_tools([dataclasses.replace(spec, prepare=gone)])
+    fake = FakeClaude(
+        [tool_call("delete_expense", {"ids": [1, 2]}), text_reply("Hai khoản đó đã được xóa trước đó.")]
+    )
+    _run(ctx, store, make_client(fake), settings, text="xóa hai khoản")
+    assert store.pending == [] and session.rollbacks == 1
+    result = next(
+        b
+        for m in fake.requests[1]["messages"]
+        if isinstance(m["content"], list)
+        for b in m["content"]
+        if b.get("type") == "tool_result"
+    )
+    assert result["is_error"] is True
+    assert "đã được xóa trước đó" in str(result["content"])

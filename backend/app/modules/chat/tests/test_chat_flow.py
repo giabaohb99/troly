@@ -192,3 +192,103 @@ def test_exported_file_shows_as_assistant_attachment():
     assert service.serialize_message(msg)["attachments"] == [
         {"file_id": 9, "mime": "application/pdf", "name": "Bao-cao.pdf", "size_bytes": 2048}
     ]
+
+
+# ---------- Thẻ duyệt không kẹt (lỗi thật S25+: chuyến bị xóa tay trước khi duyệt) ----------
+
+
+def _card(db, user, tool_name="delete_trip", conversation_id=None):
+    out = service.create_pending_action(
+        db,
+        user.user_id,
+        tool_name,
+        {"trip_id": 999},
+        title="Xóa chuyến Vũng Tàu",
+        summary="Xóa hẳn chuyến",
+        details=[],
+        danger=True,
+        conversation_id=conversation_id,
+    )
+    return out["pending_action"]["id"] if "pending_action" in out else out["id"]
+
+
+def _gone_executor(monkeypatch):
+    from app import registry
+    from app.core.errors import NotFoundError
+
+    def gone(session, user, input_):
+        raise NotFoundError()
+
+    monkeypatch.setattr(registry, "approval_executor", lambda name: gone)
+
+
+def test_approving_delete_of_vanished_item_is_done(db, user, monkeypatch):
+    _gone_executor(monkeypatch)
+    out = service.decide_action(db, user, _card(db, user), approve=True)
+    assert out["action"]["status"] == "done" and out["result_text"] == "Đã không còn, không cần xóa."
+
+
+def test_failed_card_can_be_dismissed_and_repeats_are_idempotent(db, user, monkeypatch):
+    from app.modules.chat.models import PendingAction
+
+    action_id = _card(db, user, tool_name="share_drive_file")
+    row = db.get(PendingAction, action_id)
+    row.status, row.error = "failed", "Chưa nối Google Drive."
+    again = service.decide_action(db, user, action_id, approve=True)  # bấm Thử lại: không 409
+    assert again["action"]["status"] == "failed" and again["result_text"] == "Chưa nối Google Drive."
+    dismissed = service.decide_action(db, user, action_id, approve=False)
+    assert dismissed["action"]["status"] == "rejected"
+    repeat = service.decide_action(db, user, action_id, approve=False)
+    assert repeat["action"]["status"] == "rejected" and repeat["result_text"] == "Đã bỏ."
+
+
+def test_history_shows_current_card_state(auth_client, db, user, fake_claude, monkeypatch):
+    from app.ai.tests.fake_claude import tool_call
+
+    _gone_executor(monkeypatch)
+    fake_claude.script.extend(
+        [
+            tool_call("delete_trip", {"trip_id": 999, "reason": "không đi nữa"}),
+            text_reply("Em đã soạn thẻ xóa, đại ca bấm Duyệt."),
+        ]
+    )
+    monkeypatch.setattr(
+        "app.modules.trip.tools.service.get_trip",
+        lambda s, u, tid: {"title": "Vũng Tàu", "start_date": None, "days": []},
+    )
+    resp = send(auth_client, "xóa chuyến Vũng Tàu")
+    assert resp.status_code == 200, resp.text
+    card = next(a for a in resp.json()["data"]["assistant_message"]["actions"] if a["type"] == "confirm")
+    ok = auth_client.post(f"/api/v1/chat/actions/{card['pending_action_id']}/approve")
+    assert ok.status_code == 200 and ok.json()["data"]["action"]["status"] == "done"
+    assert auth_client.post(f"/api/v1/chat/actions/{card['pending_action_id']}/approve").status_code == 200
+    today = auth_client.get("/api/v1/chat/today").json()["data"]
+    shown = [a for m in today["messages"] for a in m["actions"] if a["type"] == "confirm"]
+    assert (
+        shown and shown[0]["status"] == "done" and shown[0]["result_text"] == "Đã không còn, không cần xóa."
+    )
+
+
+def test_user_attachments_get_file_meta_and_card_shows_error(db, user):
+    from app.modules.chat.models import PendingAction
+    from app.modules.file.models import File
+
+    f = File(
+        user_id=user.user_id,
+        r2_key="files/u/x.docx",
+        original_name="Lich-trinh.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size_bytes=4096,
+        purpose="chat_attachment",
+        status="ready",
+    )
+    db.add(f)
+    db.flush()
+    msgs = service.with_file_meta(db, user.user_id, [{"attachments": [{"file_id": f.id}], "actions": []}])
+    assert msgs[0]["attachments"] == [
+        {"file_id": f.id, "mime": f.mime, "name": "Lich-trinh.docx", "size_bytes": 4096}
+    ]
+    action_id = _card(db, user, tool_name="share_drive_file")
+    row = db.get(PendingAction, action_id)
+    row.status, row.error = "failed", "Chưa nối Google Drive."
+    assert service.serialize_pending(row)["error"] == "Chưa nối Google Drive."
