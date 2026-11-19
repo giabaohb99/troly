@@ -126,8 +126,12 @@ class FakeGoogle:
             if path == "/token":
                 return self._token(form)
             if path == "/revoke":
-                self.revoked.append(form.get("token", ""))
-                self.refresh_tokens.pop(form.get("token", ""), None)
+                # Như Google: thu hồi một mã là gỡ cả quyền đã cấp, mọi mã làm mới của tài khoản đó chết.
+                token = form.get("token", "")
+                self.revoked.append(token)
+                sub = self.refresh_tokens.get(token)
+                for t in [t for t, s in self.refresh_tokens.items() if s == sub or t == token]:
+                    self.refresh_tokens.pop(t)
                 return httpx.Response(200, json={})
         auth = request.headers.get("authorization", "").removeprefix("Bearer ")
         expires = self.access_tokens.get(auth)

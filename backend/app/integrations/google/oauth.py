@@ -95,8 +95,11 @@ def _pkce_pair() -> tuple[str, str]:
 def start_connect(session: Session, user_id: int, packs: list[str]) -> str:
     """Tạo state và PKCE, trả auth_url để app mở bằng Custom Tab."""
     settings = get_google_settings()
-    wanted = ["base"] + [p for p in dict.fromkeys(packs) if p in PACKS and p != "base"]
     account = get_account(session, user_id)
+    # Xin lại cả gói đang bật: quyền cũ có thể đã mất (thu hồi, reauth_required); chỉ xin gói mới thì
+    # gói cũ thiếu quyền và bị tắt lặng lẽ. Gói đã cấp thì Google không hỏi lại từng ô.
+    keep = list(account.enabled_packs or []) if account is not None and account.status != "revoked" else []
+    wanted = ["base"] + [p for p in dict.fromkeys(keep + list(packs)) if p in PACKS and p != "base"]
     verifier, challenge = _pkce_pair()
     state = secrets.token_urlsafe(32)
     enc, version = encrypt_bound(user_id, PKCE_PROVIDER, verifier)
@@ -222,8 +225,8 @@ def finish_connect(
     session.flush()
     _ensure_sync_states(session, account)
     _queue_initial_sync(session, user_id)
-    if old_refresh and refresh_token and old_refresh != refresh_token:
-        revoke_token(old_refresh)  # giới hạn 100 mã làm mới mỗi client (40 mục 3.3)
+    # Không thu hồi mã làm mới cũ: thu hồi một mã là gỡ cả quyền người dùng đã cấp cho app, mã mới vừa
+    # nhận cũng chết (invalid_grant ngay lần làm mới sau). Mã cũ quá giới hạn 100 thì Google tự bỏ.
     if missing:
         return CallbackResult("thieu-quyen", "Google chưa cấp đủ quyền cho: " + ", ".join(missing), missing)
     return CallbackResult("ok", "Đã kết nối Google.", [])

@@ -67,11 +67,22 @@ def test_missing_scope_reports_thieu_quyen_and_keeps_pack_off(db, user, fake):
     assert "calendar" not in acc.enabled_packs
 
 
-def test_reconnect_revokes_previous_refresh_token(db, user, fake, account):
-    old = oauth._decrypt(account, account.refresh_token_enc)
-    _, result = connect_account(db, user, fake)
-    assert result.ket_qua == "ok"
-    assert old in fake.revoked
+def test_adding_gmail_keeps_grant_alive(db, user, fake, account):
+    """Lỗi thật 19/11: cấp thêm Gmail xong thu hồi mã cũ, Google gỡ cả quyền, mã mới invalid_grant."""
+    from app.integrations.google.tests.conftest import GMAIL_SCOPES
+
+    acc, result = connect_account(db, user, fake, packs=("gmail",), scope=GMAIL_SCOPES)
+    assert result.ket_qua == "ok" and fake.revoked == []
+    assert {"calendar", "tasks", "gmail"} <= set(acc.enabled_packs)
+    assert oauth.access_token(db, acc, force_refresh=True)  # làm mới bằng mã mới vẫn chạy
+    assert acc.status == "active"
+
+
+def test_reconnect_asks_again_for_enabled_packs(db, user, fake, account):
+    url = oauth.start_connect(db, user.user_id, ["gmail"])
+    scope = parse_qs(urlparse(url).query)["scope"][0].split()
+    for wanted in ("calendar.events", "tasks", "gmail.readonly", "gmail.compose"):
+        assert any(s.endswith(wanted) for s in scope), wanted
 
 
 def test_other_google_account_is_not_overwritten(db, user, fake, account):
