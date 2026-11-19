@@ -21,6 +21,7 @@ import { formatUsd } from '@/shared/utils/format'
 import { openFileById } from '@/shared/utils/open-file'
 import { useOlderMessages } from '@/modules/chat/hooks/use-older-messages'
 import { mergeOlder } from '@/modules/chat/utils/older-messages'
+import { Alarm } from '@/core/native/alarm'
 
 // Mở từ thông báo tới tin cũ: tải thêm tối đa chừng này trang (50 tin mỗi trang) để tìm.
 const MAX_SEEK_PAGES = 20
@@ -44,6 +45,14 @@ export function ChatPage() {
   const messages = mergeOlder(olderPages.older, latest)
   const lastId = latest[latest.length - 1]?.id ?? null
   const keepFromBottomRef = useRef<number | null>(null)
+
+  // Tin trả lời đã hiện trong màn chat thì coi như đã đọc: lớp gốc bỏ notice chat_done của chúng (lỗi 1.0.2).
+  useEffect(() => {
+    if (!lastId) return
+    const ids = latest.filter((m) => m.role === 'assistant' && m.id > 0).slice(-20).map((m) => m.id)
+    if (ids.length) void Alarm.markChatSeen({ messageIds: ids })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chạy lại khi có tin mới nhất khác
+  }, [lastId])
 
   const loadOlder = async () => {
     const el = listRef.current

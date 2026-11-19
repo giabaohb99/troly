@@ -52,6 +52,8 @@ export interface AlarmPlugin {
   openChannelSettings(options: { channel: string }): Promise<{ opened: boolean }>
   notifyChatDone(options: { messageId: string; deepLink: string; body: string | null; fileLink: string | null }): Promise<void>
   startNoticeBurst(): Promise<void>
+  // Tin đã nhận trọn trong app: lớp gốc không phát chat_done cho các tin này (lỗi 1.0.2).
+  markChatSeen(options: { messageIds: number[] }): Promise<void>
   getScheduled(): Promise<AlarmStatus>
   canScheduleExact(): Promise<{ value: boolean }>
   addListener(event: 'reminderAction', listener: (event: ReminderActionEvent) => void): Promise<PluginListenerHandle>
@@ -80,6 +82,8 @@ class AlarmWeb extends WebPlugin {
   async notifyChatDone() {}
 
   async startNoticeBurst() {}
+
+  async markChatSeen() {}
 
   async getScheduled(): Promise<AlarmStatus> {
     return { count: 0, revision: null, lastSyncAt: null, exactAllowed: true, next: [] }

@@ -11,7 +11,6 @@ import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import vn.io.baohuynh.troly.plugin.AlarmPlugin
 import vn.io.baohuynh.troly.queue.DeviceApi
 import java.util.concurrent.TimeUnit
 
@@ -32,6 +31,10 @@ class NoticeWorker(context: Context, params: WorkerParameters) : Worker(context,
         val data = result.data ?: return Result.success()
         val items = data.optJSONArray("items")
         var chatDone = false
+        val remaining = inputData.getInt(KEY_REMAINING, 0)
+        val inBurst = inputData.keyValueMap.containsKey(KEY_REMAINING)
+        val foreground = ChatDoneFilter.isAppForeground(applicationContext)
+        val now = System.currentTimeMillis()
         // Lần đầu chỉ lấy con trỏ, không báo dồn tin cũ.
         if (after != null && items != null) {
             for (i in 0 until items.length()) {
@@ -39,9 +42,11 @@ class NoticeWorker(context: Context, params: WorkerParameters) : Worker(context,
                 if (item.optString("kind") == "chat_done") {
                     chatDone = true
                     val messageId = item.optString("message_id").ifEmpty { item.optString("id").removePrefix("chat:") }
-                    // Máy chủ báo mọi lượt xong; app đang ở màn hình thì không hiện (chỉ đánh dấu đã báo).
-                    if (AlarmPlugin.isAppVisible) {
-                        NotifyPrefs(applicationContext).markChatNotified(messageId)
+                    val createdAt = ReminderPlan.parseInstant(item.optString("created_at").takeIf { it.isNotEmpty() })
+                    val prefs = NotifyPrefs(applicationContext)
+                    if (!ChatDoneFilter.shouldShow(foreground, prefs.isChatNotified(messageId), createdAt, now, inBurst)) {
+                        // Đang ở màn hình, đã đọc trong app, hoặc quá cũ: đánh dấu đã xem để không báo về sau.
+                        prefs.markChatNotified(messageId)
                         continue
                     }
                     val link = item.optString("deep_link").ifEmpty { "troly://" }
@@ -74,7 +79,6 @@ class NoticeWorker(context: Context, params: WorkerParameters) : Worker(context,
         }
         data.optString("cursor").takeIf { it.isNotEmpty() }?.let { prefs.noticeCursor = it }
         // Hỏi dồn sau khi gửi tin lúc chạy nền: còn lượt và chưa thấy chat_done thì hỏi tiếp sau 20 giây.
-        val remaining = inputData.getInt(KEY_REMAINING, 0)
         if (remaining > 0 && !chatDone) NoticeSync.burst(applicationContext, remaining - 1)
         return Result.success()
     }

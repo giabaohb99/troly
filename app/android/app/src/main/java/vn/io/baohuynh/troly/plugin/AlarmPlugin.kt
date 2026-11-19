@@ -85,6 +85,15 @@ class AlarmPlugin : Plugin() {
         call.resolve()
     }
 
+    /** Tin đã nhận trọn trong app (stream xong, hoặc đã tải trong màn chat): notice chat_done của nó bị bỏ. */
+    @PluginMethod
+    fun markChatSeen(call: PluginCall) {
+        val ids = call.getArray("messageIds")?.toList<Any>().orEmpty()
+        val prefs = NotifyPrefs(context)
+        ids.forEach { prefs.markChatNotified(it.toString()) }
+        call.resolve()
+    }
+
     /** Gửi tin rồi rời app: hỏi notice dày hơn trong vài phút phòng khi WebView bị dừng. */
     @PluginMethod
     fun startNoticeBurst(call: PluginCall) {

@@ -29,6 +29,9 @@ class NotifyPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_CHAT_DONE, true)
         set(value) = prefs.edit().putBoolean(KEY_CHAT_DONE, value).apply()
 
+    fun isChatNotified(messageId: String): Boolean =
+        messageId in prefs.getString(KEY_CHAT_SEEN, "").orEmpty().split(',')
+
     /** Đánh dấu đã báo tin [messageId]; trả false nếu đã báo rồi (app tự báo và notice máy chủ không báo hai lần). */
     @Synchronized
     fun markChatNotified(messageId: String): Boolean {

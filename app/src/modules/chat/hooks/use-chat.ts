@@ -75,6 +75,8 @@ export function useChatTurn() {
 
       if (current.status === 'done' && current.assistant) {
         const done = current
+        // Lượt xong mà app đang ở màn hình: ghi đã xem để notice chat_done của máy chủ không báo lại (lỗi 1.0.2).
+        if (isAppActive() && done.assistant && done.assistant.id > 0) void Alarm.markChatSeen({ messageIds: [done.assistant.id] })
         // Lượt xong khi app không ở màn hình: tự báo ngay; lớp gốc chống báo trùng theo id tin.
         if (!isAppActive() && done.assistant && done.assistant.id > 0) {
           const id = done.assistant.id
