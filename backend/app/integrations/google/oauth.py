@@ -48,7 +48,7 @@ PACK_SCOPES: dict[str, list[str]] = {
 _SCOPE_ALIASES = {_G + "userinfo.email": "email", _G + "userinfo.profile": "profile"}
 
 # Gói có đồng bộ ở Phase 3; gói khác bật quyền nhưng chưa có việc nền.
-SYNCED_PACKS = {"calendar": ("calendar", "primary"), "tasks": ("tasks", "")}
+SYNCED_PACKS = {"calendar": ("calendar", "primary"), "tasks": ("tasks", ""), "gmail": ("gmail", "me")}
 
 
 @dataclass

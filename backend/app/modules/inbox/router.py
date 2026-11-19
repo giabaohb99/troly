@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,7 @@ from app.core.auth import get_current_user
 from app.core.context import UserContext
 from app.core.db import get_session
 from app.core.errors import ok
-from app.modules.inbox import service
+from app.modules.inbox import mail, service
 from app.modules.inbox.models import APPS, RULE_KINDS
 
 router = APIRouter()
@@ -105,3 +105,79 @@ def delete_rule(
 ) -> dict:
     service.delete_rule(session, user.user_id, rule_id)
     return ok(None)
+
+
+# ---------- Gmail (QĐ-43) ----------
+
+
+class DraftIn(BaseModel):
+    to: list[str] = Field(min_length=1, max_length=50)
+    cc: list[str] = Field(default_factory=list, max_length=50)
+    subject: str | None = Field(default=None, max_length=500)
+    body: str = Field(min_length=1, max_length=50_000)
+    thread_ref: str | None = Field(default=None, max_length=200)
+
+
+class DraftPatch(BaseModel):
+    to: list[str] | None = Field(default=None, min_length=1, max_length=50)
+    cc: list[str] | None = Field(default=None, max_length=50)
+    subject: str | None = Field(default=None, max_length=500)
+    body: str | None = Field(default=None, min_length=1, max_length=50_000)
+
+
+@router.get("/gmail/drafts")
+def list_drafts(
+    status: Literal["draft", "sending", "sent", "discarded"] | None = None,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok({"items": mail.list_drafts(session, user.user_id, status)})
+
+
+@router.post("/gmail/drafts", status_code=201)
+def create_draft(
+    body: DraftIn, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(mail.create_draft(session, user.user_id, body.model_dump()))
+
+
+@router.get("/gmail/drafts/{draft_id}")
+def get_draft(
+    draft_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(mail.get_draft(session, user.user_id, draft_id))
+
+
+@router.patch("/gmail/drafts/{draft_id}")
+def update_draft(
+    draft_id: int,
+    body: DraftPatch,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(mail.update_draft(session, user.user_id, draft_id, body.model_dump(exclude_unset=True)))
+
+
+@router.delete("/gmail/drafts/{draft_id}")
+def discard_draft(
+    draft_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    mail.discard_draft(session, user.user_id, draft_id)
+    return ok(None)
+
+
+@router.post("/gmail/drafts/{draft_id}/send", status_code=202)
+def send_draft(
+    draft_id: int,
+    response: Response,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(mail.request_send(session, user, draft_id))
+
+
+@router.get("/gmail/threads/{thread_id}")
+def get_thread(
+    thread_id: str, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(mail.get_thread(session, user.user_id, thread_id))

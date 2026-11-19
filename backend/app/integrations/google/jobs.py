@@ -4,11 +4,12 @@ push_outbox           hàng đợi, mỗi vòng              push_google_outbox
 sync_due_calendars    hàng đợi, mỗi vòng xét hạn       sync_google_calendar (webhook gộp 10 giây, 15 phút ±25%)
 pull_due_tasks        hàng đợi, mỗi vòng xét hạn       pull_google_tasks_status (15 phút ±25%)
 renew_watches         03:00 hằng ngày                 renew_google_watch
+sync_due_gmail        hàng đợi, mỗi vòng xét hạn       sync_gmail (5 phút, QĐ-43)
 run_initial_sync      tab_job_queue kind google_initial_sync
 """
 
 from app.core.db import SessionLocal
-from app.integrations.google import outbox, service
+from app.integrations.google import gmail, outbox, service
 from app.integrations.google.settings import get_google_settings
 
 
@@ -27,6 +28,13 @@ def sync_due_calendars() -> int:
 def pull_due_tasks() -> int:
     with SessionLocal() as session:
         count = service.sync_due(session, "tasks", get_google_settings().google_sync_min_seconds)
+        session.commit()
+        return count
+
+
+def sync_due_gmail() -> int:
+    with SessionLocal() as session:
+        count = service.sync_due(session, "gmail", int(gmail.POLL.total_seconds()))
         session.commit()
         return count
 

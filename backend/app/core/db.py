@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from functools import lru_cache
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, MetaData, create_engine, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, MetaData, create_engine, event, func
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -42,12 +42,27 @@ class UserOwnedMixin(TimestampMixin):
 @lru_cache
 def get_engine() -> Engine:
     settings = get_settings()
-    return create_engine(
+    engine = create_engine(
         settings.database_url,
         pool_pre_ping=True,
         pool_size=5,
         connect_args={"options": "-c timezone=UTC"},
     )
+    event.listen(engine, "connect", _register_citext)
+    return engine
+
+
+def _register_citext(dbapi_connection, _record) -> None:
+    """psycopg không biết kiểu citext (extension) nên `citext[]` đọc về chuỗi `{a,b}`. Đăng ký kiểu để mảng
+    email (tab_gmail_draft, tab_contact) đọc ra list. DB chưa có extension thì bỏ qua."""
+    from psycopg.types import TypeInfo
+
+    try:
+        info = TypeInfo.fetch(dbapi_connection, "citext")
+        if info is not None:
+            info.register(dbapi_connection)
+    finally:
+        dbapi_connection.rollback()
 
 
 @lru_cache

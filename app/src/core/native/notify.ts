@@ -19,6 +19,8 @@ export interface NotifyPlugin {
   getStatus(): Promise<NotifyStatus>
   flushQueue(): Promise<void>
   sync(): Promise<void>
+  // Mở cuộc chat gốc (QĐ-43): thông báo gốc còn thì mở đúng cuộc chat, không thì mở app.
+  openSource(options: { packageName: string; titles: string[] }): Promise<{ opened: 'notification' | 'app' | null }>
 }
 
 class NotifyWeb extends WebPlugin implements NotifyPlugin {
@@ -40,6 +42,10 @@ class NotifyWeb extends WebPlugin implements NotifyPlugin {
   async flushQueue() {}
 
   async sync() {}
+
+  async openSource() {
+    return { opened: null }
+  }
 }
 
 export const Notify = registerPlugin<NotifyPlugin>('Notify', { web: () => new NotifyWeb() })

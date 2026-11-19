@@ -74,6 +74,8 @@ class Trip(UserOwnedMixin, Base):
         BigInteger, ForeignKey("tab_file.id", ondelete="SET NULL")
     )
     error: Mapped[str | None] = mapped_column(Text)
+    # QĐ-42: người dùng bấm lưu trữ; chuyến có end_date trước hôm nay cũng tính là đã đi.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR,
         Computed(

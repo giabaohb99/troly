@@ -3,7 +3,12 @@ import pytest
 from app.integrations.google import http, stores
 from app.integrations.google.settings import get_google_settings
 from app.integrations.google.tests.fake_google import CLIENT_ID, FakeGoogle
-from app.integrations.google.tests.memory_stores import MemoryCalendarStore, MemoryFileStore, MemoryTaskStore
+from app.integrations.google.tests.memory_stores import (
+    MemoryCalendarStore,
+    MemoryFileStore,
+    MemoryMailStore,
+    MemoryTaskStore,
+)
 
 ALL_SCOPES = (
     "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile "
@@ -75,3 +80,17 @@ def file_store():
 
 
 DRIVE_SCOPES = ALL_SCOPES + " https://www.googleapis.com/auth/drive.file"
+
+
+@pytest.fixture
+def mail_store():
+    store = MemoryMailStore()
+    stores.register_mail_store(store)
+    yield store
+    stores.register_mail_store(None)
+
+
+GMAIL_SCOPES = (
+    ALL_SCOPES
+    + " https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose"
+)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core import clock
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.integrations.google import calendar_sync, oauth, outbox, stores, tasks_sync
+from app.integrations.google import calendar_sync, gmail, oauth, outbox, stores, tasks_sync
 from app.integrations.google.client import GoogleApi
 from app.integrations.google.errors import GoogleNotConnected, GoogleReauthRequired
 from app.integrations.google.models import PACKS, GoogleAccount, GoogleOutbox, GoogleSyncState
@@ -194,6 +194,9 @@ def run_initial_sync(session: Session, job) -> dict:
                     for task_id in store.list_unlinked(session, account.user_id):
                         outbox.enqueue(session, account.user_id, "tasks", "insert", "task", task_id)
                 result["tasks"] = tasks_sync.pull_status(session, account, state)
+            elif state.service == "gmail":
+                state.history_id = None
+                result["gmail"] = gmail.sync_gmail(session, account, state)
             state.initial_sync_state = "done"
         except Exception:
             state.initial_sync_state = "failed"
@@ -208,6 +211,8 @@ def _store_ready(service: str) -> bool:
         return stores.calendar_store() is not None
     if service == "tasks":
         return stores.task_store() is not None
+    if service == "gmail":
+        return stores.mail_store() is not None
     return False
 
 
@@ -245,6 +250,8 @@ def sync_due(session: Session, service: str, min_seconds: int) -> int:
         try:
             if service == "calendar":
                 done += calendar_sync.sync_calendar(session, account, state)
+            elif service == "gmail":
+                done += gmail.sync_gmail(session, account, state)
             else:
                 done += tasks_sync.pull_status(session, account, state)
             session.commit()

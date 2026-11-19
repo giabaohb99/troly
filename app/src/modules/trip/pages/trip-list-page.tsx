@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { FileUp, Link2, Loader2, MapPinOff, MessageSquareText, Plus, Route, TriangleAlert } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { listTrips } from '@/modules/trip/api/trip-api'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { listTrips, type TripScope } from '@/modules/trip/api/trip-api'
 import type { TripBrief } from '@/modules/trip/types/trip'
 import { formatKm, sortTrips, TRAVEL_MODE_LABEL } from '@/modules/trip/utils/trip-utils'
 import { EmptyState } from '@/shared/components/empty-state'
@@ -87,21 +87,42 @@ export function TripListPage() {
   const navigate = useNavigate()
   const [todayKey] = useState(() => toDateKey(new Date()))
   const [importOpen, setImportOpen] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const scope: TripScope = params.get('tab') === 'da-di' ? 'past' : 'upcoming'
   const trips = useQuery({
-    queryKey: queryKeys.trip.list,
-    queryFn: listTrips,
+    queryKey: queryKeys.trip.list(scope),
+    queryFn: () => listTrips(scope),
     select: (data) => data.items,
     refetchInterval: (query) => (query.state.data?.items.some((t) => t.status === 'importing' || t.status === 'evaluating') ? 3_000 : false),
   })
   const sorted = useMemo(() => sortTrips(trips.data ?? [], todayKey), [trips.data, todayKey])
+  const emptyText = scope === 'past' ? 'Chưa có chuyến nào đã đi. Chuyến qua ngày về hoặc bấm Đã đi xong sẽ vào đây.' : 'Chưa có chuyến nào. Gửi tệp lịch trình hoặc kể chuyến đi.'
 
   return (
     <div className="flex flex-col gap-4 pb-8">
       <PageHeader title="Lịch trình" subtitle="Chuyến đi, rủi ro, dẫn đường xe máy" />
+      <div className="flex self-start rounded-full bg-secondary p-1 text-sm">
+        {(
+          [
+            ['upcoming', 'Sắp đi'],
+            ['past', 'Đã đi'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={scope === value}
+            onClick={() => setParams(value === 'past' ? { tab: 'da-di' } : {}, { replace: true })}
+            className={cn('rounded-full px-4 py-1', scope === value && 'bg-background font-medium')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {trips.isPending && <SkeletonList />}
       {trips.isError && <ErrorState error={trips.error} onRetry={() => void trips.refetch()} />}
       {trips.isSuccess && sorted.length === 0 && (
-        <EmptyState icon={Route} text="Chưa có chuyến nào. Gửi tệp lịch trình hoặc kể chuyến đi.">
+        <EmptyState icon={Route} text={emptyText}>
           <Button size="sm" onClick={() => setImportOpen(true)}>
             Nhập lịch trình
           </Button>

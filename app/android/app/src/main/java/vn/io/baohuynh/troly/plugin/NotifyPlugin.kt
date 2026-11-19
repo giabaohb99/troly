@@ -6,6 +6,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import vn.io.baohuynh.troly.notify.DeviceState
+import vn.io.baohuynh.troly.notify.SourceOpener
 import vn.io.baohuynh.troly.queue.DeviceApi
 import vn.io.baohuynh.troly.queue.EventQueue
 import vn.io.baohuynh.troly.queue.UploadScheduler
@@ -40,6 +41,18 @@ class NotifyPlugin : Plugin() {
                     .put("configRevision", state.configRevision),
             )
         }
+    }
+
+    /**
+     * Mở cuộc chat gốc (QĐ-43): thông báo gốc còn trên máy thì mở đúng cuộc chat, không thì mở app. Trả
+     * `opened` là "notification", "app" hoặc null.
+     */
+    @PluginMethod
+    fun openSource(call: PluginCall) {
+        val packageName = call.getString("packageName") ?: return call.reject("Thiếu gói app.")
+        val titles = call.getArray("titles")?.toList<String>().orEmpty()
+        val opened = SourceOpener.open(context, packageName, titles)
+        call.resolve(JSObject().put("opened", opened))
     }
 
     /** Gửi ngay hàng đợi (mở app, bấm Gửi ngay ở Kiểm tra máy). */

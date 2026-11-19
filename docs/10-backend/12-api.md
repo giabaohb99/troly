@@ -183,6 +183,7 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | GET, POST | `/gmail/drafts` | U | `status` / `to`, `cc`, `subject`, `body`, `thread_ref` | `GmailDraft` | V1.8 |
 | GET, PATCH, DELETE | `/gmail/drafts/{id}` | U | | `GmailDraft` / `null` (bỏ nháp) | V1.8 |
 | POST | `/gmail/drafts/{id}/send` | U | | `{pending_action}` (202); thư đi khi duyệt | V1.8 |
+| GET | `/gmail/threads/{thread_id}` | U | | `{thread_id, subject, messages: [{id, from_name, from_email, to, cc, date, text}], reply: {to, cc, subject, in_reply_to}}`; chưa bật gói `gmail` thì 409 | V1.8 |
 
 **Việc, lịch, Google**
 

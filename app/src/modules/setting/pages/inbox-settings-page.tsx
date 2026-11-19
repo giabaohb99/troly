@@ -6,7 +6,9 @@ import { getErrorMessage } from '@/core/api/api-error'
 import { createInboxRule, deleteInboxRule, listInboxRules, type InboxRule } from '@/modules/setting/api/setting-api'
 import { SettingSection, SubPage } from '@/modules/setting/components/sub-page'
 import { usePatchSettings, useSettings } from '@/modules/setting/hooks/use-settings'
+import { ListenedApps } from '@/shared/components/listened-apps'
 import { queryKeys } from '@/shared/constants/query-keys'
+import { usePermissions } from '@/shared/hooks/use-permissions'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
@@ -63,6 +65,7 @@ function RuleList({ kind, rules, placeholder, icon: Icon }: { kind: 'vip_sender'
 export function InboxSettingsPage() {
   const settings = useSettings()
   const patch = usePatchSettings()
+  const permissions = usePermissions()
   const rules = useQuery({ queryKey: queryKeys.setting.inboxRules, queryFn: listInboxRules, select: (data) => data.items })
   const aiEnabled = settings.data?.['inbox.ai_enabled'] ?? true
   return (
@@ -75,6 +78,10 @@ export function InboxSettingsPage() {
           </span>
           <Switch checked={aiEnabled} disabled={!settings.data || patch.isPending} onCheckedChange={(on) => patch.mutate({ 'inbox.ai_enabled': on })} aria-label="Cho trợ lý đọc hộp tin" />
         </label>
+      </SettingSection>
+      <SettingSection title="App được nghe">
+        <p className="mb-2 text-sm text-muted-foreground">Telegram, Messenger mặc định tắt; bật lại ở đây nếu cần. Tin có mã OTP luôn bị bỏ.</p>
+        <ListenedApps defaultSmsPackage={permissions.data?.defaultSmsPackage ?? null} defaultSmsLabel={permissions.data?.defaultSmsLabel ?? null} />
       </SettingSection>
       <SettingSection title="Người quan trọng">
         <p className="mb-3 text-sm text-muted-foreground">Tin của những người này luôn lên mục Quan trọng. Ghi đúng tên hiện trên thông báo.</p>

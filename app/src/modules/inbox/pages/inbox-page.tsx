@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
-import { Inbox, Loader2, Sparkles, Star } from 'lucide-react'
+import { useMemo } from 'react'
+import { Inbox, Loader2, PenSquare, Sparkles, Star } from 'lucide-react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { isNative } from '@/core/config'
 import { Notify } from '@/core/native/notify'
+import { threadIdFromKey } from '@/modules/inbox/api/gmail-api'
 import { listConversations, type ConversationFilters } from '@/modules/inbox/api/inbox-api'
 import { AppTag } from '@/modules/inbox/components/app-tag'
 import { APP_LABELS, type Conversation, type InboxApp } from '@/modules/inbox/types/inbox'
@@ -22,7 +23,10 @@ type FilterValue = 'important' | 'all' | InboxApp
 const FILTERS: { value: FilterValue; label: string }[] = [
   { value: 'important', label: 'Quan trọng' },
   { value: 'all', label: 'Tất cả' },
-  ...(['zalo', 'telegram', 'messenger', 'sms', 'gmail'] as const).map((app) => ({ value: app, label: APP_LABELS[app] })),
+  // QĐ-42: bỏ tab Tele, Mess; Email thêm sau.
+  ...(['zalo', 'sms'] as const).map((app) => ({ value: app, label: APP_LABELS[app] })),
+  // QĐ-43: thư Gmail (người gửi, tiêu đề, đoạn trích); bấm mở luồng thư.
+  { value: 'gmail', label: 'Email' },
 ]
 
 function toFilters(value: FilterValue): ConversationFilters {
@@ -49,6 +53,7 @@ function ConversationRow({ item, onOpen }: { item: Conversation; onOpen: () => v
           <span className={cn('min-w-0 flex-1 truncate', unread ? 'font-semibold' : 'font-medium')}>{item.title ?? 'Không rõ'}</span>
           <span className="shrink-0 text-xs text-muted-foreground">{formatWhen(item.last_posted_at)}</span>
         </span>
+        {item.app === 'gmail' && item.last_sender && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{item.last_sender}</span>}
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn('line-clamp-1 min-w-0 flex-1 text-sm', unread ? 'text-foreground' : 'text-muted-foreground')}>{preview}</span>
           {unread && <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{item.unread_count}</span>}
@@ -61,7 +66,9 @@ function ConversationRow({ item, onOpen }: { item: Conversation; onOpen: () => v
 // Màn Hộp tin (31 mục 3.5): mỗi dòng một cuộc trò chuyện theo conversation_key; Tóm tắt là câu chat dựng sẵn.
 export function InboxPage() {
   const navigate = useNavigate()
-  const [filter, setFilter] = useState<FilterValue>('all')
+  const [params, setParams] = useSearchParams()
+  const filter: FilterValue = (FILTERS.find((f) => f.value === params.get('loai'))?.value ?? 'all') as FilterValue
+  const setFilter = (value: FilterValue) => setParams(value === 'all' ? {} : { loai: value }, { replace: true })
   const filters = toFilters(filter)
   const list = useInfiniteQuery({
     queryKey: queryKeys.inbox.conversations({ ...filters }),
@@ -114,14 +121,20 @@ export function InboxPage() {
       {list.isSuccess && items.length === 0 && (
         <EmptyState
           icon={Inbox}
-          text={filter === 'important' ? 'Không có tin quan trọng nào cần xử lý.' : 'Chưa có tin nào. Tin Zalo, Telegram, Messenger, SMS hiện ở đây khi điện thoại nhận thông báo; thư Gmail có từ Phase 5.'}
+          text={filter === 'important' ? 'Không có tin quan trọng nào cần xử lý.' : 'Chưa có tin nào. Tin Zalo, SMS hiện ở đây khi điện thoại nhận thông báo.'}
         />
       )}
 
       {items.length > 0 && (
         <div className="divide-y">
           {items.map((item) => (
-            <ConversationRow key={item.conversation_key} item={item} onOpen={() => navigate(`/hop-tin/${encodeURIComponent(item.conversation_key)}`)} />
+            <ConversationRow
+              key={item.conversation_key}
+              item={item}
+              onOpen={() =>
+                navigate(item.app === 'gmail' ? `/hop-tin/email/${encodeURIComponent(threadIdFromKey(item.conversation_key))}` : `/hop-tin/${encodeURIComponent(item.conversation_key)}`)
+              }
+            />
           ))}
         </div>
       )}
@@ -133,6 +146,16 @@ export function InboxPage() {
         </Button>
       )}
       {items.length > 0 && <p className="text-center text-xs text-muted-foreground">Tin giữ 180 ngày rồi tự xóa.</p>}
+      {filter === 'gmail' && (
+        <Button
+          size="icon"
+          aria-label="Soạn thư mới"
+          className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 size-14 rounded-full shadow-lg"
+          onClick={() => navigate('/hop-tin/email/soan')}
+        >
+          <PenSquare className="size-6" />
+        </Button>
+      )}
     </div>
   )
 }

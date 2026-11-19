@@ -128,6 +128,22 @@ class ListTripsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: Literal["importing", "draft", "evaluating", "planned", "done", "failed"] | None
     query: str | None = Field(description="Chữ trong tên chuyến, ví dụ: Trà Vinh")
+    scope: Literal["upcoming", "past"] | None = Field(
+        default=None, description="upcoming: sắp đi (gồm nháp chưa có ngày); past: Đã đi; null là tất cả"
+    )
+
+
+class ArchiveTripInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trip_id: int
+    archived: bool = Field(default=True, description="true: chuyển sang Đã đi; false: đưa lại về Sắp đi")
+
+
+class DuplicateTripInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trip_id: int = Field(description="Chuyến cũ cần đi lại")
+    start_date: date = Field(description="Ngày đi của chuyến mới")
+    title: str | None = Field(default=None, description="Tên chuyến mới; null là giữ tên cũ")
 
 
 class GetTripInput(BaseModel):
@@ -282,7 +298,7 @@ def run_save(ctx: ToolContext, data: SaveTripInput) -> ToolOutput:
 
 
 def run_list(ctx: ToolContext, data: ListTripsInput) -> ToolOutput:
-    items = service.list_trips(ctx.session, ctx.user, status=data.status, query=data.query)
+    items = service.list_trips(ctx.session, ctx.user, status=data.status, query=data.query, scope=data.scope)
     return ToolOutput(result={"items": items[:20]}, actions=[act.open_screen("Mở lịch trình", "trip_list")])
 
 
@@ -472,6 +488,31 @@ def run_delete_stop(ctx: ToolContext, data: StopRefInput) -> ToolOutput:
     )
 
 
+def run_archive(ctx: ToolContext, data: ArchiveTripInput) -> ToolOutput:
+    fn = service.archive_trip if data.archived else service.unarchive_trip
+    t = fn(ctx.session, ctx.user, data.trip_id)
+    return ToolOutput(
+        result={"trip_id": t["id"], "title": t["title"], "da_luu_tru": data.archived},
+        actions=[act.open_screen("Mở lịch trình", "trip_list")],
+    )
+
+
+def run_duplicate(ctx: ToolContext, data: DuplicateTripInput) -> ToolOutput:
+    t = service.duplicate_trip(ctx.session, ctx.user, data.trip_id, data.start_date, data.title)
+    return ToolOutput(
+        result={
+            "trip_id": t["id"],
+            "title": t["title"],
+            "start_date": t["start_date"],
+            "end_date": t["end_date"],
+            "days": len(t["days"]),
+            "ghi_chu": "Đã chép thành chuyến mới (chưa đánh giá). Hỏi người dùng có muốn đánh giá lại theo ngày mới "
+            "không; đồng ý thì gọi evaluate_trip với trip_id này.",
+        },
+        actions=[_open_trip(t["id"], "Xem chuyến mới")],
+    )
+
+
 def prepare_delete(ctx: ToolContext, data: DeleteTripInput) -> ApprovalDraft:
     t = service.get_trip(ctx.session, ctx.user, data.trip_id)
     when = f"{t['start_date'] or 'chưa chọn ngày'}, {len(t['days'])} ngày"
@@ -542,6 +583,28 @@ TOOLS = [
         phase=4,
     ),
     ToolSpec(
+        name="archive_trip",
+        label="Đang lưu trữ chuyến",
+        description=(
+            "Chuyển chuyến đã đi sang mục Đã đi (giữ nguyên để xem lại), hoặc đưa lại về Sắp đi. Không xóa gì. "
+            "Người dùng nói chuyến đã đi xong, cất chuyến cũ thì dùng công cụ này, không xóa chuyến."
+        ),
+        input_model=ArchiveTripInput,
+        run=run_archive,
+        phase=4,
+    ),
+    ToolSpec(
+        name="duplicate_trip",
+        label="Đang chép chuyến",
+        description=(
+            "Đi lại một chuyến cũ với ngày mới: chép ngày, điểm dừng, link, khách sạn, mốc phà thành chuyến nháp mới. "
+            "Xong thì hỏi người dùng có đánh giá lại không."
+        ),
+        input_model=DuplicateTripInput,
+        run=run_duplicate,
+        phase=4,
+    ),
+    ToolSpec(
         name="evaluate_trip",
         label="Đang đánh giá lịch trình",
         description=(
@@ -563,7 +626,7 @@ TOOLS = [
     ToolSpec(
         name="list_trips",
         label="Đang xem các chuyến",
-        description="Liệt kê các chuyến đi đã lưu, lọc theo trạng thái hoặc tên.",
+        description="Liệt kê các chuyến đi đã lưu, lọc theo sắp đi hoặc đã đi (scope), trạng thái hoặc tên.",
         input_model=ListTripsInput,
         run=run_list,
         phase=4,

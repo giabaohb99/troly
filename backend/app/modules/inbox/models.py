@@ -11,7 +11,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UserOwnedMixin
@@ -100,3 +100,31 @@ class InboxRule(UserOwnedMixin, Base):
     kind: Mapped[str] = mapped_column(Text)
     value: Mapped[str] = mapped_column(Text)
     app: Mapped[str | None] = mapped_column(Text)
+
+
+class GmailDraft(UserOwnedMixin, Base):
+    """Nháp Gmail (QĐ-43). Gửi chỉ qua thẻ duyệt `send_gmail_draft`; lúc gửi so `body_hash` với nháp trên Gmail."""
+
+    __tablename__ = "tab_gmail_draft"
+    __table_args__ = (
+        CheckConstraint("status IN ('draft','sending','sent','discarded')", name="status"),
+        Index("ix_tab_gmail_draft_status", "user_id", "status", text("updated_at DESC")),
+    )
+
+    google_account_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("tab_google_account.id", ondelete="CASCADE")
+    )
+    google_draft_id: Mapped[str | None] = mapped_column(Text)
+    thread_ref: Mapped[str | None] = mapped_column(Text)
+    to_addrs: Mapped[list[str]] = mapped_column(ARRAY(CITEXT))
+    cc_addrs: Mapped[list[str]] = mapped_column(ARRAY(CITEXT), server_default="{}")
+    subject: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    body_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default="draft")
+    pending_action_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("tab_pending_action.id", ondelete="SET NULL")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_message_id: Mapped[str | None] = mapped_column(Text)

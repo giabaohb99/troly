@@ -72,14 +72,48 @@ class ExportIn(BaseModel):
     save_to_drive: bool = False
 
 
+class DuplicateIn(BaseModel):
+    start_date: date
+    title: str | None = None
+
+
 @router.get("")
 def list_trips(
     status: str | None = None,
     q: str | None = None,
+    scope: str = "upcoming",
     user: UserContext = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    return ok({"items": service.list_trips(session, user, status, q), "next_cursor": None})
+    """scope upcoming (mặc định) hoặc past: mục Đã đi (QĐ-42)."""
+    return ok({"items": service.list_trips(session, user, status, q, scope), "next_cursor": None})
+
+
+@router.post("/{trip_id}/archive")
+def archive_trip(
+    trip_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(service.archive_trip(session, user, trip_id), "Đã chuyển vào mục Đã đi.")
+
+
+@router.post("/{trip_id}/unarchive")
+def unarchive_trip(
+    trip_id: int, user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok(service.unarchive_trip(session, user, trip_id), "Đã bỏ lưu trữ.")
+
+
+@router.post("/{trip_id}/duplicate", status_code=201)
+def duplicate_trip(
+    trip_id: int,
+    body: DuplicateIn,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(
+        service.duplicate_trip(session, user, trip_id, body.start_date, body.title),
+        "Đã chép thành chuyến mới.",
+    )
 
 
 @router.post("/import", status_code=202)

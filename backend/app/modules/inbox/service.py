@@ -123,6 +123,18 @@ def delete_rule(session: Session, user_id: int, rule_id: int) -> None:
     session.flush()
 
 
+def hidden_apps(session: Session, user_id: int) -> list[str]:
+    """App hộp tin đang tắt trong danh sách nghe (QĐ-42: Telegram, Messenger): tin cũ của chúng không xóa,
+    chỉ ẩn khỏi hộp tin, đếm tin mới, tóm tắt và tìm. Đọc tab_listened_app bằng SQL (bảng của device)."""
+    rows = session.execute(
+        text(
+            "SELECT parser FROM tab_listened_app WHERE user_id = :u AND purpose = 'inbox' AND enabled = false"
+        ),
+        {"u": user_id},
+    ).scalars()
+    return sorted({APP_BY_PARSER.get(p, "other") for p in rows} - {"other"})
+
+
 def private_keys(session: Session, user_id: int) -> set[str]:
     return set(
         session.scalars(
@@ -256,6 +268,7 @@ _CONVERSATIONS = """
         SELECT * FROM tab_inbox_message
         WHERE user_id = :uid
           AND (CAST(:app AS text) IS NULL OR app = :app)
+          AND NOT (app = ANY(CAST(:hidden AS text[])))
           AND (CAST(:status AS text) IS NULL OR status = :status)
           AND (CAST(:importance AS text) IS NULL OR importance = :importance)
           AND (CAST(:from_ AS timestamptz) IS NULL OR posted_at >= :from_)
@@ -293,6 +306,7 @@ def list_conversations(
     params = {
         "uid": user_id,
         "app": filters.get("app"),
+        "hidden": hidden_apps(session, user_id),
         "status": filters.get("status"),
         "importance": filters.get("importance"),
         "from_": filters.get("from"),
@@ -330,6 +344,9 @@ def list_conversations(
 
 def list_messages(session: Session, user_id: int, key: str, cursor: str | None, limit: int = 50) -> dict:
     stmt = select(InboxMessage).where(InboxMessage.user_id == user_id, InboxMessage.conversation_key == key)
+    hidden = hidden_apps(session, user_id)
+    if hidden:
+        stmt = stmt.where(InboxMessage.app.not_in(hidden))
     if cursor:
         try:
             at, mid = cursor.rsplit("|", 1)
@@ -411,6 +428,9 @@ def list_messages_for_ai(
     private = private_keys(session, user_id)
     if private:
         stmt = stmt.where(InboxMessage.conversation_key.not_in(private))
+    hidden = hidden_apps(session, user_id)
+    if hidden:
+        stmt = stmt.where(InboxMessage.app.not_in(hidden))
     for column, value in (
         (InboxMessage.app, app),
         (InboxMessage.importance, importance),
@@ -434,6 +454,7 @@ def list_messages_for_ai(
             "conversation_title": mask_phone(m.conversation_title),
             "is_group": m.is_group,
             "posted_at": m.posted_at,
+            "subject": mask_phone(m.subject) if m.subject else None,  # Email (QĐ-43)
             "text": mask_phone(m.text[:AI_TEXT_MAX]),
             "status": m.status,
             "importance": m.importance,

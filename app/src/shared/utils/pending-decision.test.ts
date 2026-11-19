@@ -23,6 +23,7 @@ describe('thẻ duyệt', () => {
 
   it('409 tải lại trạng thái; mạng, 5xx, 429 là lỗi tạm; 4xx khác là lỗi cuối', () => {
     expect(classifyDecisionError(new ApiError(409, 'Đã xử lý', 'ACTION_NOT_PENDING'))).toBe('refetch')
+    expect(classifyDecisionError(new ApiError(409, 'Nháp đã bị sửa, hãy xem lại', 'ACTION_PAYLOAD_CHANGED'))).toBe('final')
     expect(classifyDecisionError(new ApiError(0, 'Mất mạng', 'NETWORK'))).toBe('transient')
     expect(classifyDecisionError(new ApiError(503, 'Bận', 'INTERNAL_ERROR'))).toBe('transient')
     expect(classifyDecisionError(new ApiError(429, 'Nhanh quá', 'RATE_LIMITED'))).toBe('transient')

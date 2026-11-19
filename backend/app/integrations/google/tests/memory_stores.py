@@ -191,3 +191,19 @@ class MemoryFileStore:
 
     def save_drive_result(self, session, user_id, file_id, drive_file_id, web_view_link):
         self.files[file_id].update(drive_file_id=drive_file_id, link=web_view_link)
+
+
+class MemoryMailStore:
+    """Như module inbox: bỏ trùng theo message_id, bỏ thư có OTP (bộ lọc thật ở module device)."""
+
+    def __init__(self):
+        self.mails: dict[str, object] = {}
+
+    def save_gmail_messages(self, session, user_id, mails):
+        saved = 0
+        for m in mails:
+            if m.message_id in self.mails or "otp" in (m.subject + m.snippet).lower():
+                continue
+            self.mails[m.message_id] = m
+            saved += 1
+        return saved

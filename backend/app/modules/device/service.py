@@ -26,6 +26,7 @@ log = logging.getLogger("troly.device")
 
 LATEST_KEY = "releases/latest.json"
 SMS_DEFAULT = "sms_default"
+GMAIL_PACKAGE = "com.google.android.gm"
 CACHE_SECONDS = 300
 HEARTBEAT_FIELDS = (
     "app_version_code",
@@ -195,6 +196,8 @@ DEFAULT_LISTENED_APPS = (
     ("com.facebook.orca", "Messenger", "inbox", "messenger"),
     (SMS_DEFAULT, "Tin nhắn SMS", "inbox", "sms"),
 )
+# QĐ-42: hộp tin bỏ Telegram, Messenger; dòng vẫn tạo để màn Cài đặt hiện, nhưng mặc định tắt.
+OFF_BY_DEFAULT = frozenset({"org.telegram.messenger", "com.facebook.orca"})
 UPLOAD = {"batch_max": 50, "min_interval_seconds": 30}
 
 
@@ -221,7 +224,7 @@ def ensure_listened_apps(session: Session, user_id: int) -> None:
                 label=label,
                 purpose=purpose,
                 parser=parser,
-                enabled=True,
+                enabled=package not in OFF_BY_DEFAULT,
                 is_default=True,
             )
         )
@@ -284,9 +287,20 @@ def delete_listened_app(session: Session, user_id: int, app_id: int) -> None:
 
 
 def device_config(session: Session, user_id: int) -> dict:
+    # Đã nối gói gmail của Google thì không nghe thông báo app Gmail (thư vào hộp tin qua API, 12 mục 5.8).
+    gmail_linked = bool(
+        session.execute(
+            text(
+                "SELECT 1 FROM tab_google_account WHERE user_id = :u AND status <> 'revoked' "
+                "AND 'gmail' = ANY(enabled_packs)"
+            ),
+            {"u": user_id},
+        ).first()
+    )
     apps = [
         {"package_name": a.package_name, "purpose": a.purpose, "parser": a.parser, "enabled": a.enabled}
         for a in _listened_apps(session, user_id)
+        if not (gmail_linked and a.package_name == GMAIL_PACKAGE)
     ]
     body = {
         "listened_apps": apps,

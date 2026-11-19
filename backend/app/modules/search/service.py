@@ -56,6 +56,9 @@ _QUERIES = {
                i.conversation_key
         FROM tab_inbox_message i, websearch_to_tsquery('troly_vn', :q) q
         WHERE i.user_id = :uid AND i.search_vector @@ q
+          AND NOT EXISTS (
+              SELECT 1 FROM tab_listened_app a WHERE a.user_id = i.user_id AND a.purpose = 'inbox'
+                AND a.enabled = false AND a.parser = i.app)
           AND (:include_private OR NOT EXISTS (
               SELECT 1 FROM tab_inbox_rule r WHERE r.user_id = i.user_id
                 AND r.kind = 'private_conversation' AND r.value = i.conversation_key))

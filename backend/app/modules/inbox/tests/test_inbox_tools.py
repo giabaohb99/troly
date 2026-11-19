@@ -95,3 +95,30 @@ def test_mark_conversation_done(ctx, db, user):
     out = _call(ctx, "mark_inbox", ids=None, conversation_key=conv["conversation_key"], status="done")
     assert out.result["updated"] == 1
     assert _list(ctx, status="new").result["items"] == [] and key.result["total"] == 1
+
+
+def test_summary_includes_email_with_subject(ctx, db, user):
+    from app.modules.inbox.models import InboxMessage
+
+    db.add(
+        InboxMessage(
+            user_id=user.user_id,
+            source="gmail",
+            app="gmail",
+            sender="Chị Hạnh",
+            sender_key="hanh@example.com",
+            conversation_key="gmail:thread-1",
+            conversation_title="Lịch họp quý",
+            is_group=False,
+            subject="Lịch họp quý IV",
+            text="Em xem giúp chị lịch họp thứ Sáu nhé.",
+            posted_at=AT + timedelta(minutes=30),
+            status="new",
+            importance="normal",
+            dedupe_hash="gmail-1",
+        )
+    )
+    db.flush()
+    out = _call(ctx, "summarize_inbox", apps=None, from_date=None, to_date=None)
+    text = str(out.result)
+    assert "Lịch họp quý IV" in text and "gmail" in text

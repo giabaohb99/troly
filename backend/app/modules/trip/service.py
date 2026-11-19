@@ -146,6 +146,8 @@ def serialize_trip(session: Session, trip: Trip) -> dict:
         "origin_text": trip.origin_text,
         "status": trip.status,
         "error": trip.error,
+        "archived_at": trip.archived_at,
+        "is_past": is_past(trip, _local_today(session, trip.user_id)),
         "chosen_option_id": trip.chosen_option_id,
         "start_date_suggested": bool((trip.extract_json or {}).get("_start_date_suggested")),
         "advice": (evaluation or {}).get("advice"),
@@ -237,12 +239,34 @@ def _brief(session: Session, trip: Trip) -> dict:
         if chosen
         else (sum(r["level"] == "yellow" for r in risks) if ev else None),
         "needs_confirmation_count": pending or 0,
+        "archived_at": trip.archived_at,
+        "is_past": is_past(trip, _local_today(session, trip.user_id)),
     }
 
 
+SCOPES = ("upcoming", "past")
+
+
+def _local_today(session: Session, user_id: int) -> date:
+    return clock.now().astimezone(ZoneInfo(_user_tz(session, user_id))).date()
+
+
+def is_past(trip: Trip, today: date) -> bool:
+    """Đã đi (QĐ-42): đã lưu trữ, hoặc ngày cuối (không có thì ngày đi) trước hôm nay theo giờ người dùng."""
+    last = trip.end_date or trip.start_date
+    return trip.archived_at is not None or (last is not None and last < today)
+
+
 def list_trips(
-    session: Session, user: UserContext, status: str | None = None, query: str | None = None
+    session: Session,
+    user: UserContext,
+    status: str | None = None,
+    query: str | None = None,
+    scope: str | None = None,
 ) -> list[dict]:
+    """scope `upcoming` (sắp đi, gồm nháp chưa có ngày) hoặc `past` (Đã đi); None là tất cả."""
+    if scope is not None and scope not in SCOPES:
+        raise ValidationError(fields={"scope": "Chỉ nhận upcoming hoặc past."})
     stmt = select(Trip).where(Trip.user_id == user.user_id)
     if status:
         stmt = stmt.where(Trip.status == status)
@@ -253,8 +277,106 @@ def list_trips(
                 Trip.title.ilike(f"%{query}%"),
             )
         )
-    rows = session.scalars(stmt.order_by(Trip.start_date.desc().nulls_last(), Trip.id.desc()).limit(100))
+    order = (Trip.start_date.desc().nulls_last(), Trip.id.desc())
+    if scope is not None:
+        last = func.coalesce(Trip.end_date, Trip.start_date)
+        past = or_(
+            Trip.archived_at.is_not(None),
+            func.coalesce(last < _local_today(session, user.user_id), False),  # chưa có ngày: chưa đi
+        )
+        if scope == "past":
+            stmt = stmt.where(past)
+        else:
+            stmt = stmt.where(~past)
+            order = (Trip.start_date.asc().nulls_first(), Trip.id.desc())  # gần nhất trước, nháp lên đầu
+    rows = session.scalars(stmt.order_by(*order).limit(100))
     return [_brief(session, t) for t in rows]
+
+
+def archive_trip(session: Session, user: UserContext, trip_id: int) -> dict:
+    """Chuyển chuyến sang Đã đi; không xóa gì. Bấm lại không đổi giờ lưu trữ."""
+    trip = _get(session, user.user_id, trip_id)
+    if trip.archived_at is None:
+        trip.archived_at = clock.now()
+        session.flush()
+    return serialize_trip(session, trip)
+
+
+def unarchive_trip(session: Session, user: UserContext, trip_id: int) -> dict:
+    """Bỏ lưu trữ. Chuyến có ngày cuối trước hôm nay vẫn nằm ở Đã đi (is_past theo ngày)."""
+    trip = _get(session, user.user_id, trip_id)
+    trip.archived_at = None
+    session.flush()
+    return serialize_trip(session, trip)
+
+
+STOP_COPY = (
+    "day_no", "seq", "title", "category", "role", "time_text", "approx", "fixed", "optional", "stay_minutes",
+    "place_query", "source_url", "place_id", "lat", "lng", "coord_source", "coord_fetched_at",
+    "resolve_status", "phone", "cost_note", "note", "alternatives",
+)  # fmt: skip
+
+
+def duplicate_trip(
+    session: Session, user: UserContext, trip_id: int, start_date: date, title: str | None = None
+) -> dict:
+    """Đi lại (QĐ-42): chép ngày, điểm dừng, link, khách sạn, ghi chú, mốc giờ phà và hotline thành chuyến
+    nháp mới bắt đầu từ start_date. Không chép đánh giá, phương án, tệp xuất; đánh giá lại khi được yêu cầu."""
+    if start_date is None:
+        raise ValidationError(fields={"start_date": "Chọn ngày đi cho chuyến mới."})
+    src = _get(session, user.user_id, trip_id)
+    if src.status in ("importing", "failed"):
+        raise ValidationError("Chuyến này chưa đọc xong, chưa chép được.")
+    shift = start_date - src.start_date if src.start_date else timedelta(0)
+    extract = {k: v for k, v in (src.extract_json or {}).items() if k != "_draft"}
+    extract["_start_date_suggested"] = False
+    end_date = src.end_date + shift if src.end_date and src.start_date else None
+    trip = Trip(
+        user_id=user.user_id,
+        title=((title or src.title).strip() or src.title)[:200],
+        start_date=start_date,
+        end_date=end_date,
+        nights=src.nights,
+        travel_mode=src.travel_mode,
+        origin_text=src.origin_text,
+        end_text=src.end_text,
+        status="draft",
+        source_kind=src.source_kind,
+        source_file_id=src.source_file_id,
+        source_text=src.source_text,
+        extract_json=extract,
+        notes=list(src.notes or []),
+        hotels=list(src.hotels or []),
+    )
+    session.add(trip)
+    session.flush()
+    stops = _stops(session, src.id)
+    new_ids: dict[int, int] = {}
+    for old in stops:
+        row = TripStop(user_id=user.user_id, trip_id=trip.id, **{k: getattr(old, k) for k in STOP_COPY})
+        row.planned_start = old.planned_start + shift if old.planned_start else None
+        row.planned_end = old.planned_end + shift if old.planned_end else None
+        session.add(row)
+        session.flush()
+        new_ids[old.id] = row.id
+    for old in stops:
+        if old.parent_stop_id in new_ids:
+            session.get(TripStop, new_ids[old.id]).parent_stop_id = new_ids[old.parent_stop_id]
+    for f in session.scalars(select(TripFact).where(TripFact.trip_id == src.id).order_by(TripFact.id)):
+        session.add(
+            TripFact(
+                user_id=user.user_id,
+                trip_id=trip.id,
+                kind=f.kind,
+                stop_id=new_ids.get(f.stop_id),
+                day_no=f.day_no,
+                value_time=f.value_time,
+                value_text=f.value_text,
+                text=f.text,
+            )
+        )
+    session.flush()
+    return serialize_trip(session, trip)
 
 
 def get_trip(session: Session, user: UserContext, trip_id: int) -> dict:

@@ -166,7 +166,7 @@ Vòng chạy: chờ `troly_wake` hoặc `WORKER_POLL_SECONDS`; chạy job hàng 
 | `sync_google_calendar` | mỗi vòng xét `needs_sync` (webhook, gộp 10 giây) hoặc `next_sync_at` (15 phút ±25%) | Kéo thay đổi bằng `syncToken` | `integrations/google/jobs.py` | V1.4 |
 | `renew_google_watch` | 03:00 hằng ngày | Gia hạn kênh còn dưới 48 giờ | `integrations/google/jobs.py` | V1.4 |
 | `pull_google_tasks_status` | mỗi vòng xét `next_sync_at` (15 phút ±25%) | Đọc ngược xong, đã xóa (QĐ-21) | `integrations/google/jobs.py` | V1.4 |
-| `sync_gmail` | 5 phút | `history.list` vào hộp tin | `modules/inbox/jobs.py` | V1.8 |
+| `sync_gmail` | 5 phút | `history.list` vào hộp tin | `integrations/google/jobs.py` (khóa 7006) | V1.8 |
 | `sync_google_contacts` | 04:00 hằng ngày | Danh bạ | `modules/inbox/jobs.py` | V1.8 |
 | `summarize_previous_day` | 04:05 hằng ngày | Tóm tắt phiên hôm trước | `modules/chat/jobs.py` | V1.0 |
 | `expire_pending_actions` | 5 phút | `pending` quá hạn thành `expired` | `modules/chat/jobs.py` | V1.0 |

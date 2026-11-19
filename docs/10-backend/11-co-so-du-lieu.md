@@ -143,7 +143,7 @@ Bỏ `app.lock_enabled`, `app.lock_after_minutes` (QĐ-27 bỏ khóa vân tay).
 
 **`tab_listened_app`**: (cột chung); `package_name text NN`; `label text NN`; `purpose` CK `expense`, `inbox`; `parser` CK `vcb`, `tcb`, `momo`, `zalo`, `telegram`, `messenger`, `sms`, `generic`; `enabled boolean NN default true`; `is_default boolean NN default false`. UQ `(user_id, package_name)`.
 
-Dòng tạo sẵn: `com.VCB` (expense, vcb), `vn.com.techcombank.bb.app` (expense, tcb), `com.mservice.momotransfer` (expense, momo), `com.zing.zalo`, `org.telegram.messenger`, `com.facebook.orca` (inbox), `sms_default` (inbox, sms). `sms_default` là **một dòng**: plugin thay bằng gói SMS mặc định của máy (Samsung Messages hoặc Google Messages trên Galaxy S25+, QĐ-19) và tự theo khi người dùng đổi app SMS mặc định (K14). Khi gói `gmail` của Google đã nối, `/device/config` bỏ `com.google.android.gm`. Danh sách chỉ đổi trên màn Cài đặt.
+Dòng tạo sẵn: `com.VCB` (expense, vcb), `vn.com.techcombank.bb.app` (expense, tcb), `com.mservice.momotransfer` (expense, momo), `com.zing.zalo`, `org.telegram.messenger`, `com.facebook.orca` (inbox), `sms_default` (inbox, sms). QĐ-42: hộp tin bỏ Telegram, Messenger: hai dòng đó vẫn tạo nhưng mặc định `enabled = false` (migration `0010_inbox_apps` tắt cho người dùng hiện có); tin cũ không xóa, hộp tin, tìm, tóm tắt, đếm tin, thông báo chỉ lấy tin của app đang bật. `sms_default` là **một dòng**: plugin thay bằng gói SMS mặc định của máy (Samsung Messages hoặc Google Messages trên Galaxy S25+, QĐ-19) và tự theo khi người dùng đổi app SMS mặc định (K14). Khi gói `gmail` của Google đã nối, `/device/config` bỏ `com.google.android.gm`. Danh sách chỉ đổi trên màn Cài đặt.
 
 **`tab_device_event`**: hàng đợi sự kiện từ điện thoại.
 
@@ -356,7 +356,7 @@ Nhóm Zalo không đặt `conversation_title`, `is_group_conversation`: tiêu đ
 
 **`tab_contact`** (V1.8): (cột chung); `google_account_id NN FK CASCADE`; `resource_name NN`; `etag`; `display_name NN`; `phones text[]` (dạng `+84`); `emails citext[]`; `birthday_day`, `birthday_month`, `birthday_year smallint` (năm rỗng khi không rõ); `remind_birthday`, `is_important boolean NN default false`; `synced_at NN`; `deleted_at`. UQ `(user_id, resource_name)`; GIN `phones`, `emails`.
 
-**`tab_gmail_draft`** (V1.8): (cột chung); `google_account_id NN FK CASCADE`; `google_draft_id` (rỗng tới khi `drafts.create` xong); `thread_ref`; `to_addrs`, `cc_addrs citext[] NN`; `subject NN`; `body NN`; `body_hash NN`; `status` CK `draft`, `sending`, `sent`, `discarded`; `pending_action_id FK SET NULL`; `approved_at`, `sent_at`; `sent_message_id`. Gửi chỉ qua `tab_pending_action` (`tool_name = send_gmail_draft`).
+**`tab_gmail_draft`** (V1.8): (cột chung); `google_account_id NN FK CASCADE`; `google_draft_id` (rỗng tới khi `drafts.create` xong); `thread_ref`; `to_addrs`, `cc_addrs citext[] NN`; `subject NN`; `body NN`; `body_hash NN`; `status` CK `draft`, `sending`, `sent`, `discarded`; `pending_action_id FK SET NULL`; `approved_at`, `sent_at`; `sent_message_id`. Gửi chỉ qua `tab_pending_action` (`tool_name = send_gmail_draft`, input `{draft_id}`, chạy ở `modules/inbox/approvals.py`); nháp trên Gmail lệch `body_hash` thì 409 `ACTION_PAYLOAD_CHANGED`, nháp giữ `draft`. `thread_ref` chỉ là luồng đang trả lời. Thư Gmail hộp Chính vào `tab_inbox_message` với `conversation_key = gmail:<thread_id>`, `conversation_title` là tiêu đề, `text` là đoạn trích; thư có OTP bỏ cả thư (QĐ-43). Cột `citext[]` đọc ra list nhờ `core/db` đăng ký kiểu `citext` với psycopg lúc mở kết nối.
 
 ### 3.11 Calendar và task
 
@@ -452,7 +452,7 @@ UQ `(google_account_id, service, resource_id)`.
 
 Tên cột theo bảng dưới; `41-ban-do-lich-trinh.md` sửa theo (K5). Cấu trúc một rủi ro theo 41 mục 6.3: `{code, level (red, yellow), day_no, stop_id, message, suggestion, checked_at}`.
 
-**`tab_trip`**: (cột chung); `title NN`; `start_date`, `end_date` (CK `end_date >= start_date`); `nights smallint`; `travel_mode` CK `motorbike`, `car`, `walk`; `origin_text`, `end_text`; `status` CK `importing`, `draft`, `evaluating`, `planned`, `done`, `failed`; `source_kind` CK `docx`, `pdf`, `image`, `text`, `link`; `source_file_id FK tab_file SET NULL`; `source_text`; `extract_json jsonb`; `notes jsonb NN default '[]'`; `hotels jsonb NN default '[]'`; `evaluation jsonb` (`{evaluated_at, risks[]}` cho danh sách điểm hiện tại); `chosen_option_id FK SET NULL` (`use_alter`); `export_file_id FK SET NULL`; `error`; `search_vector` từ `title`, `origin_text`, `end_text`.
+**`tab_trip`**: (cột chung); `title NN`; `start_date`, `end_date` (CK `end_date >= start_date`); `nights smallint`; `travel_mode` CK `motorbike`, `car`, `walk`; `origin_text`, `end_text`; `status` CK `importing`, `draft`, `evaluating`, `planned`, `done`, `failed`; `source_kind` CK `docx`, `pdf`, `image`, `text`, `link`; `source_file_id FK tab_file SET NULL`; `source_text`; `extract_json jsonb`; `notes jsonb NN default '[]'`; `hotels jsonb NN default '[]'`; `evaluation jsonb` (`{evaluated_at, risks[]}` cho danh sách điểm hiện tại); `chosen_option_id FK SET NULL` (`use_alter`); `export_file_id FK SET NULL`; `error`; `archived_at timestamptz` (lưu trữ chuyến, QĐ-42, migration `0009_trip_archive`); `search_vector` từ `title`, `origin_text`, `end_text`.
 
 **`tab_trip_stop`**
 

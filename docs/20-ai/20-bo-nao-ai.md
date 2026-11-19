@@ -264,11 +264,13 @@ Luật chung:
 | trip | `import_trip` | Gửi tệp lịch trình, hoặc đã dựng nháp từ câu mô tả | `file_id`, `text` (lịch trình theo ngày kèm link), `url`, `title`, `travel_mode`, `start_date` | Tệp: việc nền; chữ, link: đọc ngay trong lượt (việc đánh dấu `done`), trả tóm tắt chuyến; `open_screen` `trip_detail` | Không | 4 |
 | trip | `evaluate_trip` | Kiểm rủi ro, đề xuất phương án | `trip_id` | Chạy ngay trong lượt (khoảng nửa phút), trả rủi ro và phương án theo 41 | Không | 4 |
 | trip | `save_trip` | Chọn phương án | `trip_id`, `option_id` | `{status: planned}` | Không | 4 |
-| trip | `list_trips` | Hỏi các chuyến | `status`, `query` | Danh sách | Không | 4 |
+| trip | `list_trips` (thêm `scope`: `upcoming`, `past`) | Hỏi các chuyến | `status`, `query` | Danh sách | Không | 4 |
 | trip | `get_trip` | Lấy một chuyến | `trip_id` hoặc `query`, `day_no` | Tóm tắt theo ngày + `open_screen` | Không | 4 |
 | trip | `add_trip_stops` | Thêm điểm vào chuyến có sẵn (đổ xăng, nghỉ chân...) | `trip_id`, `stops` (1 tới 10: `day_no`, `title`, `category`, `after_stop_id`, `place_query`, `stay_minutes`, `note`) | Chuyến đã đánh giá thì đánh giá lại ngay; kết quả có `km_tu_dau_ngay` | Không | 4 |
 | trip | `update_trip_stop` | Sửa, dời một điểm | `trip_id`, `stop_id` + trường đổi, `day_no`, `after_stop_id` | Như trên | Không | 4 |
 | trip | `delete_trip_stop` | Bỏ một điểm | `trip_id`, `stop_id` | Làm ngay; nút *Hoàn tác* là `choices` gửi lại câu thêm điểm (điểm xóa hẳn, không có đường khôi phục) | Không | 4 |
+| trip | `archive_trip` | Chuyến đã đi thì cất vào *Đã đi* (QĐ-42) | `trip_id`, `archived` (false là đưa lại *Sắp đi*) | Không xóa gì | Không | 4 |
+| trip | `duplicate_trip` | *Đi lại chuyến X ngày Y* | `trip_id`, `start_date`, `title` | Chuyến nháp mới chưa đánh giá; model hỏi có đánh giá lại không | Không | 4 |
 | trip | `find_place` | Lấy link Google Maps cho điểm có thật | `query`, `near` | Tối đa 3 điểm, mỗi điểm có `link` dán được và `verified`; không có khóa Maps (QĐ-36) thì một link tìm theo tên, `verified = false`, tên phải có nguồn web; nhiều điểm đã xác minh thì `choices` | Không | 4 |
 | trip | `open_route` | Chỉ đường một điểm hoặc cả ngày | `trip_id`, `stop_id` hoặc `place_query`, `scope` | `open_map_navigation` hoặc `open_map_directions` | Không | 4 |
 | trip | `export_trip_docx` | Xuất Word | `trip_id` | `open_link` kiểu `file` | Không | 4 |
@@ -291,7 +293,7 @@ Luật chung:
   - công tắc tắt AI cho hộp tin thì trả `INBOX_AI_DISABLED`;
   - đặt `contains_third_party`.
 - **Gửi thư chỉ một đường:** `send_gmail_draft` (hoặc màn nháp thư) tạo `tab_pending_action` `tool_name = send_gmail_draft`; duyệt mới gửi.
-- **Hoãn sau V1 (QĐ-40):** các công cụ Phase 5 của Gmail, danh bạ, Sheets (`search_gmail`, `get_gmail_thread`, `create_gmail_draft`, `send_gmail_draft`, `lookup_contact`, `export_expenses_to_sheets`) chưa viết. Meet và Drive (QĐ-38) đã có.
+- **Gmail (QĐ-43):** `search_gmail`, `get_gmail_thread` đã có (gọi thẳng `integrations.google.gmail`, nội dung trong `du_lieu_ngoai`, thư có dấu hiệu OTP thì ẩn, tôn trọng `inbox.ai_enabled`); `create_gmail_draft` (không duyệt, gọi `inbox.mail.create_draft`, `reply_to_thread_id` thành `thread_ref`) và `send_gmail_draft` (luôn thẻ duyệt: người nhận, CC, tiêu đề, đoạn đầu; duyệt thì chat chạy `inbox/approvals.py`) đã có. **Hoãn sau V1 (QĐ-40):** `lookup_contact`, `export_expenses_to_sheets`. Meet và Drive (QĐ-38) đã có.
 - **Không có công cụ** đổi app được nghe, ngắt Google, thu hồi thiết bị, xóa ghi chú, xóa tệp. Xóa ghi chú và xóa tệp làm trên app.
 
 ### 3.8 Tìm tài liệu: `search_everything` (QĐ-27 mục 11)

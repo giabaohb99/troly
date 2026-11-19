@@ -86,8 +86,9 @@ class DeviceState(context: Context) {
             ListenedApp("vn.com.techcombank.bb.app", "expense", true),
             ListenedApp("com.mservice.momotransfer", "expense", true),
             ListenedApp("com.zing.zalo", "inbox", true),
-            ListenedApp("org.telegram.messenger", "inbox", true),
-            ListenedApp("com.facebook.orca", "inbox", true),
+            // QĐ-42: Telegram, Messenger mặc định tắt; bật lại ở Cài đặt, Hộp tin (máy chủ là gốc).
+            ListenedApp("org.telegram.messenger", "inbox", false),
+            ListenedApp("com.facebook.orca", "inbox", false),
             ListenedApp(FilterRules.SMS_DEFAULT, "inbox", true),
         )
 

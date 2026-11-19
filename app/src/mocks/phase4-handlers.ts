@@ -90,12 +90,14 @@ const trip: Trip & { deleted?: boolean } = {
 const importing: TripBrief = { id: 2, title: 'Đà Lạt cuối tuần', start_date: shift(today, 20), end_date: shift(today, 22), nights: 2, travel_mode: 'motorbike', status: 'importing', total_km: null, red_count: 0, yellow_count: 0, needs_confirmation_count: 0 }
 const past: TripBrief = { id: 3, title: 'Long Hải', start_date: shift(today, -40), end_date: shift(today, -39), nights: 1, travel_mode: 'motorbike', status: 'done', total_km: 180, red_count: 0, yellow_count: 0, needs_confirmation_count: 0 }
 let importPolls = 0
+// Chuyến tạo bằng Đi lại (QĐ-42).
+const extraTrips = new Map<number, Trip & { deleted?: boolean }>()
 
 function brief(t: Trip): TripBrief {
   return {
     id: t.id, title: t.title, start_date: t.start_date, end_date: t.end_date, nights: 2, travel_mode: t.travel_mode, status: t.status,
     total_km: t.days.reduce((s, d) => s + (d.total_km ?? 0), 0), red_count: t.evaluation?.risks.filter((r) => r.level === 'red').length ?? 0,
-    yellow_count: t.evaluation?.risks.filter((r) => r.level === 'yellow').length ?? 0, needs_confirmation_count: t.needs_confirmation.length,
+    yellow_count: t.evaluation?.risks.filter((r) => r.level === 'yellow').length ?? 0, needs_confirmation_count: t.needs_confirmation.length, archived_at: t.archived_at ?? null,
   }
 }
 
@@ -160,12 +162,39 @@ function aiCost() {
 }
 
 export const phase4Handlers = [
-  http.get(`${API}/trips`, () => {
+  http.get(`${API}/trips`, ({ request }) => {
     importPolls += 1
     if (importPolls > 3) importing.status = 'draft'
-    return ok({ items: [...(trip.deleted ? [] : [brief(trip)]), importing, past], next_cursor: null })
+    const scope = new URL(request.url).searchParams.get('scope')
+    const all = [...[...extraTrips.values(), trip].filter((t) => !t.deleted).map(brief), importing, past]
+    // QĐ-42: past là chuyến đã lưu trữ hoặc đã qua ngày về; upcoming là phần còn lại.
+    const isPast = (t: TripBrief) => !!t.archived_at || (!!t.end_date && t.end_date < today)
+    return ok({ items: scope === 'past' ? all.filter(isPast) : scope === 'upcoming' ? all.filter((t) => !isPast(t)) : all, next_cursor: null })
   }),
-  http.get(`${API}/trips/:id`, ({ params }) => (Number(params.id) === 1 && !trip.deleted ? ok(trip) : fail(404, 'NOT_FOUND', 'Không tìm thấy chuyến.'))),
+  http.get(`${API}/trips/:id`, ({ params }) => {
+    const found = Number(params.id) === 1 ? trip : extraTrips.get(Number(params.id))
+    return found && !found.deleted ? ok(found) : fail(404, 'NOT_FOUND', 'Không tìm thấy chuyến.')
+  }),
+  http.post(`${API}/trips/:id/duplicate`, async ({ request }) => {
+    const { start_date } = (await request.json()) as { start_date: string }
+    const copy = structuredClone(trip)
+    const offset = (Date.parse(`${start_date}T00:00:00Z`) - Date.parse(`${trip.start_date}T00:00:00Z`)) / 86_400_000
+    Object.assign(copy, { id: ++nextId, start_date, end_date: shift(start_date, copy.days.length - 1), archived_at: null, evaluation: null, options: [], chosen_option_id: null, status: 'draft', start_date_suggested: false, deleted: false })
+    for (const day of copy.days) {
+      day.date = shift(start_date, day.day_no - 1)
+      for (const s of day.stops) if (s.planned_start) s.planned_start = new Date(Date.parse(s.planned_start) + offset * 86_400_000).toISOString()
+    }
+    extraTrips.set(copy.id, copy)
+    return ok(copy, 201)
+  }),
+  http.post(`${API}/trips/:id/archive`, () => {
+    trip.archived_at = new Date().toISOString()
+    return ok(trip)
+  }),
+  http.post(`${API}/trips/:id/unarchive`, () => {
+    trip.archived_at = null
+    return ok(trip)
+  }),
   http.patch(`${API}/trips/:id`, async ({ request }) => {
     const { start_date } = (await request.json()) as { start_date?: string }
     if (start_date) {

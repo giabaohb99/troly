@@ -18,6 +18,9 @@ export interface TripBrief {
   red_count: number
   yellow_count: number
   needs_confirmation_count: number
+  // QĐ-42: đã đi xong, lưu trữ (null khi chưa); is_past: đã lưu trữ hoặc ngày cuối đã qua.
+  archived_at?: string | null
+  is_past?: boolean
 }
 
 export interface Stop {
@@ -119,6 +122,8 @@ export interface Trip {
   status: TripStatus
   error: string | null
   chosen_option_id: number | null
+  archived_at?: string | null
+  is_past?: boolean
   // true khi ngày đi là gợi ý thứ Bảy gần nhất; app hỏi xác nhận, PATCH start_date thì thành false.
   start_date_suggested: boolean
   // Lời khuyên ngắn của Sonnet; null khi chưa đánh giá.

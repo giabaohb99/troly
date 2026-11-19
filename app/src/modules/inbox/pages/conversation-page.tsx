@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Bot, Check, ChevronLeft, Loader2 } from 'lucide-react'
+import { Bot, Check, ChevronLeft, ExternalLink, Loader2 } from 'lucide-react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
+import { isNative } from '@/core/config'
+import { Notify } from '@/core/native/notify'
 import { listMessages, markConversation } from '@/modules/inbox/api/inbox-api'
 import { AppTag } from '@/modules/inbox/components/app-tag'
 import { queryKeys } from '@/shared/constants/query-keys'
@@ -39,6 +41,18 @@ export function ConversationPage() {
     void markConversation(key, 'seen').then(() => queryClient.invalidateQueries({ queryKey: queryKeys.inbox.all }))
   }, [items, key, queryClient])
 
+  // Zalo không gửi thay (QĐ-43): mở đúng cuộc chat qua thông báo gốc nếu còn, không thì mở app Zalo.
+  const canOpenSource = first?.app === 'zalo'
+  async function openSource() {
+    if (!isNative) {
+      toast.info('Mở Zalo chỉ có trên điện thoại.')
+      return
+    }
+    const titles = [first?.conversation_title, ...items.map((m) => m.sender)].filter((t): t is string => !!t)
+    const result = await Notify.openSource({ packageName: 'com.zing.zalo', titles: [...new Set(titles)] }).catch(() => ({ opened: null }))
+    if (!result.opened) toast.error('Không mở được Zalo trên máy này.')
+  }
+
   async function markDone() {
     try {
       await markConversation(key, 'done')
@@ -71,7 +85,11 @@ export function ConversationPage() {
 
       <div className="flex flex-col gap-3">
         {items.map((m) => (
-          <div key={m.id} className="flex flex-col gap-0.5">
+          <div
+            key={m.id}
+            className={cn('flex flex-col gap-0.5', canOpenSource && 'cursor-pointer')}
+            onClick={canOpenSource ? () => void openSource() : undefined}
+          >
             <span className="text-xs text-muted-foreground">
               {m.is_group && m.sender ? `${m.sender} · ` : ''}
               {formatWhen(m.posted_at)}
@@ -87,6 +105,12 @@ export function ConversationPage() {
 
       {items.length > 0 && (
         <div className="flex flex-col gap-2">
+          {canOpenSource && (
+            <Button variant="outline" onClick={() => void openSource()}>
+              <ExternalLink className="size-4" />
+              Mở trong Zalo
+            </Button>
+          )}
           <Button onClick={() => void markDone()}>
             <Check className="size-4" />
             Đã xử lý

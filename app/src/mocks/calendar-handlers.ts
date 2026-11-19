@@ -121,7 +121,47 @@ function applyInput(event: CalendarEvent, input: Partial<EventInput>) {
 
 const guestsOf = (event: CalendarEvent) => event.attendees.filter((a) => !a.is_self)
 
+// Gmail giả (QĐ-43): chưa cấp gói gmail thì 409 GOOGLE_NOT_CONNECTED như máy chủ.
+const gmailReady = () => google.connected && google.packs.some((p) => p.name === 'gmail' && p.enabled)
+const notConnected = () => fail(409, 'GOOGLE_NOT_CONNECTED', 'Chưa cấp quyền Gmail.')
+const gmailThreads: Record<string, { thread_id: string; subject: string; messages: { id: string; from_name: string | null; from_email: string; to: string[]; cc: string[]; date: string; text: string }[] }> = {
+  't-hopdong': {
+    thread_id: 't-hopdong',
+    subject: 'Hợp đồng thuê văn phòng 2027',
+    messages: [
+      { id: 'm1', from_name: 'Anh Minh', from_email: 'minh@example.com', to: ['giabao@gmail.com'], cc: [], date: at(shift(today, -1), '09:15'), text: 'Chào em, anh gửi bản nháp hợp đồng thuê văn phòng năm 2027. Em xem giúp điều khoản giá nhé.' },
+      { id: 'm2', from_name: 'Gia Bảo', from_email: 'giabao@gmail.com', to: ['minh@example.com'], cc: [], date: at(shift(today, -1), '10:02'), text: 'Dạ em nhận rồi, chiều nay em gửi lại góp ý.' },
+      { id: 'm3', from_name: 'Anh Minh', from_email: 'minh@example.com', to: ['giabao@gmail.com'], cc: ['lan@example.com'], date: at(today, '08:30'), text: 'Em gửi trước thứ Năm giúp anh nhé, chị Lan cần chốt.' },
+    ],
+  },
+}
+let draftId = 7000
+const drafts = new Map<number, { id: number; to: string[]; cc: string[]; subject: string; body: string; thread_ref: string | null; status: string }>()
+
 export const calendarHandlers = [
+  http.get(`${API}/gmail/threads/:id`, ({ params }) => {
+    if (!gmailReady()) return notConnected()
+    const thread = gmailThreads[String(params.id)]
+    if (!thread) return fail(404, 'NOT_FOUND', 'Không tìm thấy luồng thư.')
+    const last = thread.messages[thread.messages.length - 1]
+    return ok({ ...thread, reply: { to: [last.from_email], cc: last.cc, subject: `Re: ${thread.subject}`, in_reply_to: last.id } })
+  }),
+  http.post(`${API}/gmail/drafts`, async ({ request }) => {
+    if (!gmailReady()) return notConnected()
+    const input = (await request.json()) as { to: string[]; cc: string[]; subject: string; body: string; thread_ref: string | null }
+    const draft = { id: ++draftId, ...input, status: 'draft' }
+    drafts.set(draft.id, draft)
+    return ok(draft, 201)
+  }),
+  http.post(`${API}/gmail/drafts/:id/send`, ({ params }) => {
+    const draft = drafts.get(Number(params.id))
+    if (!draft) return fail(404, 'NOT_FOUND', 'Không tìm thấy thư nháp.')
+    return pendingFor(`Gửi thư: ${draft.subject || '(không tiêu đề)'}`, 'Thư chỉ đi khi bấm Duyệt.', [
+      { label: 'Tới', value: draft.to.join(', ') },
+      ...(draft.cc.length ? [{ label: 'Cc', value: draft.cc.join(', ') }] : []),
+      { label: 'Nội dung', value: draft.body.slice(0, 300) },
+    ], () => (draft.status = 'sent'))
+  }),
   http.get(`${API}/calendar/events`, ({ request }) => {
     const url = new URL(request.url)
     const from = url.searchParams.get('from') ?? ''
@@ -239,9 +279,9 @@ export const calendarHandlers = [
 
   http.get(`${API}/google/status`, () => ok({ ...google, failed_outbox_count: google.connected ? outbox.length : 0 })),
   http.post(`${API}/google/connect`, async ({ request }) => {
-    const { packs } = (await request.json()) as { packs: ('calendar' | 'tasks')[] }
+    const { packs } = (await request.json()) as { packs: ('calendar' | 'tasks' | 'gmail')[] }
     Object.assign(google, { connected: true, status: 'active', initial_sync: { state: 'running', message: 'Đang lấy lịch và việc lần đầu.' } })
-    google.packs = (['calendar', 'tasks'] as const).map((name) => ({ name, enabled: packs.includes(name) || google.packs.some((p) => p.name === name && p.enabled), granted: true, last_sync_at: null, status: 'ok', last_error: null }))
+    google.packs = (['calendar', 'tasks', 'gmail'] as const).map((name) => ({ name, enabled: packs.includes(name) || google.packs.some((p) => p.name === name && p.enabled), granted: true, last_sync_at: null, status: 'ok', last_error: null }))
     setTimeout(() => {
       google.initial_sync = { state: 'done', message: '' }
       google.packs.forEach((p) => (p.last_sync_at = new Date().toISOString()))

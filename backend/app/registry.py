@@ -73,6 +73,9 @@ def register_integrations() -> None:
     files = _import_if_exists("app.modules.file.google_store")
     if files is not None and hasattr(google_stores, "register_file_store"):
         google_stores.register_file_store(files.STORE)
+    mail = _import_if_exists("app.modules.inbox.google_store")
+    if mail is not None and hasattr(google_stores, "register_mail_store"):
+        google_stores.register_mail_store(mail.STORE)
 
 
 def approval_executor(tool_name: str):

@@ -174,3 +174,50 @@ def test_move_stop_to_other_day_after_given_stop(db, ctx, evaluated):
     )
     assert [s.id for s in moved][:2] == [day2[0].id, stop.id]
     assert [s.seq for s in moved] == list(range(1, len(moved) + 1))
+
+
+# ---------- QĐ-42: Đã đi, Đi lại ----------
+
+
+def test_archive_moves_trip_to_past_and_back(ctx, evaluated):
+    out = _call(ctx, "archive_trip", trip_id=evaluated, archived=True)
+    assert out.result["da_luu_tru"] is True
+    past = _call(ctx, "list_trips", status=None, query=None, scope="past").result["items"]
+    assert [t["id"] for t in past] == [evaluated]
+    _call(ctx, "archive_trip", trip_id=evaluated, archived=False)
+    assert _call(ctx, "list_trips", status=None, query=None, scope="past").result["items"] == []
+
+
+def test_chat_go_again_duplicates_then_asks_to_evaluate(auth_client, db, evaluated, monkeypatch):
+    from app.ai import client as ai_client
+    from app.ai.models import DbRunRecorder
+    from app.ai.registry import get_tool, register_tools
+    from app.ai.tests.fake_claude import FakeClaude, text_reply, tool_call
+    from app.modules.trip.models import Trip
+
+    if get_tool("duplicate_trip") is None:
+        register_tools(tools.TOOLS)
+    fake = FakeClaude(
+        [
+            tool_call("duplicate_trip", {"trip_id": evaluated, "start_date": "2026-11-28", "title": None}),
+            text_reply("Em đã chép chuyến sang 28/11. Đại ca có muốn em đánh giá lại không?"),
+        ]
+    )
+    monkeypatch.setattr(ai_client, "_client", ai_client.ClaudeClient(sdk=fake, recorder=DbRunRecorder()))
+    resp = auth_client.post(
+        "/api/v1/chat/messages",
+        json={"client_message_id": str(uuid.uuid4()), "text": "đi lại chuyến Phước Hải ngày 28/11"},
+    )
+    assert resp.status_code == 200, resp.text
+    trips = list(db.scalars(select(Trip).order_by(Trip.id)))
+    assert len(trips) == 2 and trips[1].start_date == date(2026, 11, 28) and trips[1].evaluation is None
+    result = next(
+        b
+        for m in fake.requests[1]["messages"]
+        if isinstance(m["content"], list)
+        for b in m["content"]
+        if b.get("type") == "tool_result"
+    )
+    assert "evaluate_trip" in str(result["content"])
+    system = str(fake.requests[0]["system"])
+    assert "archive_trip" in system and "duplicate_trip" in system

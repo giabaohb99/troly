@@ -47,6 +47,9 @@ class FakeGoogle:
         self.access_tokens: dict[str, datetime] = {}
         self.revoked: list[str] = []
         self.granted_scope = ""
+        from app.integrations.google.tests.fake_gmail import FakeGmail
+
+        self.gmail = FakeGmail()
         # Calendar
         self.seq = 0
         self.events: dict[str, dict] = {}
@@ -136,6 +139,8 @@ class FakeGoogle:
             return self._drive(request, path)
         if url.host == "www.googleapis.com" and path.startswith("/calendar/v3"):
             return self._calendar(request, path.removeprefix("/calendar/v3"))
+        if url.host == "gmail.googleapis.com":
+            return self.gmail.handle(request, path)
         if url.host == "tasks.googleapis.com":
             return self._tasks(request, path.removeprefix("/tasks/v1"))
         return _err(404, "notFound")

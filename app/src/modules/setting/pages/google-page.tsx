@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Browser } from '@capacitor/browser'
-import { ArrowLeft, CalendarDays, CircleCheck, Cloud, ListTodo, Loader2, RefreshCw, TriangleAlert, Unplug } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CircleCheck, Cloud, ListTodo, Loader2, Mail, RefreshCw, TriangleAlert, Unplug } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -19,6 +19,8 @@ import { formatDayTitle, formatTime, toDateKey } from '@/shared/utils/format'
 const PHASE3_PACKS: { name: GooglePackName; label: string; icon: typeof CalendarDays; text: string }[] = [
   { name: 'calendar', label: 'Lịch', icon: CalendarDays, text: 'Lịch hai chiều, Google làm gốc.' },
   { name: 'tasks', label: 'Việc', icon: ListTodo, text: 'Việc có ngày lên Google Tasks, tích xong ở đâu cũng được.' },
+  // QĐ-43: đọc thư vào Hộp tin, trả lời và gửi thư mới qua thẻ duyệt.
+  { name: 'gmail', label: 'Gmail', icon: Mail, text: 'Đọc thư vào Hộp tin; trả lời, gửi thư mới đều qua thẻ duyệt.' },
 ]
 
 const RESULT_TEXT: Record<string, { ok: boolean; text: string }> = {
@@ -186,7 +188,7 @@ export function GooglePage() {
                       </Button>
                     ) : (
                       <Button size="sm" variant="secondary" disabled={connect.isPending} onClick={() => connect.mutate([...enabledPacks, meta.name])}>
-                        Bật
+                        {meta.name === 'gmail' ? 'Cấp quyền Gmail' : 'Bật'}
                       </Button>
                     )}
                   </li>

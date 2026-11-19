@@ -137,6 +137,8 @@ def list_notices(session: Session, user_id: int, after: str | None) -> dict:
             text(
                 "SELECT id, sender, conversation_title, is_group, text, conversation_key FROM tab_inbox_message "
                 "WHERE user_id = :u AND id > :a AND id <= :m AND importance = 'important' AND status = 'new' "
+                "AND NOT EXISTS (SELECT 1 FROM tab_listened_app a WHERE a.user_id = tab_inbox_message.user_id "
+                "AND a.purpose = 'inbox' AND a.enabled = false AND a.parser = tab_inbox_message.app) "
                 "ORDER BY id LIMIT :l"
             ),
             {"u": user_id, "a": inbox_after, "m": inbox_max, "l": LIMIT},

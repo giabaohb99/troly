@@ -29,6 +29,8 @@ export function outcomeFromServer(action: Pick<PendingAction, 'status'> & { erro
 // lỗi cuối (thẻ chỉ còn Bỏ).
 export function classifyDecisionError(error: unknown): 'refetch' | 'transient' | 'final' {
   if (!(error instanceof ApiError)) return 'transient'
+  // Nháp thư đã bị sửa ở nơi khác (Gmail web): hiện câu lỗi, chỉ còn Bỏ; không tải lại trạng thái.
+  if (error.code === 'ACTION_PAYLOAD_CHANGED') return 'final'
   if (error.status === 409) return 'refetch'
   if (error.status === 0 || error.status === 429 || error.status >= 500) return 'transient'
   return 'final'

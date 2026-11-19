@@ -25,10 +25,12 @@ class TrolyNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         DeviceState(this).listenerConnected = true
+        SourceOpener.attach(this)
     }
 
     override fun onListenerDisconnected() {
         DeviceState(this).listenerConnected = false
+        SourceOpener.attach(null)
         requestRebind(ComponentName(this, TrolyNotificationListener::class.java))
     }
 

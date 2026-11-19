@@ -187,6 +187,14 @@ class FileStore(Protocol):
     ) -> None: ...
 
 
+class MailStore(Protocol):
+    """Module inbox cài: nhận thư hộp Chính (gmail.RemoteMail), tự lọc OTP, luật tắt tiếng, người quan
+    trọng, bỏ trùng theo message_id, rồi ghi tab_inbox_message (source gmail). Trả số thư đã ghi."""
+
+    def save_gmail_messages(self, session: Session, user_id: int, mails: list) -> int: ...
+
+
+_mail_store: MailStore | None = None
 _file_store: FileStore | None = None
 _calendar_store: CalendarStore | None = None
 _task_store: TaskStore | None = None
@@ -217,3 +225,12 @@ def register_file_store(store: FileStore | None) -> None:
 
 def file_store() -> FileStore | None:
     return _file_store
+
+
+def register_mail_store(store: MailStore | None) -> None:
+    global _mail_store
+    _mail_store = store
+
+
+def mail_store() -> MailStore | None:
+    return _mail_store

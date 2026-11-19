@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Brain, CalendarPlus, ChevronLeft, ListChecks, Navigation, FileDown, Lightbulb, Loader2, Map as MapIcon, MapPinOff, MessageCircle, MoreHorizontal, RefreshCw, Scale, Trash2, TriangleAlert } from 'lucide-react'
+import { Archive, ArchiveRestore, Brain, CalendarPlus, ChevronLeft, ListChecks, Navigation, FileDown, Lightbulb, Loader2, Map as MapIcon, MapPinOff, MessageCircle, MoreHorizontal, RefreshCw, Repeat, Scale, Trash2, TriangleAlert } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
 import { Maps, maxWaypoints } from '@/core/native/maps'
 import { openExternal } from '@/core/native/open-external'
-import { deleteTrip, evaluateTrip, exportDocx, getMapLinks, getTrip, sendToCalendar, updateTripStartDate } from '@/modules/trip/api/trip-api'
+import { deleteTrip, duplicateTrip, evaluateTrip, setTripArchived, exportDocx, getMapLinks, getTrip, sendToCalendar, updateTripStartDate } from '@/modules/trip/api/trip-api'
 import { StopRow } from '@/modules/trip/components/stop-row'
 import { ConfirmPlacesDialog, OptionsDialog, RisksDialog } from '@/modules/trip/components/trip-dialogs'
 import type { Stop, Trip, TripDay } from '@/modules/trip/types/trip'
@@ -116,7 +116,8 @@ export function TripPage() {
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<Set<number>>(() => new Set())
   const [pickOpening, setPickOpening] = useState(false)
-  const [panel, setPanel] = useState<'menu' | 'confirm' | 'risks' | 'options' | 'delete' | null>(null)
+  const [panel, setPanel] = useState<'menu' | 'confirm' | 'risks' | 'options' | 'delete' | 'again' | null>(null)
+  const [againDate, setAgainDate] = useState('')
 
   const trip = useQuery({
     queryKey: queryKeys.trip.detail(tripId),
@@ -151,8 +152,39 @@ export function TripPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
+  const archive = useMutation({
+    mutationFn: (archived: boolean) => setTripArchived(tripId, archived),
+    onSuccess: (updated, archived) => {
+      queryClient.setQueryData(queryKeys.trip.detail(tripId), updated)
+      invalidate()
+      toast.success(archived ? 'Đã lưu trữ, chuyến nằm ở tab Đã đi' : 'Đã bỏ lưu trữ')
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  const again = useMutation({
+    mutationFn: (startDate: string) => duplicateTrip(tripId, startDate),
+    onSuccess: (created) => {
+      setPanel(null)
+      invalidate()
+      toast.success('Đã tạo chuyến mới, nhớ đánh giá lại')
+      navigate(`/lich-trinh/${created.id}`)
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
   const menu = (data: Trip) => [
     { icon: Scale, label: 'So sánh phương án', onClick: () => setPanel('options'), disabled: data.options.length === 0 },
+    data.archived_at
+      ? { icon: ArchiveRestore, label: 'Bỏ lưu trữ', onClick: () => archive.mutate(false), disabled: archive.isPending }
+      : { icon: Archive, label: 'Đã đi xong, lưu trữ', onClick: () => archive.mutate(true), disabled: archive.isPending },
+    {
+      icon: Repeat,
+      label: 'Đi lại',
+      onClick: () => {
+        setAgainDate(toDateKey(new Date(Date.now() + 7 * 86_400_000)))
+        setPanel('again')
+      },
+    },
     ...([
       { icon: RefreshCw, label: 'Đánh giá lại', mode: 'normal' as const, done: 'Đang đánh giá lại' },
       { icon: Brain, label: 'Nghĩ kỹ (tìm giờ mở cửa trên web)', mode: 'think' as const, done: 'Đang đánh giá kỹ, lâu hơn một chút' },
@@ -337,6 +369,27 @@ export function TripPage() {
           <ConfirmPlacesDialog trip={data} open={panel === 'confirm'} onOpenChange={(open) => setPanel(open ? 'confirm' : null)} />
           <RisksDialog trip={data} open={panel === 'risks'} onOpenChange={(open) => setPanel(open ? 'risks' : null)} />
           <OptionsDialog trip={data} open={panel === 'options'} onOpenChange={(open) => setPanel(open ? 'options' : null)} />
+          <Dialog open={panel === 'again'} onOpenChange={(open) => !open && setPanel(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Đi lại chuyến này</DialogTitle>
+                <DialogDescription>Chép các điểm sang ngày đi mới; giờ dời theo, cần đánh giá lại.</DialogDescription>
+              </DialogHeader>
+              <form
+                className="flex flex-col gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (againDate) again.mutate(againDate)
+                }}
+              >
+                <Input aria-label="Ngày đi mới" type="date" value={againDate} onChange={(e) => setAgainDate(e.target.value)} required />
+                <Button type="submit" disabled={!againDate || again.isPending}>
+                  {again.isPending && <Loader2 className="size-4 animate-spin" />}
+                  Tạo chuyến mới
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
           <ConfirmDialog
             open={panel === 'delete'}
             onOpenChange={(open) => setPanel(open ? 'delete' : null)}

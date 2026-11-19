@@ -24,6 +24,9 @@ def build_jobs() -> list[Job]:
     def extract_unless_disk_full() -> int:
         return 0 if disk.heavy_jobs_paused() else file_jobs.extract_file_text()
 
+    def sync_gmail_unless_disk_full() -> int:
+        return 0 if disk.heavy_jobs_paused() else google_jobs.sync_due_gmail()
+
     return [
         Job("run_queued_jobs", 7001, None, queue.run_queued_jobs),
         Job("extract_file_text", 7002, None, extract_unless_disk_full),
@@ -32,6 +35,8 @@ def build_jobs() -> list[Job]:
         # Hai job đồng bộ tự xét next_sync_at nên chạy mỗi vòng; nút Đồng bộ ngay đặt về bây giờ.
         Job("sync_google_calendar", 7005, None, google_jobs.sync_due_calendars),
         Job("pull_google_tasks_status", 7302, None, google_jobs.pull_due_tasks),
+        # Gmail hộp Chính (QĐ-43): tự xét next_sync_at, quét 5 phút một lần.
+        Job("sync_gmail", 7006, None, sync_gmail_unless_disk_full),
         Job("renew_google_watch", 7301, DailyAt(3, 0), google_jobs.renew_watches),
         Job("summarize_previous_day", 7101, DailyAt(4, 5), chat_jobs.summarize_previous_day),
         Job("expire_pending_actions", 7102, Every(timedelta(minutes=5)), chat_jobs.expire_pending_actions),

@@ -2,7 +2,13 @@ import { apiDelete, apiGet, apiPatch, apiPost, toQuery } from '@/core/api/http-c
 import type { MapLinks, PlaceCandidate, Stop, Trip, TripBrief } from '@/modules/trip/types/trip'
 
 // Lịch trình (12 mục 5.7).
-export const listTrips = () => apiGet<{ items: TripBrief[]; next_cursor: string | null }>('/trips')
+// QĐ-42: hai tab Sắp đi (upcoming) và Đã đi (past, gồm chuyến đã lưu trữ hoặc đã qua ngày về).
+export type TripScope = 'upcoming' | 'past'
+export const listTrips = (scope: TripScope) => apiGet<{ items: TripBrief[]; next_cursor: string | null }>(`/trips${toQuery({ scope })}`)
+// Lưu trữ, bỏ lưu trữ (agent Google, không thân): trả Trip đầy đủ.
+export const setTripArchived = (id: number, archived: boolean) => apiPost<Trip>(`/trips/${id}/${archived ? 'archive' : 'unarchive'}`)
+// Đi lại: chép chuyến sang ngày đi mới, trả chuyến mới (cần đánh giá lại).
+export const duplicateTrip = (id: number, startDate: string) => apiPost<Trip>(`/trips/${id}/duplicate`, { start_date: startDate })
 export const getTrip = (id: number) => apiGet<Trip>(`/trips/${id}`)
 // Đổi ngày đi: máy chủ dời giờ các điểm theo và bỏ cờ start_date_suggested.
 export const updateTripStartDate = (id: number, startDate: string) => apiPatch<Trip>(`/trips/${id}`, { start_date: startDate })

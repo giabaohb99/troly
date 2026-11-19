@@ -39,7 +39,7 @@ export const queryKeys = {
   },
   trip: {
     all: ['trip'] as const,
-    list: ['trip', 'list'] as const,
+    list: (scope: string) => ['trip', 'list', scope] as const,
     detail: (id: number) => ['trip', 'detail', id] as const,
     mapLinks: (id: number, day: number, max: number) => ['trip', 'map-links', id, day, max] as const,
   },

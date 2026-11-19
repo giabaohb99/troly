@@ -137,6 +137,7 @@ const mockInbox: InboxMessage[] = [
   inboxRow(3, 'telegram', 'telegram:du-an-a', 'Tuấn', 'file mới đã up', 120, { conversation_title: 'Nhóm Dự án A', is_group: true }),
   inboxRow(4, 'zalo', 'zalo:hung', 'Anh Hùng', null, 300),
   inboxRow(5, 'sms', 'sms:me', 'Mẹ', 'Tối về ăn cơm nhé con', 2000, { status: 'seen' }),
+  inboxRow(6, 'gmail', 'gmail:t-hopdong', 'Anh Minh', 'Em gửi trước thứ Năm giúp anh nhé, chị Lan cần chốt.', 90, { source: 'gmail', subject: 'Hợp đồng thuê văn phòng 2027', conversation_title: 'Hợp đồng thuê văn phòng 2027' }),
 ]
 function mockConversations() {
   const keys = [...new Set(mockInbox.map((m) => m.conversation_key))]
@@ -159,7 +160,7 @@ const mockListened = [
   { id: 2, package_name: 'vn.com.techcombank.bb.app', label: 'Techcombank', purpose: 'expense', parser: 'tcb', enabled: true, is_default: true },
   { id: 3, package_name: 'com.mservice.momotransfer', label: 'MoMo', purpose: 'expense', parser: 'momo', enabled: true, is_default: true },
   { id: 4, package_name: 'com.zing.zalo', label: 'Zalo', purpose: 'inbox', parser: 'zalo', enabled: true, is_default: true },
-  { id: 5, package_name: 'org.telegram.messenger', label: 'Telegram', purpose: 'inbox', parser: 'telegram', enabled: true, is_default: true },
+  { id: 5, package_name: 'org.telegram.messenger', label: 'Telegram', purpose: 'inbox', parser: 'telegram', enabled: false, is_default: true },
   { id: 6, package_name: 'com.facebook.orca', label: 'Messenger', purpose: 'inbox', parser: 'messenger', enabled: false, is_default: true },
   { id: 7, package_name: 'sms_default', label: 'SMS', purpose: 'inbox', parser: 'sms', enabled: true, is_default: true },
 ]
