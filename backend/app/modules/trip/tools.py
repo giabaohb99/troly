@@ -31,20 +31,26 @@ def _compact_trip(t: dict) -> dict:
     """Bản gọn cho model: đủ để trả lời, không kèm tọa độ, link."""
     days = []
     for d in t["days"]:
-        stops = [
-            {
-                "stop_id": s["id"],
-                "time": s["time_text"] or (s["planned_start"] or "")[11:16] or None,
-                "title": s["title"],
-                "category": s["category"],
-                "role": s["role"],
-                "optional": s["optional"],
-                "place": s["place_query"],
-                "note": s["note"],
-            }
-            for s in d["stops"]
-            if s["role"] in ("main", "via", None)
-        ]
+        stops, km = [], 0.0
+        for s in d["stops"]:
+            if s["role"] not in ("main", "via", None):
+                continue
+            km += float(s.get("leg_km") or 0)
+            stops.append(
+                {
+                    "stop_id": s["id"],
+                    "time": s["time_text"] or (s["planned_start"] or "")[11:16] or None,
+                    "title": s["title"],
+                    "category": s["category"],
+                    "role": s["role"],
+                    "optional": s["optional"],
+                    "place": s["place_query"],
+                    "note": s["note"],
+                    # km ước tính của chặng tới điểm này và cộng dồn từ đầu ngày (có sau khi đánh giá)
+                    "leg_km": s.get("leg_km"),
+                    "km_tu_dau_ngay": round(km, 1) if s.get("leg_km") is not None else None,
+                }
+            )
         days.append(
             {
                 "day_no": d["day_no"],
@@ -144,6 +150,52 @@ class OpenRouteInput(BaseModel):
     place_query: str | None = Field(description="Tên điểm trong chuyến, ví dụ: chỗ ăn trưa, Chùa Âng")
     scope: Literal["stop", "day"] = Field(description="stop: dẫn đường tới một điểm; day: xem đường cả ngày")
     day_no: int | None
+
+
+Category = Literal["an_uong", "nghi", "tham_quan", "pha", "di_chuyen", "khach_san", "mua_sam", "khac"]
+
+
+class NewStop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    day_no: int = Field(description="Ngày thứ mấy của chuyến")
+    title: str = Field(description="Tên điểm; điểm theo loại thì ghi kiểu: Đổ xăng ở Đất Đỏ")
+    category: Category = Field(
+        default="khac",
+        description="di_chuyen: đổ xăng, sửa xe; nghi: nghỉ chân; an_uong; tham_quan; khac: ATM",
+    )
+    after_stop_id: int | None = Field(
+        default=None, description="Chèn sau điểm này (stop_id); null là cuối ngày"
+    )
+    place_query: str | None = Field(
+        default=None, description="Chuỗi tìm Google Maps, ví dụ: cây xăng gần Đất Đỏ, Bà Rịa - Vũng Tàu"
+    )
+    stay_minutes: int | None = Field(default=None, description="Dừng bao lâu; đổ xăng khoảng 10")
+    note: str | None = None
+
+
+class AddStopsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trip_id: int
+    stops: list[NewStop] = Field(description="1 tới 10 điểm thêm trong một lần")
+
+
+class UpdateStopInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trip_id: int
+    stop_id: int
+    title: str | None = None
+    category: Category | None = None
+    place_query: str | None = None
+    stay_minutes: int | None = None
+    note: str | None = None
+    day_no: int | None = Field(default=None, description="Chuyển sang ngày khác")
+    after_stop_id: int | None = Field(default=None, description="Dời tới sau điểm này")
+
+
+class StopRefInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trip_id: int
+    stop_id: int
 
 
 class DeleteTripInput(BaseModel):
@@ -315,6 +367,111 @@ def run_export(ctx: ToolContext, data: TripIdInput) -> ToolOutput:
     return ToolOutput(result={"file_id": out["file_id"]}, actions=actions)
 
 
+# ---------- Sửa điểm dừng trong chuyến có sẵn ----------
+
+MAX_NEW_STOPS = 10
+FUEL_STAY_MINUTES = 10
+
+
+def _day_stops(ctx: ToolContext, trip_id: int, day_no: int) -> list[dict]:
+    t = service.get_trip(ctx.session, ctx.user, trip_id)
+    day = next((d for d in t["days"] if d["day_no"] == day_no), None)
+    return (day or {}).get("stops", [])
+
+
+def _place_after(
+    ctx: ToolContext, trip_id: int, day_no: int, stop_id: int, after_stop_id: int | None
+) -> None:
+    if after_stop_id is None:
+        return  # create_stop đã đặt cuối ngày
+    order = [s["id"] for s in _day_stops(ctx, trip_id, day_no) if s["id"] != stop_id]
+    if after_stop_id not in order:
+        raise AiError("VALIDATION_ERROR", f"Điểm {after_stop_id} không nằm trong ngày {day_no}.")
+    order.insert(order.index(after_stop_id) + 1, stop_id)
+    service.reorder_stops(ctx.session, ctx.user, trip_id, day_no, order)
+
+
+def _after_change(ctx: ToolContext, trip_id: int) -> dict:
+    """Chuyến đã đánh giá thì đánh giá lại ngay để km, giờ, rủi ro khớp lịch mới."""
+    t = service.get_trip(ctx.session, ctx.user, trip_id)
+    again = bool(t.get("evaluation")) and t["status"] not in ("importing", "evaluating")
+    if again:
+        out = service.evaluate_trip(ctx.session, ctx.user, trip_id)
+        service.run_job_now(ctx.session, ctx.user, out["job_id"])
+    t = service.find_trip(ctx.session, ctx.user, trip_id=trip_id, query=None, day_no=None)
+    return {**_compact_trip(t), "da_danh_gia_lai": again}
+
+
+def _stop_data(item) -> dict:
+    data = item.model_dump(exclude_none=True, exclude={"after_stop_id", "stop_id", "trip_id"})
+    if data.get("category") == "di_chuyen" and "stay_minutes" not in data:
+        data["stay_minutes"] = FUEL_STAY_MINUTES
+    return data
+
+
+def run_add_stops(ctx: ToolContext, data: AddStopsInput) -> ToolOutput:
+    if not 1 <= len(data.stops) <= MAX_NEW_STOPS:
+        raise AiError("VALIDATION_ERROR", f"Thêm từ 1 tới {MAX_NEW_STOPS} điểm mỗi lần.")
+    added = []
+    for item in data.stops:
+        stop = service.create_stop(ctx.session, ctx.user, data.trip_id, _stop_data(item))
+        _place_after(ctx, data.trip_id, item.day_no, stop["id"], item.after_stop_id)
+        added.append({"stop_id": stop["id"], "day_no": item.day_no, "title": stop["title"]})
+    return ToolOutput(
+        result={"da_them": added, **_after_change(ctx, data.trip_id)},
+        actions=[_open_trip(data.trip_id, "Xem chuyến đi")],
+    )
+
+
+def run_update_stop(ctx: ToolContext, data: UpdateStopInput) -> ToolOutput:
+    changes = _stop_data(data)
+    if not changes and data.after_stop_id is None:
+        raise AiError("VALIDATION_ERROR", "Không có gì để sửa.")
+    if "day_no" in changes:
+        changes["seq"] = (
+            1000 + data.stop_id
+        )  # tạm cuối ngày mới cho khỏi trùng thứ tự; reorder bên dưới xếp lại
+    stop = (
+        service.update_stop(ctx.session, ctx.user, data.trip_id, data.stop_id, changes) if changes else None
+    )
+    if data.after_stop_id is not None:
+        day_no = data.day_no or (stop or {}).get("day_no")
+        if day_no is None:
+            t = service.get_trip(ctx.session, ctx.user, data.trip_id)
+            day_no = next(d["day_no"] for d in t["days"] if any(s["id"] == data.stop_id for s in d["stops"]))
+        _place_after(ctx, data.trip_id, day_no, data.stop_id, data.after_stop_id)
+    elif "day_no" in changes:
+        order = [s["id"] for s in _day_stops(ctx, data.trip_id, changes["day_no"])]
+        service.reorder_stops(ctx.session, ctx.user, data.trip_id, changes["day_no"], order)
+    return ToolOutput(
+        result={"da_sua": data.stop_id, **_after_change(ctx, data.trip_id)},
+        actions=[_open_trip(data.trip_id, "Xem chuyến đi")],
+    )
+
+
+def run_delete_stop(ctx: ToolContext, data: StopRefInput) -> ToolOutput:
+    t = service.get_trip(ctx.session, ctx.user, data.trip_id)
+    day = next((d for d in t["days"] if any(s["id"] == data.stop_id for s in d["stops"])), None)
+    if day is None:
+        raise AiError("NOT_FOUND", "Điểm này không còn trong chuyến (đã xóa trước đó).")
+    stops = day["stops"]
+    idx = next(i for i, s in enumerate(stops) if s["id"] == data.stop_id)
+    stop, prev = stops[idx], (stops[idx - 1] if idx > 0 else None)
+    service.delete_stop(ctx.session, ctx.user, data.trip_id, data.stop_id)
+    # Xóa điểm là xóa hẳn (không có đường khôi phục): nút Hoàn tác gửi lại câu thêm điểm qua chat.
+    where = f" sau {prev['title']}" if prev else " ở đầu ngày"
+    again = f"Thêm lại điểm {stop['title']} vào ngày {day['day_no']}{where}"
+    if stop.get("place_query"):
+        again += f", tìm theo: {stop['place_query']}"
+    return ToolOutput(
+        result={
+            "da_xoa": {"stop_id": data.stop_id, "title": stop["title"]},
+            **_after_change(ctx, data.trip_id),
+        },
+        actions=[act.choices("Hoàn tác", [("Hoàn tác", again)]), _open_trip(data.trip_id, "Xem chuyến đi")],
+    )
+
+
 def prepare_delete(ctx: ToolContext, data: DeleteTripInput) -> ApprovalDraft:
     t = service.get_trip(ctx.session, ctx.user, data.trip_id)
     when = f"{t['start_date'] or 'chưa chọn ngày'}, {len(t['days'])} ngày"
@@ -332,6 +489,13 @@ def execute_delete(ctx: ToolContext, tool_input: dict) -> ToolOutput:
     return ToolOutput(result={"da_xoa": int(tool_input["trip_id"])})
 
 
+STOP_KIND_RULE = (
+    "Điểm theo loại (đổ xăng, ATM, nghỉ chân, sửa xe) không cần tên cơ sở: title kiểu Đổ xăng ở <thị trấn trên "
+    "tuyến>, place_query kiểu cây xăng gần <thị trấn>; không bịa tên trạm, không bắt người dùng gửi tên. Xin đổ "
+    "xăng mỗi khoảng N km thì xem get_trip (km_tu_dau_ngay, leg_km) để chọn thị trấn trên tuyến gần mốc N km, "
+    "không cần tìm web từng trạm."
+)
+
 TOOLS = [
     ToolSpec(
         name="import_trip",
@@ -345,6 +509,36 @@ TOOLS = [
         ),
         input_model=ImportTripInput,
         run=run_import,
+        phase=4,
+    ),
+    ToolSpec(
+        name="add_trip_stops",
+        label="Đang thêm điểm vào chuyến",
+        description=(
+            "Thêm 1 tới 10 điểm dừng vào chuyến đã có (theo ngày, chèn sau điểm nào). Chuyến đã đánh giá thì tự "
+            "đánh giá lại, kết quả có km và phương án mới. " + STOP_KIND_RULE
+        ),
+        input_model=AddStopsInput,
+        run=run_add_stops,
+        phase=4,
+    ),
+    ToolSpec(
+        name="update_trip_stop",
+        label="Đang sửa điểm trong chuyến",
+        description=(
+            "Sửa hoặc dời một điểm dừng (tên, loại, chuỗi tìm, thời gian dừng, ngày, sau điểm nào). "
+            "Chuyến đã đánh giá thì tự đánh giá lại."
+        ),
+        input_model=UpdateStopInput,
+        run=run_update_stop,
+        phase=4,
+    ),
+    ToolSpec(
+        name="delete_trip_stop",
+        label="Đang bỏ điểm khỏi chuyến",
+        description="Bỏ một điểm dừng khỏi chuyến; làm ngay, có nút Hoàn tác. Chuyến đã đánh giá thì tự đánh giá lại.",
+        input_model=StopRefInput,
+        run=run_delete_stop,
         phase=4,
     ),
     ToolSpec(

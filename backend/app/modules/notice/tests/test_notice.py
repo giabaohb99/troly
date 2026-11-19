@@ -123,7 +123,7 @@ def test_chat_done_reports_final_answer_and_exported_files(db, user):
     db.flush()
     turn = uuid.uuid4()
 
-    def msg(role, hidden, text_=None, content=None):
+    def msg(role, hidden, text_=None, content=None, notify_done=False):
         db.add(
             Message(
                 user_id=user.user_id,
@@ -133,6 +133,7 @@ def test_chat_done_reports_final_answer_and_exported_files(db, user):
                 hidden=hidden,
                 text=text_,
                 content=content or [{"type": "text", "text": text_ or ""}],
+                notify_done=notify_done,
             )
         )
         db.flush()
@@ -144,10 +145,11 @@ def test_chat_done_reports_final_answer_and_exported_files(db, user):
         True,
         content=[{"type": "tool_result", "content": f'{{"file_id": {f.id}, "name": "bao-cao.pdf"}}'}],
     )
-    msg("assistant", False, "Em đã xuất báo cáo tháng 11. Tổng chi là 3.465.000 đ.")
+    msg("assistant", False, "Em đã xuất báo cáo tháng 11. Tổng chi là 3.465.000 đ.", notify_done=True)
 
     out = service.list_notices(db, user.user_id, start)
     [item] = [i for i in out["items"] if i["kind"] == "chat_done"]
+    assert item["created_at"] is not None and item["created_at"].tzinfo is not None
     assert item["body"] == "Em đã xuất báo cáo tháng 11." and item["file_ids"] == [f.id]
     assert item["conversation_id"] == conv.id and item["file_id"] == f.id
     assert item["deep_link"] == f"troly://?phien={conv.id}&tin={item['message_id']}"

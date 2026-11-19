@@ -391,7 +391,9 @@ def run_import(session: Session, job) -> dict:
             errors = check_extract(extract, source) if extract else ["không đọc được"]
             if errors:
                 hint = "Lỗi ở lần đọc trước, hãy sửa: " + "; ".join(errors[:10])
-                extract = bridge.extract_trip(trip.user_id, content, TripExtract, hint=hint, default_title=trip.title)
+                extract = bridge.extract_trip(
+                    trip.user_id, content, TripExtract, hint=hint, default_title=trip.title
+                )
                 if extract is None or check_extract(extract, source):
                     raise ValidationError("Không đọc được lịch trình từ tệp này, thử gửi lại hoặc gõ mô tả.")
         if trip.start_date:

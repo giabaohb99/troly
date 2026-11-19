@@ -47,12 +47,13 @@ def first_sentence(value: str | None) -> str:
 
 
 def _chat_done(session: Session, user_id: int, after: int, upto: int) -> list[dict]:
-    """Câu trả lời cuối của mỗi lượt (tin assistant không ẩn) và tệp `export_document` tạo trong lượt."""
+    """Câu trả lời cuối của lượt app chưa nhận hết (`notify_done`, SSE ngắt giữa chừng) và tệp
+    `export_document` tạo trong lượt. Lượt app đã nhận đủ, lượt JSON thì không báo (lỗi báo trùng 19/11)."""
     rows = session.execute(
         text(
             "SELECT m.id, m.conversation_id, m.turn_id, m.text, m.created_at FROM tab_message m "
             "WHERE m.user_id = :u AND m.id > :a AND m.id <= :m AND m.role = 'assistant' "
-            "AND m.hidden = false AND m.status = 'complete' ORDER BY m.id LIMIT :l"
+            "AND m.hidden = false AND m.status = 'complete' AND m.notify_done ORDER BY m.id LIMIT :l"
         ),
         {"u": user_id, "a": after, "m": upto, "l": LIMIT},
     ).all()
@@ -87,6 +88,7 @@ def _chat_done(session: Session, user_id: int, after: int, upto: int) -> list[di
                 "conversation_id": r.conversation_id,
                 "message_id": r.id,
                 "file_ids": file_ids,
+                "created_at": r.created_at,  # giờ tạo tin trả lời (có múi giờ); app bỏ notice cũ hơn 15 phút
                 "file_id": file_ids[0] if file_ids else None,
             }
         )

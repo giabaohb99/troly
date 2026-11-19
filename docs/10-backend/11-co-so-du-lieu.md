@@ -217,6 +217,7 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`.
 | actions | jsonb | Hành động trả cho app |
 | contains_third_party | boolean NN default false | Khối có tin, thư của người khác |
 | redacted_at | timestamptz | |
+| notify_done | boolean NN default false | Lượt xong khi app đã ngắt (SSE chưa đọc `message.completed` sau 5 giây); chỉ tin có cờ này mới ra notice `chat_done` |
 | ai_run_id | bigint FK `tab_ai_run` SET NULL | |
 | input_tokens, output_tokens | int | |
 | search_vector | tsvector | Sinh từ `text` |

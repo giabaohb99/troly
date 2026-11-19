@@ -146,21 +146,22 @@ def test_failed_turn_left_out_of_next_history(auth_client, fake_claude, monkeypa
     assert "lượt sau" in texts
 
 
-def test_turn_finishes_when_app_disconnects_and_notice_lists_it(db, user, fake_claude):
+def test_turn_finishes_when_app_disconnects_and_notice_lists_it(db, user, fake_claude, monkeypatch):
     """QĐ-41: app ngắt giữa chừng thì lượt vẫn chạy hết, tin được lưu, máy nhận notice chat_done."""
     import time
 
     from app.modules.notice import service as notice_service
 
+    monkeypatch.setattr(service, "DELIVERY_GRACE_SECONDS", 0.2)
     cursor = notice_service.list_notices(db, user.user_id, None)["cursor"]
     fake_claude.script.append(text_reply("Em đã tổng hợp xong chi tiêu tháng 11."))
     prepared = service.prepare_turn(db, user, "tổng hợp chi tiêu tháng này", None, uuid.uuid4(), [])
     stream = service.stream_turn(prepared)
     assert next(stream).startswith("event: message.created")
-    # App ngắt: không đọc tiếp luồng SSE nữa; luồng nền vẫn chạy hết lượt.
+    # App ngắt: không đọc tiếp luồng SSE nữa; luồng nền vẫn chạy hết lượt rồi bật notify_done.
     answer = None
     for _ in range(100):
-        answer = db.scalar(select(Message).where(Message.role == "assistant", Message.status == "complete"))
+        answer = db.scalar(select(Message).where(Message.role == "assistant", Message.notify_done.is_(True)))
         if answer is not None:
             break
         time.sleep(0.1)
@@ -169,6 +170,24 @@ def test_turn_finishes_when_app_disconnects_and_notice_lists_it(db, user, fake_c
     done = [n for n in notices if n["kind"] == "chat_done"]
     assert done and done[0]["message_id"] == answer.id
     stream.close()
+
+
+def test_no_chat_done_when_stream_delivered_or_json(auth_client, db, user, fake_claude, monkeypatch):
+    """Lỗi thật 19/11: đang chat trong màn Trợ lý vẫn nhận thông báo. SSE giao trọn hoặc lượt JSON: không báo."""
+    import time
+
+    from app.modules.notice import service as notice_service
+
+    monkeypatch.setattr(service, "DELIVERY_GRACE_SECONDS", 0.2)
+    cursor = notice_service.list_notices(db, user.user_id, None)["cursor"]
+    fake_claude.script.append(text_reply("Ghi rồi."))
+    assert send(auth_client, "cơm trưa 45k", stream=True).status_code == 200
+    fake_claude.script.append(text_reply("Ghi tiếp."))
+    assert send(auth_client, "cà phê 30k").status_code == 200
+    time.sleep(0.5)
+    assert db.scalars(select(Message).where(Message.notify_done.is_(True))).all() == []
+    notices = notice_service.list_notices(db, user.user_id, cursor)["items"]
+    assert [n for n in notices if n["kind"] == "chat_done"] == []
 
 
 def test_exported_file_shows_as_assistant_attachment():

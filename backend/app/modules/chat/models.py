@@ -78,6 +78,8 @@ class Message(UserOwnedMixin, Base):
     attachment_file_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), server_default="{}")
     actions: Mapped[list | None] = mapped_column(JSONB)
     contains_third_party: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    # Lượt xong mà app đã ngắt SSE trước sự kiện kết thúc: notice `chat_done` báo cho máy (bản 0008).
+    notify_done: Mapped[bool] = mapped_column(Boolean, server_default="false")
     redacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_run_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("tab_ai_run.id", ondelete="SET NULL")

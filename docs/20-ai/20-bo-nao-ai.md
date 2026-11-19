@@ -266,6 +266,9 @@ Luật chung:
 | trip | `save_trip` | Chọn phương án | `trip_id`, `option_id` | `{status: planned}` | Không | 4 |
 | trip | `list_trips` | Hỏi các chuyến | `status`, `query` | Danh sách | Không | 4 |
 | trip | `get_trip` | Lấy một chuyến | `trip_id` hoặc `query`, `day_no` | Tóm tắt theo ngày + `open_screen` | Không | 4 |
+| trip | `add_trip_stops` | Thêm điểm vào chuyến có sẵn (đổ xăng, nghỉ chân...) | `trip_id`, `stops` (1 tới 10: `day_no`, `title`, `category`, `after_stop_id`, `place_query`, `stay_minutes`, `note`) | Chuyến đã đánh giá thì đánh giá lại ngay; kết quả có `km_tu_dau_ngay` | Không | 4 |
+| trip | `update_trip_stop` | Sửa, dời một điểm | `trip_id`, `stop_id` + trường đổi, `day_no`, `after_stop_id` | Như trên | Không | 4 |
+| trip | `delete_trip_stop` | Bỏ một điểm | `trip_id`, `stop_id` | Làm ngay; nút *Hoàn tác* là `choices` gửi lại câu thêm điểm (điểm xóa hẳn, không có đường khôi phục) | Không | 4 |
 | trip | `find_place` | Lấy link Google Maps cho điểm có thật | `query`, `near` | Tối đa 3 điểm, mỗi điểm có `link` dán được và `verified`; không có khóa Maps (QĐ-36) thì một link tìm theo tên, `verified = false`, tên phải có nguồn web; nhiều điểm đã xác minh thì `choices` | Không | 4 |
 | trip | `open_route` | Chỉ đường một điểm hoặc cả ngày | `trip_id`, `stop_id` hoặc `place_query`, `scope` | `open_map_navigation` hoặc `open_map_directions` | Không | 4 |
 | trip | `export_trip_docx` | Xuất Word | `trip_id` | `open_link` kiểu `file` | Không | 4 |

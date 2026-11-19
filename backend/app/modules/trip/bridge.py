@@ -85,7 +85,9 @@ def _drop_unnamed(data: dict) -> None:
     data["notes"] = [n for n in data.get("notes") or [] if n]
 
 
-def extract_trip(user_id: int, content, output_model, hint: str | None = None, default_title: str | None = None):
+def extract_trip(
+    user_id: int, content, output_model, hint: str | None = None, default_title: str | None = None
+):
     """Haiku bóc tách (app.ai.trip_ai.extract_trip, agent AI giữ). content là chữ hoặc khối PDF, ảnh."""
     mod = _optional("app.ai.trip_ai")
     if mod is None or not hasattr(mod, "extract_trip"):

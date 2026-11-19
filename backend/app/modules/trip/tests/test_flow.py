@@ -262,10 +262,14 @@ def test_ai_extract_converts_to_trip_schema():
         {"night_no": 1, "label": "", "url": "", "booked": False, "backups": ["Khách sạn 68", "Sapphire"]},
         {"night_no": 2, "label": "", "url": "", "booked": False, "backups": []},
     ]
-    dump["days"][0]["stops"].append({**stop, "title": "", "places": [{"label": "", "url": "", "role": "main"}]})
+    dump["days"][0]["stops"].append(
+        {**stop, "title": "", "places": [{"label": "", "url": "", "role": "main"}]}
+    )
     dump["notes"] = ["", "Gọi phà trước"]
     out = from_ai_extract(AiExtract.model_validate(dump), TripExtract)
-    assert [h.label for h in out.hotels] == ["Khách sạn 68"] and [b.label for b in out.hotels[0].backups] == ["Sapphire"]
+    assert [h.label for h in out.hotels] == ["Khách sạn 68"] and [b.label for b in out.hotels[0].backups] == [
+        "Sapphire"
+    ]
     assert len(out.days[0].stops) == 1 and out.notes == ["Gọi phà trước"]
 
 

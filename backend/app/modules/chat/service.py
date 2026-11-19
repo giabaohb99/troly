@@ -30,6 +30,8 @@ log = logging.getLogger("troly.chat")
 PREV_TAIL_MESSAGES = 10
 APPROVAL_HOURS = 24
 PING_SECONDS = 15
+# Lượt xong mà SSE chưa đọc qua sự kiện kết thúc sau ngần này giây: app đã ngắt, cần notice chat_done.
+DELIVERY_GRACE_SECONDS = 5
 
 
 class ChatBusy(AppError):
@@ -573,14 +575,21 @@ def stream_turn(prepared: PreparedTurn) -> Iterator[str]:
 
     events: queue.Queue = queue.Queue()
     done = object()
+    delivered = threading.Event()
 
     def worker() -> None:
+        answer_id = None
         try:
             for item in iter_turn_events(prepared):
+                if item[0] == "message.completed":
+                    answer_id = (item[1].get("assistant_message") or {}).get("id")
                 events.put(item)
         finally:
             _release(prepared.user.user_id)
             events.put(done)
+        # Starlette không chắc đóng iterator đồng bộ khi app ngắt; dò bằng việc SSE có đọc qua sự kiện cuối không.
+        if answer_id and not delivered.wait(DELIVERY_GRACE_SECONDS):
+            mark_notify_done(prepared.user.user_id, answer_id)
 
     threading.Thread(target=worker, name=f"chat-turn-{prepared.user_message_id}", daemon=True).start()
     yield _sse(
@@ -594,9 +603,22 @@ def stream_turn(prepared: PreparedTurn) -> Iterator[str]:
             yield ": ping\n\n"
             continue
         if item is done:
+            delivered.set()  # tới được đây nghĩa là chunk message.completed đã gửi xong
             return
         name, data = item
         yield _sse(name, data)
+
+
+def mark_notify_done(user_id: int, message_id: int) -> None:
+    """App ngắt trước khi nhận hết lượt: bật cờ để notice `chat_done` báo trợ lý đã trả lời (QĐ-41)."""
+    try:
+        with SessionLocal() as session:
+            message = repo.get_message(session, user_id, message_id)
+            if message is not None:
+                message.notify_done = True
+                session.commit()
+    except Exception:
+        log.exception("Không đánh dấu được notify_done")
 
 
 def run_turn_json(prepared: PreparedTurn) -> dict:
