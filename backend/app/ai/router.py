@@ -30,6 +30,15 @@ def _has(text: str, phrases: tuple[str, ...]) -> bool:
     return any(re.search(rf"(?<![a-z]){re.escape(p)}(?![a-z])", text) for p in phrases)
 
 
+# Câu đáp ngắn nối lượt dựng chuyến (oke, ừ, làm đi, trả lời ngày đi, nơi xuất phát) vẫn đi Sonnet có tìm web.
+FOLLOW_UP_MAX_WORDS = 25
+
+
+def is_follow_up(text: str) -> bool:
+    words = normalize(text).split()
+    return 0 < len(words) <= FOLLOW_UP_MAX_WORDS
+
+
 def is_trip_plan(text: str) -> bool:
     """Câu xin dựng lịch trình mới từ mô tả: *tạo lịch trình đi Vũng Tàu 2 ngày*."""
     return bool(_TRIP_PLAN.search(normalize(text)))
@@ -46,10 +55,12 @@ def detect_mode(turn: TurnInput) -> str:
     return "chat"
 
 
-def plan_turn(turn: TurnInput, settings: AiSettings) -> TurnPlan:
+def plan_turn(turn: TurnInput, settings: AiSettings, previous_task: str | None = None) -> TurnPlan:
     mode = detect_mode(turn)
     use_opus = _has(normalize(turn.text), _OPUS)
-    trip_plan = mode == "chat" and is_trip_plan(turn.text)
+    trip_plan = mode == "chat" and (
+        is_trip_plan(turn.text) or (previous_task == "trip_plan" and is_follow_up(turn.text))
+    )
     if trip_plan:
         return TurnPlan(
             mode="think",
@@ -67,7 +78,7 @@ def plan_turn(turn: TurnInput, settings: AiSettings) -> TurnPlan:
             model=settings.ai_model_chat,
             effort=settings.ai_effort_chat,
             max_tokens=4096,
-            web_tools=False,
+            web_tools=True,  # Haiku có web_search cơ bản, tối đa 2 lần (prompt.build_tools)
             prefix_ttl="1h",
         )
     effort = {"chat": "medium", "think": "medium", "research": "medium", "summary": "low"}[mode]
@@ -88,7 +99,12 @@ def supports_fallbacks(model: str) -> bool:
 
 
 def choose_turn(
-    text: str, mode: str | None = None, has_attachments: bool = False, settings: AiSettings | None = None
+    text: str,
+    mode: str | None = None,
+    has_attachments: bool = False,
+    settings: AiSettings | None = None,
+    previous_task: str | None = None,
 ) -> TurnPlan:
-    """Điểm vào cho chat.service. `has_attachments` để dành cho luật tóm tắt tệp dài (hiện chưa đổi model)."""
-    return plan_turn(TurnInput(text, mode), settings or get_ai_settings())
+    """Điểm vào cho chat.service. `previous_task` là việc của lượt ngay trước (prompt.turn_task_of).
+    `has_attachments` để dành cho luật tóm tắt tệp dài (hiện chưa đổi model)."""
+    return plan_turn(TurnInput(text, mode), settings or get_ai_settings(), previous_task)

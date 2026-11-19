@@ -357,6 +357,50 @@ def prepare_turn(
         raise
 
 
+def _previous_task(session: Session, user: UserContext, conversation_id: int) -> str | None:
+    """Việc của lượt trước, chỉ khi bot kết lượt đó bằng câu hỏi (đang chờ người dùng đáp: ngày đi, *tìm nhé?*)."""
+    from app.ai.prompt import turn_task_of
+
+    task = turn_task_of(_last_turn_rules(session, user, conversation_id))
+    if task is None:
+        return None
+    last = session.scalar(
+        select(Message.text)
+        .where(
+            Message.user_id == user.user_id,
+            Message.conversation_id == conversation_id,
+            Message.role == "assistant",
+            Message.hidden.is_(False),
+        )
+        .order_by(Message.id.desc())
+        .limit(1)
+    )
+    return task if last and last.rstrip().endswith("?") else None
+
+
+def _last_turn_rules(session: Session, user: UserContext, conversation_id: int) -> str | None:
+    """Tin thời điểm (ẩn) của lượt gần nhất trong phiên: chứa luật riêng của lượt đó (vd. dựng chuyến).
+    Bỏ qua ghi chú duyệt, bỏ thẻ (cũng là tin hệ thống ẩn)."""
+    from app.ai.prompt import TIME_PREFIX
+
+    rows = session.scalars(
+        select(Message.content)
+        .where(
+            Message.user_id == user.user_id,
+            Message.conversation_id == conversation_id,
+            Message.role == "system",
+            Message.hidden.is_(True),
+        )
+        .order_by(Message.id.desc())
+        .limit(5)
+    )
+    for content in rows:
+        text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+        if text.startswith(TIME_PREFIX) or TIME_PREFIX in text[:200]:
+            return text
+    return None
+
+
 def _prepare_new_turn(
     session: Session,
     user: UserContext,
@@ -369,12 +413,20 @@ def _prepare_new_turn(
     from app.ai.prompt import build_turn_system_message
     from app.ai.router import choose_turn
 
-    plan = choose_turn(text, mode, bool(attachment_file_ids))
     conversation = repo.get_or_create_conversation(
         session, user.user_id, clock.chat_day(now, user.timezone), now
     )
     conversation = repo.get_conversation(session, user.user_id, conversation.id, lock=True)
-    _maybe_compact(session, user, conversation)
+    plan = choose_turn(
+        text,
+        mode,
+        bool(attachment_file_ids),
+        previous_task=_previous_task(session, user, conversation.id),
+    )
+    try:
+        _maybe_compact(session, user, conversation)
+    except Exception:  # nén là việc phụ: lỗi thì lượt vẫn chạy như không nén
+        log.exception("Nén phiên lỗi")
     prev_tail = _prev_tail(session, user, conversation, now)
     turn_id = uuid.uuid4()
 

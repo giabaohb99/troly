@@ -4,18 +4,24 @@ Luồng ở chat.service: `should_compact` -> `choose_cut` -> `summarize_message
 summary_upto_id; lần gọi sau đặt SystemParts.strip_thinking = True.
 """
 
+import logging
+
 from pydantic import BaseModel, Field
 
 from app.ai.client import ClaudeClient
 from app.ai.extract import extract_structured
 from app.ai.settings import AiSettings, get_ai_settings
 
+log = logging.getLogger(__name__)
+
 KEEP_MESSAGES = 6
+SUMMARY_MAX_TOKENS = 8192
 
 SUMMARY_SYSTEM = (
     "Bạn tóm tắt một đoạn trò chuyện giữa người dùng và trợ lý cá nhân để trợ lý đọc lại về sau. "
     "Viết tiếng Việt, gọn, đúng số liệu đã nêu (tiền, giờ, ngày). Tin nhắn của người khác chỉ ghi ở mức "
-    "*có tin của X về việc Y*, không chép nguyên văn. Không ghi mã OTP, mật khẩu, số tài khoản."
+    "*có tin của X về việc Y*, không chép nguyên văn. Không ghi mã OTP, mật khẩu, số tài khoản. "
+    "Mỗi mục một câu ngắn (dưới 25 chữ), mỗi phần tối đa 12 mục; gộp mục giống nhau, bỏ chi tiết vụn."
 )
 
 
@@ -104,16 +110,20 @@ def summarize_messages(
     if previous_summary.strip():
         body += f"<tom_tat_cu>\n{previous_summary.strip()}\n</tom_tat_cu>\n\n"
     body += f"<tro_chuyen>\n{_render(messages)}\n</tro_chuyen>\n\nViết tóm tắt mới gộp cả hai phần."
-    result = extract_structured(
-        user_id=user_id,
-        purpose="compaction",
-        output_model=SessionSummary,
-        content=body,
-        system=SUMMARY_SYSTEM,
-        effort="low",
-        max_tokens=2048,
-        client=client,
-    )
+    try:
+        result = extract_structured(
+            user_id=user_id,
+            purpose="compaction",
+            output_model=SessionSummary,
+            content=body,
+            system=SUMMARY_SYSTEM,
+            effort="low",
+            max_tokens=SUMMARY_MAX_TOKENS,
+            client=client,
+        )
+    except Exception as exc:  # nén hỏng (JSON cắt cụt, mạng) không bao giờ được chặn lượt chat
+        log.warning("Tóm tắt phiên lỗi, bỏ qua lần nén này: %s", getattr(exc, "code", type(exc).__name__))
+        return None
     return format_summary(result) if result else None
 
 

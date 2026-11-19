@@ -30,8 +30,12 @@ def test_tools_sorted_and_stable(settings):
     b = json.dumps(build_tools(get_tool_definitions(), plan), sort_keys=True, ensure_ascii=False)
     assert a == b
     tools = json.loads(a)
-    assert [t["name"] for t in tools] == ["alpha", "zeta"]
-    assert tools[-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert [t["name"] for t in tools] == [
+        "alpha",
+        "zeta",
+        "web_search",
+    ]  # Haiku có tìm web cơ bản sau app tools
+    assert tools[1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"} and "cache_control" not in tools[2]
     assert "cache_control" not in tools[0]
 
 

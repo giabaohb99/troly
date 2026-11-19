@@ -106,3 +106,23 @@ def test_web_search_location_has_no_unsupported_country():
     assert validate_request({"messages": [u("x")], "tools": WEB_TOOLS}) is None
     bad = [{**search, "user_location": {"type": "approximate", "country": "VN"}}]
     assert validate_request({"messages": [u("x")], "tools": bad}) == "Country code VN is not supported"
+
+
+def test_broken_summary_json_returns_none(make_client):
+    """Lỗi thật 18/11: Claude trả JSON tóm tắt bị cắt, parse lỗi; nén phải trả None, không ném."""
+    from pydantic import ValidationError
+
+    from app.ai.compaction import SUMMARY_MAX_TOKENS, SessionSummary, summarize_messages
+
+    try:
+        SessionSummary.model_validate_json('{"da_lam": ["ghi chi tiêu')
+    except ValidationError as exc:
+        broken = exc
+    fake = FakeClaude([broken])
+    out = summarize_messages(
+        user_id=1,
+        previous_summary="",
+        messages=[{"role": "user", "content": "cơm trưa 45k"}, {"role": "assistant", "content": "Đã ghi."}],
+        client=make_client(fake),
+    )
+    assert out is None and fake.requests[0]["max_tokens"] == SUMMARY_MAX_TOKENS == 8192

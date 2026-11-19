@@ -39,7 +39,7 @@ Ngoài tệp: luật nghiệp vụ từng module; bảng (11); API và SSE (12);
 | Tắt thinking | Được ở `high` trở xuống (V1 không tắt) | Lỗi 400 | Lỗi 400 |
 | Ép gọi công cụ (`tool_choice` `any`, `tool`) | Được nhưng bỏ thinking (V1 không dùng) | Lỗi 400 | Lỗi 400 |
 | Dự phòng khi bị từ chối | **Không có**; không gửi `fallbacks` | `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) | `fallbacks: "default"` (cùng beta) |
-| Tìm web | Không dùng | `web_search_20260209`, `web_fetch_20260209` | Như Sonnet |
+| Tìm web | `web_search_20250305` (thử thật 19/11/2026) | `web_search_20260209`, `web_fetch_20260209` | Như Sonnet |
 
 Chung cho cả ba: cửa sổ 1M token, đầu ra tối đa 128K; thinking thích ứng bật mặc định, `budget_tokens` lỗi 400; không gửi `temperature`, `top_p`, `top_k` (lỗi 400); không điền trước câu trả lời (lỗi 400); có tin `role: "system"` giữa hội thoại, không cần beta; tìm web 10 USD mỗi 1.000 lần tìm.
 
@@ -47,7 +47,7 @@ Chung cho cả ba: cửa sổ 1M token, đầu ra tối đa 128K; thinking thíc
 
 | Loại việc | Kích hoạt | Model | Effort | Công cụ |
 |---|---|---|---|---|
-| Chat thường, ghi chép | Mặc định | Haiku 5.5 | `AI_EFFORT_CHAT` (`low`) | Công cụ app |
+| Chat thường, ghi chép | Mặc định | Haiku 5.5 | `AI_EFFORT_CHAT` (`low`) | Công cụ app + `web_search_20250305` (bản cơ bản, Haiku không có lọc động), `max_uses` 2; chỉ tìm khi cần thông tin thật hoặc mới |
 | *Nghĩ kỹ* | Nút *Nghĩ kỹ*, hoặc câu có *nghĩ kỹ* | Sonnet 5.5 | `medium` | Công cụ app |
 | Research web | Nút *Tìm web*, hoặc câu có *tìm trên mạng*, *tra mạng*, *search web*, *research* | Sonnet 5.5 | `medium` | Công cụ app + tìm web (mục 3.9) |
 | Dựng chuyến từ câu mô tả (QĐ-36) | Câu có động từ *tạo*, *lập*, *lên*, *xếp*, *soạn*, *dựng*, *gợi ý* đi với *lịch trình*, *kế hoạch đi*, *chuyến đi* | Sonnet 5.5 (`mode = think`, `task = trip_plan`) | `medium` | Công cụ app + chỉ `web_search`, `max_uses` 4; luật riêng: hỏi tối đa 2 câu, tìm gộp, find_place lấy link, soạn đủ mọi ngày rồi import_trip đúng một lần, evaluate_trip ngay, nêu 2 tới 3 phương án; không tạo chuyến thứ hai |
@@ -59,7 +59,8 @@ Chung cho cả ba: cửa sổ 1M token, đầu ra tối đa 128K; thinking thíc
 | Trích chữ từ ảnh, PDF quét | Job, mục 3.8 | Haiku 5.5 | `low` | Không |
 | Đánh giá lịch trình (viết `summary` phương án) | Job (41 mục 7.2) | Sonnet 5.5 | `low` | Không |
 
-- `mode` chỉ áp cho lượt đó; lượt sau về Haiku trừ khi lại bấm nút hoặc nói lại.
+- `mode` chỉ áp cho lượt đó; lượt sau về Haiku trừ khi lại bấm nút hoặc nói lại. Riêng dựng chuyến: lượt trước là `trip_plan` và bot kết bằng câu hỏi thì câu đáp ngắn (tới 25 chữ: *oke*, ngày đi, nơi xuất phát) vẫn đi `trip_plan`.
+- Nén phiên (`compaction`, `max_tokens` 8.192) lỗi thì bỏ qua lần nén đó, lượt chat chạy như không nén.
 - Model nằm trong biến của 10: `AI_MODEL_CHAT` (Haiku), `AI_MODEL_EXTRACT` (Haiku); `AI_MODEL_SMART` (Sonnet), `AI_MODEL_MAX` (Opus).
 - **Câu trả lời ghi model đã dùng:** `response.model` của lần gọi cuối (khi có dự phòng, đây là model thật đã trả lời) ghi vào `tab_ai_run.model` và vào tin trả lời; app hiện nhãn nhỏ *Haiku 5.5*, *Sonnet 5.5*, *Opus 5.5* dưới bóng chữ khi không phải Haiku.
 - Lượt Sonnet, Opus có khối `fallback` thì lưu nguyên; khi gửi lại theo luật của API: bỏ khối `thinking`, `tool_use`, `server_tool_use` lẻ đứng trước khối `fallback` cuối, giữ khối `fallback` đúng chỗ.

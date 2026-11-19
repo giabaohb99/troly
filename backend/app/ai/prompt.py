@@ -25,6 +25,7 @@ STATIC_PROMPT = """Bạn là trợ lý cá nhân trong app Trợ lý trên đi�
 - Thời điểm hiện tại nằm trong tin hệ thống gần nhất; tính "hôm nay", "hôm qua", "mai 3 giờ" theo đó, giờ Việt Nam.
 - Câu ghi chi tiêu như "cơm trưa 45k" thì ghi ngay bằng add_expense; chỉ hỏi lại khi thiếu số tiền.
 - Người dùng hỏi lại điều đã lưu, đã nói, đã nhận (ghi chú, tin nhắn, tệp, chuyến đi) thì dùng search_everything trước.
+- Có web_search thì chỉ tìm khi cần thông tin thật hoặc mới (địa điểm, giờ mở cửa, giá, tin tức); câu chuyện thường, ghi chép, hỏi dữ liệu trong app thì không tìm.
 - Không tự nghĩ ra tên quán, địa điểm; địa điểm phải lấy từ tệp, lời người dùng, kết quả tìm web có nguồn hoặc find_place.
 - Một câu có nhiều việc thì gọi đủ công cụ, gọi song song khi không phụ thuộc nhau. Công cụ báo lỗi thì sửa đầu vào thử lại một lần, vẫn lỗi thì nói ngắn lý do.
 
@@ -52,7 +53,8 @@ STATIC_PROMPT = """Bạn là trợ lý cá nhân trong app Trợ lý trên đi�
 - Công cụ báo đã tạo nút (bản đồ, link, xác nhận, lựa chọn, hoàn tác) thì chỉ nói "bấm nút bên dưới", không chép link.
 
 # Khi không làm được
-- Ngoài khả năng của công cụ hiện có thì nói thẳng một câu là app chưa làm được."""  # noqa: E501
+- Ngoài khả năng của công cụ hiện có thì nói thẳng một câu là app chưa làm được.
+- Chỉ đề nghị việc mà lượt này có công cụ làm được; đã đề nghị thì khi người dùng đồng ý phải làm ngay, không đổi ý."""  # noqa: E501
 
 RESEARCH_RULES = (
     "Lượt này bật tìm web. Dữ liệu huấn luyện của bạn kết thúc trước hôm nay khá lâu. "
@@ -74,6 +76,21 @@ TRIP_PLAN_RULES = (
     "án và mời chọn. Không tạo chuyến thứ hai, không xóa chuyến vừa tạo trong lượt này."
 )
 TRIP_PLAN_MAX_SEARCHES = 4
+CHAT_MAX_SEARCHES = 2
+# Haiku 5.5 không có bản lọc động; dùng bản tìm cơ bản (thử thật 19/11/2026: nhận, đếm đúng số lần tìm).
+HAIKU_WEB_SEARCH = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": CHAT_MAX_SEARCHES,
+    "user_location": {"type": "approximate", "timezone": "Asia/Ho_Chi_Minh"},
+}
+
+
+def turn_task_of(system_text: str | None) -> str | None:
+    """Đọc lại việc của một lượt từ tin hệ thống đã lưu (để câu đáp ngắn nối tiếp đúng lượt)."""
+    return "trip_plan" if system_text and TRIP_PLAN_RULES[:40] in system_text else None
+
+
 THINK_RULES = (
     "Lượt này người dùng muốn nghĩ kỹ: tra đủ số liệu, cân nhắc phương án, trả lời tối đa khoảng 8 câu."
 )
@@ -156,7 +173,9 @@ def build_tools(app_tools: list[dict], plan: TurnPlan) -> list[dict]:
         tools[-1]["cache_control"] = _cache(plan.prefix_ttl)
     if plan.web_tools:
         web = [dict(t) for t in WEB_TOOLS]
-        if getattr(plan, "task", None) == "trip_plan":
+        if plan.model.startswith("claude-haiku"):
+            web = [dict(HAIKU_WEB_SEARCH)]
+        elif getattr(plan, "task", None) == "trip_plan":
             # Dựng chuyến chỉ cần tìm, không đọc cả trang; ít lần tìm (thử thật 0,16 USD một lượt, 18/11/2026).
             web = [{**t, "max_uses": TRIP_PLAN_MAX_SEARCHES} for t in web if t["name"] == "web_search"]
         tools.extend(web)

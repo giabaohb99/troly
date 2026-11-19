@@ -292,3 +292,33 @@ def test_user_attachments_get_file_meta_and_card_shows_error(db, user):
     row = db.get(PendingAction, action_id)
     row.status, row.error = "failed", "Chưa nối Google Drive."
     assert service.serialize_pending(row)["error"] == "Chưa nối Google Drive."
+
+
+def test_compaction_failure_does_not_block_turn(auth_client, db, fake_claude, monkeypatch):
+    from app.ai import compaction
+    from app.ai.schemas import AiError
+
+    def broken(*a, **k):
+        raise AiError("AI_UNAVAILABLE", "JSON tóm tắt hỏng")
+
+    monkeypatch.setattr(compaction, "should_compact", lambda *a, **k: True)
+    monkeypatch.setattr(compaction, "choose_cut", lambda messages: 1)
+    monkeypatch.setattr(compaction, "summarize", broken)
+    fake_claude.script.append(text_reply("Chào đại ca."))
+    send(auth_client, "chào em")  # có lịch sử để có thứ cần nén
+    fake_claude.script.append(text_reply("Vẫn trả lời được."))
+    resp = send(auth_client, "hôm nay thế nào")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["assistant_message"]["text"] == "Vẫn trả lời được."
+
+
+def test_ok_after_trip_plan_turn_stays_on_sonnet(auth_client, fake_claude):
+    """Lỗi thật S25+: bot đề nghị tìm thêm, người dùng *Oke*, lượt sau rơi về Haiku và hứa suông."""
+    fake_claude.script.append(text_reply("Đại ca đi ngày nào, xuất phát từ đâu?"))
+    assert send(auth_client, "tạo lịch trình đi Vũng Tàu 2 ngày").status_code == 200
+    fake_claude.script.append(text_reply("Em đã dựng xong chuyến."))
+    assert send(auth_client, "Oke").status_code == 200
+    assert [r["model"] for r in fake_claude.requests] == ["claude-sonnet-5-5", "claude-sonnet-5-5"]
+    fake_claude.script.append(text_reply("Dạ."))
+    assert send(auth_client, "cảm ơn em").status_code == 200
+    assert fake_claude.requests[-1]["model"] == "claude-haiku-5-5"  # bot không còn chờ đáp: về Haiku

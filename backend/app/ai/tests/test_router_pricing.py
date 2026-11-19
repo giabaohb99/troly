@@ -11,14 +11,14 @@ from app.ai.schemas import TurnInput
 @pytest.mark.parametrize(
     ("text", "mode", "model", "web"),
     [
-        ("cơm trưa 45k", None, "claude-haiku-5-5", False),
+        ("cơm trưa 45k", None, "claude-haiku-5-5", True),
         ("Nghĩ KỸ giúp em tháng này nên cắt khoản nào", None, "claude-sonnet-5-5", False),
         ("tìm trên mạng giá vé phà", None, "claude-sonnet-5-5", True),
         ("giá vé phà", "research", "claude-sonnet-5-5", True),
         ("tóm tắt giúp", "summary", "claude-sonnet-5-5", False),
         ("dùng Opus phân tích chi tiêu", None, "claude-opus-5-5", False),
         ("dùng opus tìm web giá vàng", None, "claude-opus-5-5", True),
-        ("researcher là gì", None, "claude-haiku-5-5", False),
+        ("researcher là gì", None, "claude-haiku-5-5", True),
     ],
 )
 def test_plan_turn(text, mode, model, web, settings):
@@ -118,4 +118,41 @@ def test_trip_plan_goes_to_sonnet_with_web(text, trip_plan, settings):
             datetime(2026, 11, 18, tzinfo=UTC), "Asia/Ho_Chi_Minh", plan
         )
     else:
-        assert plan.model == settings.ai_model_chat and not plan.web_tools
+        assert plan.model == settings.ai_model_chat and plan.task is None
+
+
+def test_haiku_turn_gets_basic_web_search_capped():
+    from app.ai.prompt import build_tools
+    from app.ai.settings import AiSettings
+
+    plan = plan_turn(TurnInput("cây xăng gần Đất Đỏ"), AiSettings())
+    web = [t for t in build_tools([{"name": "add_expense"}], plan) if t.get("type", "").startswith("web_")]
+    assert web == [
+        {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 2,
+            "user_location": {"type": "approximate", "timezone": "Asia/Ho_Chi_Minh"},
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "text, previous, task",
+    [
+        ("Oke", "trip_plan", "trip_plan"),
+        ("ừ làm đi", "trip_plan", "trip_plan"),
+        ("thứ 7 22/11, xuất phát Cần Thơ 6h sáng", "trip_plan", "trip_plan"),
+        ("Oke", None, None),
+    ],
+)
+def test_short_follow_up_keeps_trip_plan(text, previous, task, settings):
+    from app.ai.prompt import TRIP_PLAN_RULES, build_turn_system_text, turn_task_of
+
+    plan = plan_turn(TurnInput(text), settings, previous)
+    assert plan.task == task
+    if task:
+        from datetime import UTC, datetime
+
+        saved = build_turn_system_text(datetime(2026, 11, 19, tzinfo=UTC), "Asia/Ho_Chi_Minh", plan)
+        assert turn_task_of(saved) == "trip_plan" and TRIP_PLAN_RULES in saved
