@@ -94,6 +94,7 @@ Mỗi phase theo luật ở `00-ke-hoach.md` mục 4.4. Phase sau chỉ bắt đ
 
 | Ngày | Ai đề xuất | Ý tưởng | Đưa vào phase |
 |---|---|---|---|
+| 19/11/2026 | Người dùng | Chat theo phiên đặt tên như Claude: danh sách phiên (đổi tên, ghim, tìm, xóa), mở lại phiên cũ để chat tiếp, thay cho tách phiên tự động lúc 04:00 làm tin cũ khó tìm. Tin cũ hiện vẫn lưu ở máy chủ, chỉ thiếu màn danh sách | Sau V1, khi người dùng gọi |
 
 ## 5. Thỏa thuận giữa agent
 
