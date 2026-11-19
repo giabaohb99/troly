@@ -1,26 +1,35 @@
 import { useState } from 'react'
 import { FileSpreadsheet, FileText, FileType, ImageOff, Loader2 } from 'lucide-react'
-import type { Attachment } from '@/modules/chat/types/chat'
 import { useFileInfo } from '@/shared/hooks/use-file-info'
-import { fileKindLabel, formatFileSize, isImageFile, openFileById, truncateMiddle } from '@/shared/utils/open-file'
+import { useOpenFile } from '@/shared/hooks/use-open-file'
+import { fileKindLabel, formatFileSize, isImageFile, truncateMiddle } from '@/shared/utils/open-file'
 import { cn } from '@/shared/utils/cn'
 
 const ICONS = { PDF: FileText, Word: FileType, Excel: FileSpreadsheet } as const
 
+// Tệp gửi kèm tin (chat, Hộp tin): có thể chỉ có file_id, thiếu thì hỏi thêm GET /files/{id}.
+export interface AttachmentRef {
+  file_id: number
+  mime?: string | null
+  name?: string | null
+  size_bytes?: number | null
+}
+
 // Tệp người dùng gửi kèm (lỗi bản 1.0.1: chỉ hiện biểu tượng nhỏ). Ảnh: ảnh thu nhỏ bo góc, tối đa 200 px, bấm xem
 // lớn bằng trình xem của máy. Tệp khác: thẻ nhỏ có biểu tượng loại, tên rút gọn giữa, cỡ, bấm mở.
 // Máy chủ chỉ gửi file_id thì hỏi GET /files/{id} cho tên, loại, cỡ, link tải.
-export function AttachmentPreview({ attachment }: { attachment: Attachment }) {
+export function AttachmentPreview({ attachment }: { attachment: AttachmentRef }) {
   const needInfo = !attachment.mime || !attachment.name || isImageFile(attachment.mime, attachment.name)
   const info = useFileInfo(attachment.file_id, needInfo)
   const [opening, setOpening] = useState(false)
+  const openFile = useOpenFile()
   const [broken, setBroken] = useState(false)
   const name = attachment.name ?? info.data?.original_name ?? 'Tệp'
   const mime = attachment.mime ?? info.data?.mime ?? ''
   const size = attachment.size_bytes ?? info.data?.size_bytes ?? null
   const open = () => {
     setOpening(true)
-    void openFileById(attachment.file_id, name).finally(() => setOpening(false))
+    void openFile(attachment.file_id, name, mime).finally(() => setOpening(false))
   }
 
   if (!mime && needInfo && info.isPending) {

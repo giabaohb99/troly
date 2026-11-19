@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FileSpreadsheet, FileText, FileType, Loader2 } from 'lucide-react'
-import { fileKindLabel, formatFileSize, openFileById } from '@/shared/utils/open-file'
+import { useOpenFile } from '@/shared/hooks/use-open-file'
+import { fileKindLabel, formatFileSize } from '@/shared/utils/open-file'
 
 const ICONS = { PDF: FileText, Word: FileType, Excel: FileSpreadsheet } as const
 
@@ -15,6 +16,7 @@ export interface FileCardData {
 // `file` (agent AI) lẫn tệp trong `attachments`.
 export function FileCard({ file }: { file: FileCardData }) {
   const [busy, setBusy] = useState(false)
+  const openFile = useOpenFile()
   const kind = fileKindLabel(file.mime, file.name)
   const Icon = ICONS[kind as keyof typeof ICONS] ?? FileText
   const size = formatFileSize(file.size_bytes)
@@ -24,7 +26,7 @@ export function FileCard({ file }: { file: FileCardData }) {
       disabled={busy}
       onClick={() => {
         setBusy(true)
-        void openFileById(file.file_id, file.name).finally(() => setBusy(false))
+        void openFile(file.file_id, file.name, file.mime).finally(() => setBusy(false))
       }}
       className="flex w-full max-w-[85%] items-center gap-3 rounded-2xl border bg-card px-3 py-2.5 text-left"
     >

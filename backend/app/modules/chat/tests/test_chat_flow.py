@@ -286,6 +286,7 @@ def test_history_shows_current_card_state(auth_client, db, user, fake_claude, mo
     assert (
         shown and shown[0]["status"] == "done" and shown[0]["result_text"] == "Đã không còn, không cần xóa."
     )
+    assert shown[0]["decided_at"] == ok.json()["data"]["action"]["decided_at"]
 
 
 def test_user_attachments_get_file_meta_and_card_shows_error(db, user):
@@ -341,3 +342,21 @@ def test_ok_after_trip_plan_turn_stays_on_sonnet(auth_client, fake_claude):
     fake_claude.script.append(text_reply("Dạ."))
     assert send(auth_client, "cảm ơn em").status_code == 200
     assert fake_claude.requests[-1]["model"] == "claude-haiku-5-5"  # bot không còn chờ đáp: về Haiku
+
+
+def test_pasted_api_key_never_stored_or_sent(auth_client, db, fake_claude):
+    """QĐ-46: tin có khóa AIza giả thì DB và yêu cầu gửi Claude không chứa khóa; lượt có luật nhắc đổi khóa."""
+    from app.ai.prompt import SECRET_RULES
+    from app.ai.redact import KEY_MASK
+
+    key = "AIza" + "SyD3mo0nlyFakeKeyForTests0000000000"
+    fake_claude.script.append(
+        text_reply("Em không lưu khóa qua chat; đại ca tạo khóa mới rồi nhập ở Cài đặt nhé.")
+    )
+    resp = send(auth_client, f"đây là khóa gemini của anh {key} lưu giúp em")
+    assert resp.status_code == 200, resp.text
+    assert key not in resp.text and KEY_MASK in resp.json()["data"]["user_message"]["text"]
+    rows = db.scalars(select(Message)).all()
+    assert all(key not in (m.text or "") and key not in str(m.content) for m in rows)
+    sent = str(fake_claude.requests[0])
+    assert key not in sent and KEY_MASK in sent and SECRET_RULES in sent

@@ -444,9 +444,9 @@ def run_update_stop(ctx: ToolContext, data: UpdateStopInput) -> ToolOutput:
     if not changes and data.after_stop_id is None:
         raise AiError("VALIDATION_ERROR", "Không có gì để sửa.")
     if "day_no" in changes:
-        changes["seq"] = (
-            1000 + data.stop_id
-        )  # tạm cuối ngày mới cho khỏi trùng thứ tự; reorder bên dưới xếp lại
+        # Tạm đặt cuối ngày đích cho khỏi trùng thứ tự (seq là smallint); reorder bên dưới xếp lại 1..n.
+        dest = _day_stops(ctx, data.trip_id, changes["day_no"])
+        changes["seq"] = max((s["seq"] for s in dest), default=0) + 1
     stop = (
         service.update_stop(ctx.session, ctx.user, data.trip_id, data.stop_id, changes) if changes else None
     )

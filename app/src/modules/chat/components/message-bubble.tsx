@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { MessageText } from '@/modules/chat/components/message-text'
-import { AttachmentPreview } from '@/modules/chat/components/attachment-preview'
+import { AttachmentPreview } from '@/shared/components/attachment-preview'
 import { CitationList } from '@/modules/chat/components/citation-list'
 import { FileCard } from '@/modules/chat/components/file-card'
 import type { Attachment, Citation } from '@/modules/chat/types/chat'

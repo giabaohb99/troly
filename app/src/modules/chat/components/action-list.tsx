@@ -183,7 +183,7 @@ export function ActionList({ actions, pendingActions, onChoice, disabled, hidden
                 key={action.id}
                 action={action}
                 serverStatus={pendingActions?.find((p) => p.id === action.pending_action_id)?.status}
-                lookupStatus={!!pendingActions && !pendingActions.some((p) => p.id === action.pending_action_id)}
+                lookupStatus
               />
             )
           case 'choices':

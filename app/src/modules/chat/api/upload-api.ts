@@ -1,10 +1,11 @@
 import { ApiError } from '@/core/api/api-error'
 import { apiPost } from '@/core/api/http-client'
+import { guessMime } from '@/shared/utils/mime'
 
 // Tải tệp lên R2 bằng URL ký sẵn (12-api.md mục 5.1): xin URL, PUT thẳng lên R2, báo xong.
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
-export const ACCEPTED_FILES = 'image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+export const ACCEPTED_FILES = 'image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.md,.markdown,text/markdown,.txt,text/plain'
 
 export interface UploadedFile {
   id: number
@@ -19,7 +20,8 @@ async function sha256Hex(file: File): Promise<string> {
 
 export async function uploadFile(file: File, purpose = 'chat_attachment'): Promise<UploadedFile> {
   if (file.size > MAX_FILE_BYTES) throw new ApiError(413, 'Tệp quá 25 MB.', 'PAYLOAD_TOO_LARGE')
-  const mime = file.type || 'application/octet-stream'
+  // Android hay trả mime rỗng cho .md, .txt: suy theo đuôi (QĐ-44).
+  const mime = guessMime(file.name, file.type)
   const target = await apiPost<{ file_id: number; upload_url: string; upload_headers: Record<string, string> | null }>('/files/upload-url', {
     original_name: file.name,
     mime,

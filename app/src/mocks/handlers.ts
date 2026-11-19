@@ -227,18 +227,20 @@ export const handlers = [
     await delay(500)
     const calendar = calendarPending.get(Number(params.id))
     if (calendar) {
-      if (calendar.action.status !== 'pending') return fail(409, 'ACTION_NOT_PENDING', 'Hành động này đã được xử lý.')
+      // Như máy chủ: bấm lại thẻ đã quyết trả 200 kèm trạng thái và decided_at cũ, không làm lần hai.
+      if (calendar.action.status !== 'pending') return ok({ action: calendar.action, result_text: 'Đã làm xong.' })
       calendar.run()
-      calendar.action.status = 'done'
+      Object.assign(calendar.action, { status: 'done', decided_at: new Date().toISOString() })
       return ok({ action: calendar.action, result_text: 'Đã lưu và gửi thư cho khách.' })
     }
     const action = mockDb.pending.find((p) => p.id === Number(params.id))
-    if (!action || action.status !== 'pending') return fail(409, 'ACTION_NOT_PENDING', 'Hành động này đã được xử lý.')
+    if (!action) return fail(404, 'NOT_FOUND', 'Không tìm thấy việc chờ duyệt.')
+    if (action.status !== 'pending') return ok({ action, result_text: action.status === 'done' ? 'Đã làm xong.' : (action.error ?? '') })
     if (failingActions.has(action.id)) {
-      Object.assign(action, { status: 'failed', error: 'Chuyến này đã bị xóa trước đó.' })
+      Object.assign(action, { status: 'failed', error: 'Chuyến này đã bị xóa trước đó.', decided_at: new Date().toISOString() })
       return ok({ action, result_text: 'Chuyến này đã bị xóa trước đó.' })
     }
-    action.status = 'done'
+    Object.assign(action, { status: 'done', decided_at: new Date().toISOString() })
     mockDb.expenses.filter((e) => !e.deleted).slice(0, 2).forEach((e) => (e.deleted = true))
     return ok({ action, result_text: 'Đã xóa 2 khoản.' })
   }),
@@ -292,7 +294,11 @@ export const handlers = [
     const blob = mockBlobs.get(Number(params.id))
     return blob ? new HttpResponse(blob, { headers: { 'Content-Type': blob.type || 'application/octet-stream' } }) : new HttpResponse(null, { status: 404 })
   }),
-  http.get('/mock-files/:name', ({ params }) => new HttpResponse(`Tệp giả ${String(params.name)}`, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })),
+  http.get('/mock-files/:name', ({ params }) =>
+    String(params.name).endsWith('.md')
+      ? new HttpResponse('# Ghi chú họp\n\nChốt **giá thuê** trước *thứ Năm*.\n\n- Bản in hợp đồng\n- Góp ý điều khoản\n\n1. Gửi anh Minh\n2. Báo chị Lan\n\n> Nhớ mang dấu công ty.\n\nXem [mẫu](https://example.com/mau).', { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } })
+      : new HttpResponse(`Tệp giả ${String(params.name)}`, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }),
+  ),
   http.post(`${API}/files/:id/complete`, ({ params }) => ok({ id: Number(params.id), status: 'ready' })),
 
   http.get(`${API}/expenses/categories`, () => ok({ items: mockDb.categories })),

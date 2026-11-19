@@ -13,6 +13,8 @@ export interface PendingAction {
   // Lý do khi failed (đề nghị agent AI thêm; chưa có thì null).
   error?: string | null
   expires_at: string
+  // Giờ máy chủ ghi khi duyệt, bỏ, hết hạn; thẻ hiện giờ này, không phải giờ bấm.
+  decided_at?: string | null
   created_at: string
 }
 
@@ -29,6 +31,8 @@ export interface ConfirmInfo {
   // Trạng thái máy chủ ghi kèm hành động confirm trong tin (khi có).
   status?: PendingStatus | null
   error?: string | null
+  decided_at?: string | null
+  result_text?: string | null
 }
 
 export function toConfirmInfo(action: PendingAction, labels: { confirm?: string; cancel?: string } = {}): ConfirmInfo {

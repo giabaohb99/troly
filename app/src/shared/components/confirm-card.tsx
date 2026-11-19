@@ -7,8 +7,7 @@ import { approveAction, getActionStatus, rejectAction } from '@/shared/api/pendi
 import { queryKeys } from '@/shared/constants/query-keys'
 import type { ConfirmInfo, PendingStatus } from '@/shared/types/pending-action'
 import { Button } from '@/shared/ui/button'
-import { formatTime } from '@/shared/utils/format'
-import { classifyDecisionError, initialStatus, outcomeFromAction, outcomeFromServer, type CardOutcome } from '@/shared/utils/pending-decision'
+import { classifyDecisionError, decidedLabel, extraResult, initialStatus, isFinalStatus, outcomeFromAction, outcomeFromServer, type CardOutcome } from '@/shared/utils/pending-decision'
 import { cn } from '@/shared/utils/cn'
 
 function hoursLeft(expiresAt: string, now = Date.now()): number {
@@ -18,7 +17,7 @@ function hoursLeft(expiresAt: string, now = Date.now()): number {
 interface ConfirmCardProps {
   action: ConfirmInfo
   serverStatus?: PendingStatus
-  // Thẻ trong lịch sử mà danh sách việc chờ duyệt không còn nó: hỏi máy chủ trạng thái thật trước khi hiện nút.
+  // Thẻ trong lịch sử: trạng thái trong tin chưa phải đã quyết thì hỏi máy chủ trạng thái thật trước khi hiện nút.
   lookupStatus?: boolean
   className?: string
   onDecided?: (status: PendingStatus) => void
@@ -30,21 +29,28 @@ export function ConfirmCard({ action, serverStatus, lookupStatus, className, onD
   const queryClient = useQueryClient()
   const [outcome, setOutcome] = useState<CardOutcome | null>(null)
   const [sending, setSending] = useState(false)
-  const [resultAt, setResultAt] = useState<string | null>(null)
   const sendingRef = useRef(false)
   const [openedAt] = useState(() => Date.now())
   const lookup = useQuery({
     queryKey: ['pending-action', action.pending_action_id],
     queryFn: () => getActionStatus(action.pending_action_id),
-    enabled: !!lookupStatus && !outcome && !action.status,
-    staleTime: 60_000,
+    enabled: !!lookupStatus && !outcome && !isFinalStatus(action.status),
+    // Kết quả còn chờ thì hỏi lại mỗi lần mở (có thể đã duyệt ở nơi khác); đã quyết thì không đổi.
+    staleTime: (query) => (query.state.data?.status === 'pending' ? 0 : 60_000),
   })
+  const checking = lookup.isPending || (lookup.isFetching && lookup.data?.status === 'pending')
   const looked = lookup.data ? outcomeFromServer(lookup.data) : null
-  const current: CardOutcome = outcome ?? looked ?? { status: initialStatus(action.status, serverStatus), reason: action.error ?? null, transient: false }
+  const current: CardOutcome = outcome ??
+    looked ?? {
+      status: initialStatus(action.status, serverStatus),
+      reason: action.error ?? null,
+      transient: false,
+      decidedAt: action.decided_at ?? null,
+      resultText: action.result_text ?? null,
+    }
 
   const finish = (next: CardOutcome) => {
     setOutcome(next)
-    setResultAt(new Date().toISOString())
     onDecided?.(next.status)
     void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
     void queryClient.invalidateQueries({ queryKey: ['pending-action', action.pending_action_id] })
@@ -85,7 +91,7 @@ export function ConfirmCard({ action, serverStatus, lookupStatus, className, onD
     }
   }
 
-  if (lookupStatus && !outcome && !action.status && lookup.isPending) {
+  if (lookupStatus && !outcome && !isFinalStatus(action.status) && checking) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
@@ -97,8 +103,11 @@ export function ConfirmCard({ action, serverStatus, lookupStatus, className, onD
     return (
       <p className="flex items-center gap-2 text-sm text-primary">
         <CircleCheck className="size-4" />
-        Đã làm: {action.title}
-        {resultAt && ` lúc ${formatTime(resultAt)}`}
+        <span className="min-w-0">
+          Đã làm: {action.title}
+          {decidedLabel(current.decidedAt) && ` ${decidedLabel(current.decidedAt)}`}
+          {extraResult(current.resultText) && <span className="text-muted-foreground"> · {extraResult(current.resultText)}</span>}
+        </span>
       </p>
     )
   }

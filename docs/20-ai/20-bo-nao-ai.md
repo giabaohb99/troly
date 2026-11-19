@@ -376,6 +376,10 @@ V1 không có Routes, Places. Khi đánh giá, trip gọi `estimate_legs(stops, 
 - Nghĩ kỹ: thêm một lượt Sonnet chỉ có `web_search` (tối đa 2 lần mỗi điểm, trần 6) tra giờ mở cửa (tham quan, ăn uống, mua sắm) và giờ phà cuối, rồi lượt có cấu trúc đọc ghi chú ra `checks` (giờ theo dạng `periods` của Google, có nghỉ trưa; `last_time` của phà). Hai lượt tách vì citations không đi cùng đầu ra có cấu trúc. Nguồn mâu thuẫn thì `found = false`, giữ câu giải thích; link nguồn phải có trong kết quả tìm.
 - Thử thật 18/11/2026 (`tests/ai_eval/leg_cases.yaml`): bốn mẫu chặng đạt, khoảng 0,006 USD mỗi lần đánh giá; lượt nghĩ kỹ khoảng 0,10 USD và giờ tìm được không ổn định giữa các lần chạy.
 
+### 3.10c Che khóa API dán vào chat (QĐ-46, QĐ-48)
+
+`ai/redact.mask_secrets` che chuỗi giống khóa (AIza, sk-, xai-, gsk_, hf_, gh*_, ya29. và chuỗi dài vừa chữ vừa số sau key, khóa, token) thành `[khóa đã che]` trước khi lưu tin và gửi Claude. Lượt có che thì tin hệ thống thêm luật: không nhận khóa qua chat, khóa đã lộ nên tạo khóa mới. Không có nút mở cài đặt.
+
 ### 3.11 Hành động trả cho app (nguồn chuẩn, vỏ phẳng theo QĐ-26)
 
 Mỗi hành động: `{id, type, label, ...trường riêng}`. `id` duy nhất trong một tin (`a1`, `a2`). Đi trong sự kiện SSE `action` và mảng `actions` của `Message`. App gặp `type` lạ thì bỏ qua.

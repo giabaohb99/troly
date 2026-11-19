@@ -432,6 +432,10 @@ def _prepare_new_turn(
     prev_tail = _prev_tail(session, user, conversation, now)
     turn_id = uuid.uuid4()
 
+    from app.ai.redact import mask_secrets
+
+    # QĐ-46: khóa API dán vào chat không được lưu DB, không gửi Claude.
+    text, secret_masked = mask_secrets(text)
     blocks: list[dict] = file_service.build_claude_blocks(session, user.user_id, attachment_file_ids)
     if text.strip():
         blocks.append({"type": "text", "text": text})
@@ -449,7 +453,7 @@ def _prepare_new_turn(
         ),
     )
     repo.touch_conversation(session, user.user_id, conversation.id, now, visible=True)
-    time_message = build_turn_system_message(now, user.timezone, plan)
+    time_message = build_turn_system_message(now, user.timezone, plan, secret_masked)
     repo.add_message(
         session,
         Message(
@@ -832,7 +836,13 @@ def with_action_state(session: Session, user_id: int, messages: list[dict]) -> l
             if row is not None:
                 status = "expired" if row.status == "pending" and row.expires_at <= now else row.status
                 text = _STATUS_TEXT["expired"] if status == "expired" else _status_text(row)
-                a = {**a, "status": status, "error": row.error, "result_text": text}
+                a = {
+                    **a,
+                    "status": status,
+                    "error": row.error,
+                    "result_text": text,
+                    "decided_at": row.decided_at,
+                }
             actions.append(a)
         m["actions"] = actions
     return messages

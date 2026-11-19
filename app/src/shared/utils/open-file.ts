@@ -38,6 +38,7 @@ export function fileKindLabel(mime: string, name: string): string {
   if (mime.includes('wordprocessingml') || /\.docx?$/i.test(name)) return 'Word'
   if (mime.includes('spreadsheetml') || /\.xlsx?$/i.test(name)) return 'Excel'
   if (mime.startsWith('image/')) return 'Ảnh'
+  if (mime === 'text/markdown' || /\.(md|markdown)$/i.test(name)) return 'Markdown'
   return 'Tệp'
 }
 

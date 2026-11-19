@@ -94,6 +94,7 @@ Mỗi phase theo luật ở `00-ke-hoach.md` mục 4.4. Phase sau chỉ bắt đ
 
 | Ngày | Ai đề xuất | Ý tưởng | Đưa vào phase |
 |---|---|---|---|
+| 19/11/2026 | Người dùng | Khi làm lại hộp tin (patch QĐ-44 ở D:/giabao/troly-wip): KHÔNG dùng bong bóng trái phải; mỗi tin là một khối rộng hết màn như câu trả lời ở màn Trợ lý (tên người gửi đậm, giờ, chữ có định dạng, link bấm được), dễ đọc | Khi làm tiếp hộp tin |
 | 19/11/2026 | Điều phối | Chia sẻ vào Trợ lý từ app khác (link, ảnh, tệp vào chat) | Chờ người dùng chọn |
 | 19/11/2026 | Điều phối | Bản tin sáng 7 giờ (lịch, việc, email, Zalo cần trả lời, chi hôm qua), tổng kết tuần chủ nhật | Chờ người dùng chọn |
 | 19/11/2026 | Điều phối | Ngân sách theo nhóm chi (báo ở 80%), nhận ra khoản chi định kỳ và nhắc trước hạn | Chờ người dùng chọn |

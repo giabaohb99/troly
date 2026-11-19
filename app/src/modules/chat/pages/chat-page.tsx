@@ -18,7 +18,7 @@ import { UpdateBanner } from '@/shared/components/update-banner'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { formatUsd } from '@/shared/utils/format'
-import { openFileById } from '@/shared/utils/open-file'
+import { useOpenFile } from '@/shared/hooks/use-open-file'
 import { useOlderMessages } from '@/modules/chat/hooks/use-older-messages'
 import { mergeOlder } from '@/modules/chat/utils/older-messages'
 import { Alarm } from '@/core/native/alarm'
@@ -38,6 +38,7 @@ export function ChatPage() {
   const [params, setParams] = useSearchParams()
   const [draft, setDraft] = useState(() => params.get('hoi') ?? '')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const openFile = useOpenFile()
   const listRef = useRef<HTMLDivElement>(null)
   const latest = today.data?.messages ?? []
   // Chỉ tải 50 tin mới nhất; kéo lên gần đầu thì tải trang cũ hơn, giữ nguyên chỗ đang đọc.
@@ -113,7 +114,7 @@ export function ChatPage() {
   const fileToOpen = Number(params.get('mo-tep')) || null
   useEffect(() => {
     if (!targetMessage && !fileToOpen) return
-    if (fileToOpen) void openFileById(fileToOpen)
+    if (fileToOpen) void openFile(fileToOpen)
     if (!targetMessage || !today.isSuccess) {
       if (fileToOpen)
         setParams(
@@ -263,7 +264,8 @@ export function ChatPage() {
 
           {turn && (
             <>
-              <MessageBubble role="user" text={turn.userText} attachments={turn.userMessage?.attachments ?? turn.attachments} />
+              {/* Máy chủ che khóa API trong tin trước khi lưu (QĐ-46): có bản của máy chủ thì hiện bản đó thay chữ vừa gõ. */}
+              <MessageBubble role="user" text={turn.userMessage?.text ?? turn.userText} attachments={turn.userMessage?.attachments ?? turn.attachments} />
               {turn.status === 'streaming' && !turn.text && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
                   <Loader2 className="size-4 animate-spin" />

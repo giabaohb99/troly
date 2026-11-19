@@ -18,6 +18,7 @@ const ExpensePage = lazyPage(() => import('@/modules/expense/pages/expense-page'
 const SearchPage = lazyPage(() => import('@/modules/search/pages/search-page').then((m) => m.SearchPage))
 const SettingsPage = lazyPage(() => import('@/modules/setting/pages/settings-page').then((m) => m.SettingsPage))
 const InboxPage = lazyPage(() => import('@/modules/inbox/pages/inbox-page').then((m) => m.InboxPage))
+const MarkdownPage = lazyPage(() => import('@/modules/file/pages/markdown-page').then((m) => m.MarkdownPage))
 const EmailThreadPage = lazyPage(() => import('@/modules/inbox/pages/email-thread-page').then((m) => m.EmailThreadPage))
 const EmailComposePage = lazyPage(() => import('@/modules/inbox/pages/email-compose-page').then((m) => m.EmailComposePage))
 const ConversationPage = lazyPage(() => import('@/modules/inbox/pages/conversation-page').then((m) => m.ConversationPage))
@@ -85,6 +86,7 @@ export function App() {
                 <Route path="chi-tieu" element={<ExpensePage />} />
                 <Route path="cai-dat" element={<SettingsPage />} />
                 <Route path="hop-tin" element={<InboxPage />} />
+                <Route path="xem-tep/:fileId" element={<MarkdownPage />} />
                 <Route path="hop-tin/email/soan" element={<EmailComposePage />} />
                 <Route path="hop-tin/email/:threadId" element={<EmailThreadPage />} />
                 <Route path="hop-tin/:conversationKey" element={<ConversationPage />} />
