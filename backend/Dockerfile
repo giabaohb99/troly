@@ -22,7 +22,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY pyproject.toml ./
-RUN pip install .
+# pip đi kèm image cũ có lỗ hổng đã biết (pip-audit ở CI báo), nâng trước khi cài.
+RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" && pip install .
 
 FROM base AS dev
 RUN pip install ".[dev]"
