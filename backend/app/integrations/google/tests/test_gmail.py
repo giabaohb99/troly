@@ -217,3 +217,53 @@ def test_vietnamese_body_round_trips(db, fake, gmail_account):
     assert got["body"].rstrip() == body.rstrip() and got["subject"] == "Đi chơi"
     raw = base64.urlsafe_b64decode(fake.gmail.drafts[d["google_draft_id"]]["raw"] + "==")
     assert b"Subject:" in raw
+
+
+# ---------- Mục hộp thư đến (cài đặt gmail.categories) ----------
+
+# Nhãn thật của tài khoản người dùng 20/11: phần lớn thư, kể cả IMPORTANT và Booking, mang CATEGORY_UPDATES.
+REAL = {
+    "Booking xác nhận": ("INBOX", "CATEGORY_UPDATES", "IMPORTANT"),
+    "Tin khách sạn": ("INBOX", "CATEGORY_UPDATES"),
+    "Thư bạn": ("INBOX", "CATEGORY_PERSONAL"),
+    "Diễn đàn": ("INBOX", "CATEGORY_FORUMS"),
+    "Khuyến mãi": ("INBOX", "CATEGORY_PROMOTIONS"),
+    "Khuyến mãi quan trọng": ("INBOX", "CATEGORY_PROMOTIONS", "IMPORTANT"),
+    "Mạng xã hội": ("INBOX", "CATEGORY_SOCIAL"),
+    "Spam quan trọng": ("SPAM", "IMPORTANT"),
+}
+
+
+def _box(fake):
+    return {fake.gmail.add_mail(subject=s, labels=labels): s for s, labels in REAL.items()}
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        (None, {"Booking xác nhận", "Tin khách sạn", "Thư bạn", "Khuyến mãi quan trọng"}),  # mặc định
+        ("primary", {"Booking xác nhận", "Thư bạn", "Khuyến mãi quan trọng"}),
+        ("primary_updates", {"Booking xác nhận", "Tin khách sạn", "Thư bạn", "Khuyến mãi quan trọng"}),
+        ("all", {"Booking xác nhận", "Tin khách sạn", "Thư bạn", "Diễn đàn", "Khuyến mãi quan trọng"}),
+    ],
+)
+def test_categories_setting_with_real_labels(db, fake, gmail_account, mail_store, mode, expected):
+    mail_store.categories = mode
+    names = _box(fake)
+    gmail.sync_gmail(db, gmail_account, _state(db, gmail_account))
+    assert {names[m] for m in mail_store.mails} == expected
+
+
+def test_rescan_inbox_reads_back_days_without_duplicates(db, fake, gmail_account, mail_store):
+    mail_store.categories = "primary"
+    state = _state(db, gmail_account)
+    names = _box(fake)
+    gmail.sync_gmail(db, gmail_account, state)
+    assert len(mail_store.mails) == 3
+    mail_store.categories = "all"  # đổi cài đặt thì quét lại
+    gmail.rescan_inbox(db, gmail_account.user_id, 7)
+    assert state.history_id is None and state.needs_sync is True
+    assert gmail.sync_gmail(db, gmail_account, state) == 2  # Tin khách sạn, Diễn đàn; thư cũ không ghi lại
+    assert {names[m] for m in mail_store.mails} >= {"Tin khách sạn", "Diễn đàn"}
+    q = [r.url.params["q"] for r in fake.calls("GET", r"/gmail/v1/users/me/messages$")][-1]
+    assert q.startswith("in:inbox after:") and state.updated_min is None and state.history_id

@@ -198,6 +198,10 @@ class MemoryMailStore:
 
     def __init__(self):
         self.mails: dict[str, object] = {}
+        self.categories: str | None = None  # như cài đặt gmail.categories; None là mặc định
+
+    def gmail_categories(self, session, user_id):
+        return self.categories
 
     def save_gmail_messages(self, session, user_id, mails):
         saved = 0

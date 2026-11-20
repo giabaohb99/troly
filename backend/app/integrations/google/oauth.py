@@ -17,6 +17,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core import clock
+from app.core.errors import NotFoundError
 from app.core.security import decrypt_bound, encrypt_bound, sha256_hex
 from app.integrations.google import http
 from app.integrations.google.errors import GoogleNotConnected, GoogleReauthRequired
@@ -53,9 +54,10 @@ SYNCED_PACKS = {"calendar": ("calendar", "primary"), "tasks": ("tasks", ""), "gm
 
 @dataclass
 class CallbackResult:
-    ket_qua: str  # ok, huy, thieu-quyen, loi
+    ket_qua: str  # ok, huy, thieu-quyen, da-co, loi
     message: str
     missing_packs: list[str]
+    role: str = "primary"
 
 
 def normalize_scopes(scopes: list[str] | str) -> set[str]:
@@ -69,7 +71,58 @@ def granted_packs(scopes: list[str]) -> list[str]:
 
 
 def get_account(session: Session, user_id: int) -> GoogleAccount | None:
-    return session.scalar(select(GoogleAccount).where(GoogleAccount.user_id == user_id))
+    """Tài khoản chính (Lịch, Việc, Drive và Gmail chính)."""
+    return session.scalar(
+        select(GoogleAccount).where(GoogleAccount.user_id == user_id, GoogleAccount.role == "primary")
+    )
+
+
+def list_accounts(session: Session, user_id: int) -> list[GoogleAccount]:
+    """Tài khoản chính trước, rồi tài khoản thêm theo ngày nối (QĐ-50)."""
+    rows = session.scalars(select(GoogleAccount).where(GoogleAccount.user_id == user_id).order_by(GoogleAccount.id))
+    return sorted(rows, key=lambda a: (a.role != "primary", a.id))
+
+
+def get_account_by_id(session: Session, user_id: int, account_id: int) -> GoogleAccount:
+    account = session.scalar(
+        select(GoogleAccount).where(GoogleAccount.id == account_id, GoogleAccount.user_id == user_id)
+    )
+    if account is None:
+        raise NotFoundError("Không tìm thấy tài khoản Google.")
+    return account
+
+
+def gmail_account(
+    session: Session, user_id: int, account_id: int | None = None, email: str | None = None
+) -> GoogleAccount:
+    """Tài khoản đọc, gửi thư: theo id hoặc email nếu có; không thì tài khoản chính nếu đã bật Gmail, rồi tài
+    khoản thêm đầu tiên."""
+    if account_id is not None:
+        account = get_account_by_id(session, user_id, account_id)
+    elif email:
+        account = next(
+            (a for a in list_accounts(session, user_id) if (a.email or "").lower() == email.strip().lower()), None
+        )
+        if account is None:
+            raise NotFoundError(f"Chưa nối tài khoản Gmail {email}.")
+    else:
+        usable = [a for a in list_accounts(session, user_id) if "gmail" in (a.enabled_packs or [])]
+        if not usable:
+            raise GoogleNotConnected("Chưa bật gmail trong kết nối Google.")
+        account = usable[0]
+    if account.status == "revoked":
+        raise GoogleNotConnected()
+    if account.status == "reauth_required":
+        raise GoogleReauthRequired()
+    if "gmail" not in (account.enabled_packs or []):
+        raise GoogleNotConnected("Chưa bật gmail trong kết nối Google.")
+    return account
+
+
+def gmail_accounts(session: Session, user_id: int) -> list[GoogleAccount]:
+    return [
+        a for a in list_accounts(session, user_id) if a.status == "active" and "gmail" in (a.enabled_packs or [])
+    ]
 
 
 def require_account(session: Session, user_id: int, pack: str | None = None) -> GoogleAccount:
@@ -92,10 +145,13 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def start_connect(session: Session, user_id: int, packs: list[str]) -> str:
-    """Tạo state và PKCE, trả auth_url để app mở bằng Custom Tab."""
+def start_connect(session: Session, user_id: int, packs: list[str], role: str = "primary") -> str:
+    """Tạo state và PKCE, trả auth_url để app mở bằng Custom Tab. role mail: thêm tài khoản chỉ đọc, gửi
+    thư (QĐ-50), xin đúng base + gmail, cho chọn tài khoản Google khác."""
     settings = get_google_settings()
-    account = get_account(session, user_id)
+    if role == "mail":
+        packs = ["gmail"]
+    account = get_account(session, user_id) if role == "primary" else None
     # Xin lại cả gói đang bật: quyền cũ có thể đã mất (thu hồi, reauth_required); chỉ xin gói mới thì
     # gói cũ thiếu quyền và bị tắt lặng lẽ. Gói đã cấp thì Google không hỏi lại từng ô.
     keep = list(account.enabled_packs or []) if account is not None and account.status != "revoked" else []
@@ -108,6 +164,7 @@ def start_connect(session: Session, user_id: int, packs: list[str]) -> str:
             user_id=user_id,
             state_hash=sha256_hex(state),
             packs=wanted,
+            role=role,
             code_verifier_enc=enc,
             key_version=version,
             expires_at=clock.now() + timedelta(minutes=STATE_MINUTES),
@@ -123,7 +180,7 @@ def start_connect(session: Session, user_id: int, packs: list[str]) -> str:
         "response_type": "code",
         "scope": " ".join(scopes),
         "access_type": "offline",
-        "prompt": "consent",
+        "prompt": "consent select_account" if role == "mail" else "consent",
         "include_granted_scopes": "true",
         "state": state,
         "code_challenge": challenge,
@@ -164,9 +221,17 @@ def finish_connect(
     row = _consume_state(session, state)
     if row is None:
         return CallbackResult("loi", "Phiên kết nối đã hết hạn, hãy thử lại.", [])
+    role = getattr(row, "role", None) or "primary"
     if error:
         if error == "access_denied":
-            return CallbackResult("huy", "Đã hủy kết nối Google.", [])
+            return CallbackResult(
+                "huy",
+                "Google không cho nối hoặc đại ca đã hủy. Nếu Google báo ứng dụng bị chặn, mở Google Cloud > "
+                "Google Auth Platform > Audience: đang Testing thì thêm email này vào Test users (hoặc bấm "
+                "Publish app), rồi thử lại.",
+                [],
+                role,
+            )
         return CallbackResult("loi", "Google báo lỗi khi kết nối.", [])
     if not code:
         return CallbackResult("loi", "Google không trả mã.", [])
@@ -199,6 +264,11 @@ def finish_connect(
     granted = sorted(normalize_scopes(token.get("scope", "")))
     packs_ok = granted_packs(granted)
     missing = [p for p in row.packs if p not in packs_ok]
+    if role == "mail":
+        return _finish_mail(session, user_id, sub, email, granted, packs_ok, token)
+    other = session.scalar(select(GoogleAccount).where(GoogleAccount.google_sub == sub))
+    if other is not None and (other.user_id != user_id or other.role == "mail"):
+        return CallbackResult("da-co", "Tài khoản Google này đã nối làm tài khoản thêm, gỡ trước khi đặt làm chính.", [])
 
     account = get_account(session, user_id)
     if account is not None and account.google_sub != sub and account.status != "revoked":
@@ -230,6 +300,35 @@ def finish_connect(
     if missing:
         return CallbackResult("thieu-quyen", "Google chưa cấp đủ quyền cho: " + ", ".join(missing), missing)
     return CallbackResult("ok", "Đã kết nối Google.", [])
+
+
+def _finish_mail(session, user_id, sub, email, granted, packs_ok, token) -> CallbackResult:
+    """Tài khoản thêm chỉ có Gmail; nối lại cùng tài khoản thì chỉ thay mã."""
+    existing = session.scalar(select(GoogleAccount).where(GoogleAccount.google_sub == sub))
+    if existing is not None and existing.user_id != user_id:
+        return CallbackResult("loi", "Tài khoản Google này đã nối với người dùng khác.", [], "mail")
+    if existing is not None and existing.role == "primary":
+        return CallbackResult("da-co", f"{email} đã là tài khoản Google chính.", [], "mail")
+    if "gmail" not in packs_ok:
+        return CallbackResult("thieu-quyen", "Google chưa cấp đủ quyền cho: gmail", ["gmail"], "mail")
+    refresh_token = token.get("refresh_token")
+    now = clock.now()
+    if existing is None:
+        if refresh_token is None:
+            return CallbackResult("loi", "Google không trả mã làm mới, hãy thử lại.", [], "mail")
+        existing = GoogleAccount(user_id=user_id, google_sub=sub, role="mail", connected_at=now)
+        session.add(existing)
+        old_refresh = None
+    else:
+        old_refresh = _decrypt(existing, existing.refresh_token_enc)
+    existing.email, existing.granted_scopes = email, granted
+    existing.status, existing.last_error = "active", None
+    existing.enabled_packs = ["base", "gmail"]
+    _store_tokens(existing, refresh_token or old_refresh, token)
+    session.flush()
+    _ensure_sync_states(session, existing)
+    _queue_initial_sync(session, user_id)
+    return CallbackResult("ok", f"Đã thêm tài khoản Gmail {email}.", [], "mail")
 
 
 def _ensure_sync_states(session: Session, account: GoogleAccount) -> None:
@@ -360,6 +459,8 @@ def revoke_account_tokens(account: GoogleAccount) -> None:
 
 def callback_html(result: CallbackResult) -> str:
     target = f"troly://cai-dat/google?ket-qua={result.ket_qua}"
+    if result.role == "mail":
+        target += "&tai-khoan=mail"
     return (
         "<!doctype html><html lang='vi'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"

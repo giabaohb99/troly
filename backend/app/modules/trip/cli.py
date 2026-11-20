@@ -34,6 +34,9 @@ def cmd_geocode(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from app.registry import import_all_models
+
+    import_all_models()  # chạy thẳng bằng python -m: nạp đủ model, không thì khóa ngoại tới tab_user lỗi
     parser = argparse.ArgumentParser(prog="python -m app.modules.trip.cli")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("geocode", help="Điền địa phương, lấy tọa độ OpenStreetMap cho điểm còn thiếu")

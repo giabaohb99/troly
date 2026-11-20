@@ -23,11 +23,30 @@ def read_status(
 
 @router.post("/google/connect")
 def connect(
-    packs: list[str] = Body(..., embed=True),
+    packs: list[str] | None = Body(None, embed=True),
+    role: str = Body("primary", embed=True),
     user: UserContext = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    return ok(service.connect(session, user.user_id, packs))
+    """role mail (QĐ-50): thêm một tài khoản Gmail khác, không cần packs."""
+    return ok(service.connect(session, user.user_id, packs, role))
+
+
+@router.get("/google/accounts")
+def list_accounts(
+    user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)
+) -> dict:
+    return ok({"items": service.list_accounts(session, user.user_id)})
+
+
+@router.delete("/google/accounts/{account_id}")
+def remove_account(
+    account_id: int,
+    delete_messages: bool = Query(True),
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(service.remove_account(session, user.user_id, account_id, delete_messages), "Đã gỡ tài khoản.")
 
 
 @router.get("/google/oauth/callback", response_class=HTMLResponse)

@@ -28,11 +28,14 @@ SERVICES = ("calendar", "tasks", "gmail", "contacts", "drive", "sheets")
 class GoogleAccount(UserOwnedMixin, Base):
     __tablename__ = "tab_google_account"
     __table_args__ = (
-        UniqueConstraint("user_id", name="uq_tab_google_account_user_id"),
+        CheckConstraint("role IN ('primary','mail')", name="role"),
+        # QĐ-50: một tài khoản chính mỗi người dùng; tài khoản thêm (role mail) chỉ có Gmail.
+        Index("uq_tab_google_account_primary", "user_id", unique=True, postgresql_where=text("role = 'primary'")),
         CheckConstraint("status IN ('active','reauth_required','revoked')", name="status"),
     )
 
     google_sub: Mapped[str] = mapped_column(Text, unique=True)
+    role: Mapped[str] = mapped_column(Text, server_default="primary")
     email: Mapped[str] = mapped_column(CITEXT)
     granted_scopes: Mapped[list[str]] = mapped_column(ARRAY(Text))
     enabled_packs: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{base}")
@@ -51,6 +54,7 @@ class GoogleOAuthState(UserOwnedMixin, Base):
 
     state_hash: Mapped[str] = mapped_column(Text, unique=True)
     packs: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    role: Mapped[str] = mapped_column(Text, server_default="primary")
     code_verifier_enc: Mapped[bytes] = mapped_column(LargeBinary)
     key_version: Mapped[int] = mapped_column(SmallInteger)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

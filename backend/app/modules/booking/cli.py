@@ -14,9 +14,9 @@ from app.integrations.google.models import GoogleAccount
 
 
 def cmd_rescan(args: argparse.Namespace) -> int:
-    from app.modules.booking.google_store import STORE
-
     if stores.booking_store() is None:
+        from app.modules.booking.google_store import STORE
+
         stores.register_booking_store(STORE)
     with SessionLocal() as session:
         accounts = list(
@@ -40,6 +40,10 @@ def cmd_rescan(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from app.registry import import_all_models, register_integrations
+
+    import_all_models()  # chạy thẳng bằng python -m: nạp đủ model, không thì khóa ngoại tới tab_user lỗi
+    register_integrations()
     parser = argparse.ArgumentParser(prog="python -m app.modules.booking.cli")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("rescan", help="Đọc lại thư đặt chỗ trong n ngày qua")
