@@ -274,6 +274,7 @@ _CONVERSATIONS = """
           AND (CAST(:importance AS text) IS NULL OR importance = :importance)
           AND (CAST(:from_ AS timestamptz) IS NULL OR posted_at >= :from_)
           AND (CAST(:to_ AS timestamptz) IS NULL OR posted_at < :to_)
+          AND (CAST(:account AS citext) IS NULL OR account_email = CAST(:account AS citext))
     ), g AS (
         SELECT conversation_key, max(posted_at) AS last_posted_at,
                count(*) FILTER (WHERE status = 'new') AS unread_count,
@@ -288,8 +289,8 @@ _CONVERSATIONS = """
         WHERE m.conversation_key = g.conversation_key ORDER BY posted_at DESC, id DESC LIMIT 1
     ) l ON true
     WHERE CAST(:c_key AS text) IS NULL
-       OR (g.has_important, g.last_posted_at, g.conversation_key) < (CAST(:c_imp AS boolean), :c_at, :c_key)
-    ORDER BY g.has_important DESC, g.last_posted_at DESC, g.conversation_key DESC
+       OR (g.last_posted_at, g.conversation_key) < (CAST(:c_at AS timestamptz), :c_key)
+    ORDER BY g.last_posted_at DESC, g.conversation_key DESC
     LIMIT :limit
 """
 
@@ -297,11 +298,18 @@ _CONVERSATIONS = """
 def list_conversations(
     session: Session, user_id: int, filters: dict, cursor: str | None, limit: int = 30
 ) -> dict:
-    c_imp = c_at = c_key = None
+    # Xếp theo tin mới nhất giảm dần (phản hồi 1.0.7); quan trọng chỉ là cờ, tab Quan trọng lọc `importance`.
+    # Con trỏ `<giờ>|<khóa>`; con trỏ cũ `<0|1>|<giờ>|<khóa>` vẫn nhận (bỏ phần đầu).
+    c_at = c_key = None
     if cursor:
         try:
-            imp, at, c_key = cursor.split("|", 2)
-            c_imp, c_at = imp == "1", datetime.fromisoformat(at)
+            parts = cursor.split("|")
+            if len(parts) >= 3 and parts[0] in ("0", "1"):
+                parts = parts[1:]
+            at, c_key = parts[0], "|".join(parts[1:])
+            if not c_key:
+                raise ValueError
+            c_at = datetime.fromisoformat(at)
         except ValueError as exc:
             raise ValidationError(fields={"cursor": "Con trỏ trang không hợp lệ."}) from exc
     params = {
@@ -312,7 +320,7 @@ def list_conversations(
         "importance": filters.get("importance"),
         "from_": filters.get("from"),
         "to_": filters.get("to"),
-        "c_imp": c_imp,
+        "account": (filters.get("account_email") or "").strip() or None,
         "c_at": c_at,
         "c_key": c_key,
         "limit": limit + 1,
@@ -338,10 +346,20 @@ def list_conversations(
     next_cursor = None
     if len(rows) > limit:
         last = rows[limit - 1]
-        next_cursor = (
-            f"{int(bool(last.has_important))}|{last.last_posted_at.isoformat()}|{last.conversation_key}"
-        )
-    return {"items": items, "next_cursor": next_cursor}
+        next_cursor = f"{last.last_posted_at.isoformat()}|{last.conversation_key}"
+    return {"items": items, "next_cursor": next_cursor, "accounts": mail_accounts(session, user_id)}
+
+
+def mail_accounts(session: Session, user_id: int) -> list[str]:
+    """Email các tài khoản Gmail có thư trong hộp tin (chip lọc của app, QĐ-50), xếp theo chữ."""
+    rows = session.execute(
+        text(
+            "SELECT DISTINCT account_email FROM tab_inbox_message "
+            "WHERE user_id = :u AND source = 'gmail' AND account_email IS NOT NULL ORDER BY account_email"
+        ),
+        {"u": user_id},
+    ).scalars()
+    return [str(e) for e in rows]
 
 
 def list_messages(session: Session, user_id: int, key: str, cursor: str | None, limit: int = 50) -> dict:

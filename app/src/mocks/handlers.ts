@@ -151,7 +151,8 @@ function mockConversations() {
       importance: rows.some((m) => m.importance === 'important' && m.status !== 'done') ? 'important' : 'normal', is_private: false,
       account_email: (last as { account_email?: string }).account_email ?? null,
     }
-  }).sort((a, b) => Number(b.importance === 'important') - Number(a.importance === 'important') || Date.parse(b.last_posted_at) - Date.parse(a.last_posted_at))
+    // Như máy chủ sau phản hồi 1.0.7: chỉ xếp theo tin mới nhất, quan trọng là cờ.
+  }).sort((a, b) => Date.parse(b.last_posted_at) - Date.parse(a.last_posted_at))
 }
 const mockDevices = [
   { id: 1, name: 'Galaxy S25+', model: 'SM-S936B', app_version_name: '0.1.0', last_seen_at: new Date().toISOString() },
@@ -374,8 +375,12 @@ export const handlers = [
     const url = new URL(request.url)
     const app = url.searchParams.get('app')
     const importance = url.searchParams.get('importance')
-    const rows = mockConversations().filter((c) => (!app || c.app === app) && (!importance || c.importance === importance))
-    return ok({ items: rows, next_cursor: null })
+    const account = url.searchParams.get('account_email')?.toLowerCase()
+    const rows = mockConversations().filter(
+      (c) => (!app || c.app === app) && (!importance || c.importance === importance) && (!account || c.app !== 'gmail' || c.account_email?.toLowerCase() === account),
+    )
+    const accounts = [...new Set(mockConversations().flatMap((c) => (c.account_email ? [c.account_email] : [])))].sort()
+    return ok({ items: rows, next_cursor: null, accounts })
   }),
   http.get(`${API}/inbox/conversations/:key/messages`, ({ params }) => ok({ items: mockInbox.filter((m) => m.conversation_key === params.key), next_cursor: null })),
   http.post(`${API}/inbox/conversations/:key/mark`, async ({ params, request }) => {

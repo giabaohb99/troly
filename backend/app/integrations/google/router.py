@@ -39,6 +39,17 @@ def list_accounts(
     return ok({"items": service.list_accounts(session, user.user_id)})
 
 
+@router.post("/google/accounts/{account_id}/rescan", status_code=202)
+def rescan_account(
+    account_id: int,
+    days: int = Body(30, embed=True),
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Đồng bộ lại hộp thư đến của một tài khoản: 30 ngày, tối đa 300 thư, theo gmail.categories."""
+    return ok(service.rescan_account(session, user.user_id, account_id, days), "Đang đồng bộ lại.")
+
+
 @router.delete("/google/accounts/{account_id}")
 def remove_account(
     account_id: int,

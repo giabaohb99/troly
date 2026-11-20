@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Inbox, Loader2, PenSquare, Sparkles, Star } from 'lucide-react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -8,6 +8,8 @@ import { threadIdFromKey } from '@/modules/inbox/api/gmail-api'
 import { listConversations, type ConversationFilters } from '@/modules/inbox/api/inbox-api'
 import { AppTag } from '@/modules/inbox/components/app-tag'
 import { APP_LABELS, type Conversation, type InboxApp } from '@/modules/inbox/types/inbox'
+import { accountChoices, accountColor, accountShort, filterByAccount, getSavedAccount, saveAccount, sortByLatest } from '@/modules/inbox/utils/inbox-list'
+import { useGoogleAccounts } from '@/shared/api/google-accounts-api'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { EmptyState } from '@/shared/components/empty-state'
 import { ErrorState } from '@/shared/components/error-state'
@@ -41,7 +43,7 @@ function summaryPrompt(value: FilterValue): string {
   return `Tóm tắt tin ${APP_LABELS[value]} hôm nay`
 }
 
-function ConversationRow({ item, onOpen }: { item: Conversation; onOpen: () => void }) {
+function ConversationRow({ item, accounts, onOpen }: { item: Conversation; accounts: string[]; onOpen: () => void }) {
   const unread = item.unread_count > 0
   const preview = item.is_group && item.last_sender ? `${item.last_sender}: ${item.last_text ?? ''}` : (item.last_text ?? '')
   return (
@@ -54,8 +56,14 @@ function ConversationRow({ item, onOpen }: { item: Conversation; onOpen: () => v
           <span className="shrink-0 text-xs text-muted-foreground">{formatWhen(item.last_posted_at)}</span>
         </span>
         {item.app === 'gmail' && (item.last_sender || item.account_email) && (
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {[item.last_sender, item.account_email ? `tới ${item.account_email}` : null].filter(Boolean).join(' · ')}
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {/* Tài khoản nhận nổi hơn (phản hồi 1.0.7): huy hiệu màu theo tài khoản. */}
+            {item.account_email && (
+              <span className={cn('max-w-[45%] shrink-0 truncate rounded-md px-1.5 py-0.5 text-[11px] font-semibold', accountColor(item.account_email, accounts))} title={item.account_email}>
+                {accountShort(item.account_email)}
+              </span>
+            )}
+            {item.last_sender && <span className="min-w-0 truncate">{item.last_sender}</span>}
           </span>
         )}
         <span className="mt-0.5 flex items-center gap-2">
@@ -73,7 +81,16 @@ export function InboxPage() {
   const [params, setParams] = useSearchParams()
   const filter: FilterValue = (FILTERS.find((f) => f.value === params.get('loai'))?.value ?? 'all') as FilterValue
   const setFilter = (value: FilterValue) => setParams(value === 'all' ? {} : { loai: value }, { replace: true })
-  const filters = toFilters(filter)
+  // Tab Email: lọc theo tài khoản nhận, nhớ lựa chọn cuối.
+  const [account, setAccountState] = useState<string | null>(() => getSavedAccount())
+  const setAccount = (email: string | null) => {
+    setAccountState(email)
+    saveAccount(email)
+  }
+  const google = useGoogleAccounts(filter === 'gmail')
+  const connected = useMemo(() => (google.data ?? []).filter((a) => a.status !== 'revoked').map((a) => a.email), [google.data])
+  const activeAccount = filter === 'gmail' && account ? account : null
+  const filters = { ...toFilters(filter), account: activeAccount }
   const list = useInfiniteQuery({
     queryKey: queryKeys.inbox.conversations({ ...filters }),
     queryFn: ({ pageParam }) => listConversations(filters, pageParam),
@@ -81,7 +98,12 @@ export function InboxPage() {
     getNextPageParam: (last) => last.next_cursor,
   })
   const status = useQuery({ queryKey: queryKeys.device.notifyStatus, queryFn: async () => ({ ...(await Notify.getStatus()), checkedAt: Date.now() }), enabled: isNative })
-  const items = useMemo(() => (list.data?.pages ?? []).flatMap((page) => page.items), [list.data])
+  const loaded = useMemo(() => (list.data?.pages ?? []).flatMap((page) => page.items), [list.data])
+  // Xếp theo tin mới nhất; lọc tài khoản cả ở app (máy chủ cũ chưa có tham số account).
+  const items = useMemo(() => sortByLatest(filterByAccount(loaded, activeAccount)), [loaded, activeAccount])
+  // Chip: tài khoản đã nối (chính trước), thêm tài khoản máy chủ báo có thư (`accounts`) và tài khoản thấy trong thư.
+  const serverAccounts = list.data?.pages[0]?.accounts
+  const accounts = useMemo(() => accountChoices([...connected, ...(serverAccounts ?? [])], loaded), [connected, serverAccounts, loaded])
   const unreadTotal = items.reduce((sum, c) => sum + c.unread_count, 0)
   const silentHours = status.data?.listenerConnected && status.data.lastEventAt ? Math.floor((status.data.checkedAt - status.data.lastEventAt) / 3_600_000) : null
 
@@ -120,6 +142,27 @@ export function InboxPage() {
         ))}
       </div>
 
+      {filter === 'gmail' && accounts.length > 1 && (
+        <div className="-mx-4 -mt-2 flex gap-2 overflow-x-auto px-4 pb-1" role="radiogroup" aria-label="Tài khoản Gmail">
+          {[null, ...accounts].map((email) => {
+            const on = (activeAccount ?? null) === email || (!!email && !!activeAccount && email.toLowerCase() === activeAccount.toLowerCase())
+            return (
+              <button
+                key={email ?? 'all'}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                title={email ?? undefined}
+                onClick={() => setAccount(email)}
+                className={cn('max-w-[60%] shrink-0 truncate rounded-full border px-3 py-0.5 text-xs', on ? (email ? cn('border-transparent', accountColor(email, accounts)) : 'border-primary bg-primary/15 text-primary') : 'text-muted-foreground')}
+              >
+                {email ? accountShort(email) : 'Tất cả'}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {list.isPending && <SkeletonList />}
       {list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
       {list.isSuccess && items.length === 0 && (
@@ -135,6 +178,7 @@ export function InboxPage() {
             <ConversationRow
               key={item.conversation_key}
               item={item}
+              accounts={accounts}
               onOpen={() =>
                 navigate(item.app === 'gmail' ? `/hop-tin/email/${encodeURIComponent(threadIdFromKey(item.conversation_key))}` : `/hop-tin/${encodeURIComponent(item.conversation_key)}`)
               }

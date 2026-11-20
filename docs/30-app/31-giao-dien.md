@@ -236,6 +236,7 @@ Email, mật khẩu, `[Đăng nhập]`. Địa chỉ api gắn sẵn. Sai mật 
 - Rỗng: *Chưa có tin nào. Tin Zalo, Telegram, Messenger, SMS hiện ở đây khi điện thoại nhận thông báo; thư Gmail có từ Phase 5.*
 - Thiếu quyền: *Chưa bật đọc thông báo.* `[Bật]`. Đã bật mà quá 24 giờ không có tin: *Đã 26 giờ chưa nhận tin nào. Kiểm tra pin và chế độ ngủ của Samsung.* `[Kiểm tra]`.
 - Chân danh sách: *Tin giữ 180 ngày rồi tự xóa.* (QĐ-17)
+- Thứ tự (phản hồi 1.0.7): mọi tab xếp theo tin mới nhất giảm dần; tin quan trọng chỉ có ngôi sao, không đẩy lên đầu (tab *Quan trọng* lọc riêng). Tab *Email* có hàng chip tài khoản dưới hàng tab (*Tất cả*, rồi từng tài khoản rút gọn phần trước @), nhớ lựa chọn cuối trên máy, gửi `account_email=` cho `GET /inbox/conversations` (máy chủ trả thêm `accounts` cho chip) và lọc cả ở app; mỗi dòng thư có huy hiệu màu theo tài khoản nhận.
 - Tệp `.md` ở mọi chỗ mở `/xem-tep/:fileId` (trình hiện Markdown trong app, không dùng HTML). Tải lên suy mime theo đuôi khi Android trả rỗng (`shared/utils/mime.ts`).
 
 #### Thiết lập máy (Phase 2)

@@ -66,11 +66,15 @@ def test_rules_vip_urgent_and_muted(db, user):
 
     assert out["status"] == "done"
     items = service.list_conversations(db, user.user_id, {}, None)["items"]
-    assert [c["title"] for c in items] == ["Sếp", "Me", "Bạn"]  # tin quan trọng chưa xong đứng đầu
-    assert [c["importance"] for c in items] == ["important", "important", "normal"]
-    service.mark_conversation(db, user.user_id, items[0]["conversation_key"], "done")
+    # Xếp theo tin mới nhất (phản hồi 1.0.7); quan trọng chỉ là cờ, tab Quan trọng lọc riêng.
+    assert [c["title"] for c in items] == ["Bạn", "Sếp", "Me"]
+    assert [c["importance"] for c in items] == ["normal", "important", "important"]
+    important = service.list_conversations(db, user.user_id, {"importance": "important"}, None)["items"]
+    assert [c["title"] for c in important] == ["Sếp", "Me"]
+    service.mark_conversation(db, user.user_id, items[1]["conversation_key"], "done")
     items = service.list_conversations(db, user.user_id, {}, None)["items"]
-    assert [c["title"] for c in items] == ["Me", "Bạn", "Sếp"]
+    assert [c["title"] for c in items] == ["Bạn", "Sếp", "Me"]
+    assert [c["importance"] for c in items] == ["normal", "normal", "important"]
 
 
 def test_muted_app_skips_everything(db, user):

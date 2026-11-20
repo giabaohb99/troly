@@ -202,3 +202,13 @@ def test_get_report_week_and_inbox(ctx):
 def test_tool_schema_uses_from_alias():
     schema = tools.GetReportInput.model_json_schema()
     assert "from" in schema["properties"] and "from_" not in schema["properties"]
+
+
+def test_inbox_pending_keeps_important_when_many_newer(ctx, db, user):
+    """Danh sách hội thoại xếp theo tin mới nhất: tin quan trọng cũ hơn vẫn phải có trong báo cáo."""
+    for i in range(tools.MAX_CONVERSATIONS + 2):
+        _zalo(db, user, f"Nhóm {i}", f"tin {i}", 30 + i)  # mới hơn tin của Mẹ
+    out = _report(ctx, kind="inbox_pending")
+    convs = out.result["conversations"]
+    assert len(convs) == tools.MAX_CONVERSATIONS
+    assert convs[0]["importance"] == "important" and convs[0]["title"] == "Mẹ"

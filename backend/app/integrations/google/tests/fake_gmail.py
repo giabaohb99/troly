@@ -3,6 +3,7 @@
 import base64
 import json
 import re
+import time
 import uuid
 
 import httpx
@@ -158,6 +159,9 @@ class FakeGmail:
         items = sorted(self.messages.values(), key=lambda x: int(x["internalDate"]), reverse=True)
         if "in:inbox" in q:
             items = [x for x in items if "INBOX" in x["labelIds"]]
+        if m := re.search(r"newer_than:(\d+)d", q):
+            floor = (time.time() - int(m.group(1)) * 86400) * 1000
+            items = [x for x in items if int(x["internalDate"]) > floor]
         if m := re.search(r"after:(\d+)", q):
             items = [x for x in items if int(x["internalDate"]) // 1000 > int(m.group(1))]
         if "-in:spam" in q:

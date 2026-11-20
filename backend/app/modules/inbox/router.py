@@ -38,12 +38,21 @@ def list_conversations(
     importance: Literal["normal", "important"] | None = None,
     from_: AwareDatetime | None = Query(default=None, alias="from"),
     to: AwareDatetime | None = None,
+    account_email: str | None = Query(default=None, max_length=320),
+    account: str | None = Query(default=None, max_length=320),  # tên app dùng, cùng nghĩa account_email
     cursor: str | None = None,
     limit: int = Query(default=30, ge=1, le=100),
     user: UserContext = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    filters = {"app": app, "status": status, "importance": importance, "from": from_, "to": to}
+    filters = {
+        "app": app,
+        "status": status,
+        "importance": importance,
+        "from": from_,
+        "to": to,
+        "account_email": account_email or account,
+    }
     return ok(service.list_conversations(session, user.user_id, filters, cursor, limit))
 
 

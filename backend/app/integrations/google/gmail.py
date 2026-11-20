@@ -34,8 +34,11 @@ log = logging.getLogger("troly.google")
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
 POLL = timedelta(minutes=5)
-FIRST_QUERY = "in:inbox newer_than:7d"
-FIRST_MAX = 200  # lần đầu tối đa 200 thư (mỗi thư metadata 20 đơn vị quota)
+FIRST_DAYS = 30  # lần đầu (tài khoản mới, đồng bộ lại) đọc 30 ngày; 7 ngày thì tài khoản mới chỉ có vài thư
+FIRST_QUERY = f"in:inbox newer_than:{FIRST_DAYS}d"
+FIRST_MAX = (
+    300  # tối đa 300 thư: mỗi thư metadata 20 đơn vị, quota 6.000 mỗi phút; quá thì client chờ rồi thử lại
+)
 THREAD_TEXT_MAX = 4000
 MAX_RECIPIENTS = 50
 DRAFTS_URL = "https://mail.google.com/mail/#drafts"
@@ -259,7 +262,9 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
     return saved
 
 
-def rescan_inbox(session: Session, user_id: int, days: int = 7, account_id: int | None = None) -> None:
+def rescan_inbox(
+    session: Session, user_id: int, days: int = FIRST_DAYS, account_id: int | None = None
+) -> None:
     """Lượt đồng bộ sau quét lại `days` ngày (đổi gmail.categories, hoặc khi deploy). Thư đã có không ghi
     trùng: MailStore bỏ trùng theo message_id."""
     from sqlalchemy import select
@@ -282,7 +287,7 @@ def rescan_inbox(session: Session, user_id: int, days: int = 7, account_id: int 
         if state is None:
             continue
         state.history_id = None
-        state.updated_min = clock.now() - timedelta(days=max(1, min(days, 30)))
+        state.updated_min = clock.now() - timedelta(days=max(1, min(days, FIRST_DAYS)))
         state.needs_sync, state.next_sync_at = True, clock.now()
     session.flush()
 

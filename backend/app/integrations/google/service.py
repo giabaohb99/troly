@@ -347,3 +347,10 @@ def renew_watches(session: Session) -> int:
             session.rollback()
             log.warning("Gia hạn kênh Google lỗi", extra={"user_id": state.user_id})
     return renewed
+
+
+def rescan_account(session: Session, user_id: int, account_id: int, days: int = 30) -> dict:
+    """Nút Đồng bộ lại của một tài khoản: đọc lại hộp thư đến `days` ngày (tối đa 30, 300 thư)."""
+    account = oauth.get_account_by_id(session, user_id, account_id)
+    gmail.rescan_inbox(session, user_id, days, account_id=account.id)
+    return {"queued": True}

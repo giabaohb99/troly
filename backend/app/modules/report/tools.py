@@ -85,15 +85,29 @@ def _week(ctx: ToolContext, data: GetReportInput) -> dict:
 
 def _inbox(ctx: ToolContext) -> dict:
     counts = service.inbox_card(ctx.session, ctx.user)
-    page = inbox.list_conversations(ctx.session, ctx.user.user_id, {"status": "new"}, None, MAX_CONVERSATIONS)
-    return {
-        **counts,
-        "conversations": [
-            {"app": c["app"], "title": c["title"], "unread": c["unread_count"], "importance": c["importance"]}
-            for c in page["items"]
-            if not c["is_private"]
-        ],
-    }
+    # Danh sách hội thoại xếp theo tin mới nhất (bản 1.0.7): lấy hội thoại có tin quan trọng trước để không bị cắt,
+    # rồi lấp hội thoại thường cho đủ, bỏ trùng theo khóa.
+    picked: dict[str, dict] = {}
+    for importance in ("important", "normal"):
+        if len(picked) >= MAX_CONVERSATIONS:
+            break
+        page = inbox.list_conversations(
+            ctx.session,
+            ctx.user.user_id,
+            {"status": "new", "importance": importance},
+            None,
+            MAX_CONVERSATIONS,
+        )
+        for c in page["items"]:
+            if c["is_private"] or c["conversation_key"] in picked or len(picked) >= MAX_CONVERSATIONS:
+                continue
+            picked[c["conversation_key"]] = {
+                "app": c["app"],
+                "title": c["title"],
+                "unread": c["unread_count"],
+                "importance": importance,
+            }
+    return {**counts, "conversations": list(picked.values())}
 
 
 def run_get_report(ctx: ToolContext, data: GetReportInput) -> ToolOutput:

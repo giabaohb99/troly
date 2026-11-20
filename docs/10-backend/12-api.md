@@ -172,7 +172,7 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | GET | `/expenses/{id}/source` | U | | `{app_package, title, text, posted_at}`; quá hạn 180 ngày thì 404 | V1.2 |
 | GET | `/expenses/summary` | U | `period` (`day`, `week`, `month`, `custom`), `date`, `from`, `to`, `group_by` (`category`, `day`, `account`) | `{from, to, total_expense_vnd, total_income_vnd, total_transfer_vnd, groups[]}` | V1.1 |
 | GET, POST, PATCH, DELETE | `/expenses/categories`, `/expenses/categories/{id}` | U | `name`, `kind`, `keywords`, `sort_order`, `is_archived` | `Category`; xóa khi đã có khoản chi thì `CONFLICT` | V1.1 |
-| GET | `/inbox/conversations` | U | `app`, `status`, `importance`, `from`, `to`, `cursor` | `items: Conversation[]` | V1.3 |
+| GET | `/inbox/conversations` | U | `app`, `status`, `importance`, `from`, `to`, `account_email` hoặc `account` (QĐ-50, cùng nghĩa), `cursor` | `{items: Conversation[], next_cursor, accounts}`; xếp theo tin mới nhất giảm dần (quan trọng chỉ là cờ, tab Quan trọng lọc `importance = important`); `accounts` là email các tài khoản Gmail có thư, cho chip lọc | V1.3 |
 | GET | `/inbox/conversations/{conversation_key}/messages` | U | `cursor` | `items: InboxMessage[]` | V1.3 |
 | POST | `/inbox/conversations/{conversation_key}/mark` | U | `status` | `{updated}` | V1.3 |
 | PATCH | `/inbox/messages/{id}` | U | `status` | `InboxMessage` | V1.3 |
@@ -295,7 +295,7 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 ### 5.4 Chi tiêu và hộp tin
 
 - `Expense`: `{id, amount_vnd, kind, account, account_last4, to_account, to_account_last4, category, merchant, place, note, spent_at, source, parser, parse_confidence, needs_review}`. Không có số dư (QĐ-22). `total_expense_vnd` không tính `transfer`.
-- `Conversation`: `{conversation_key, app, title, is_group, last_sender, last_text, last_posted_at, unread_count, importance, is_private, account_email}`; `InboxMessage` cũng có `account_email` (Gmail, QĐ-50); còn tin `important` chưa xử lý đứng đầu.
+- `Conversation`: `{conversation_key, app, title, is_group, last_sender, last_text, last_posted_at, unread_count, importance, is_private, account_email}`; `InboxMessage` cũng có `account_email` (Gmail, QĐ-50).
 - Riêng tư: `POST /inbox/rules` với `kind = private_conversation`, `value = <conversation_key>`. Tin riêng tư hiện trong app và `GET /search`, không bao giờ ra công cụ AI (`search_everything`, công cụ hộp tin).
 - Danh sách hộp tin, tin trong cuộc trò chuyện phân trang bằng `cursor`, trả `next_cursor`.
 - Gửi Gmail chỉ qua thẻ duyệt (`tool_name = send_gmail_draft`); trước khi gửi so nội dung với `body_hash`, khác thì `ACTION_PAYLOAD_CHANGED`.

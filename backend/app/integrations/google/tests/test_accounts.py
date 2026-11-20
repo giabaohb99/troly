@@ -162,3 +162,61 @@ def test_api_accounts_and_mail_connect(auth_client, db, user, fake, primary):
     items = auth_client.get("/api/v1/google/accounts").json()["data"]["items"]
     assert items[0]["role"] == "primary" and items[0]["email"] == "dai.ca@gmail.com"
     assert auth_client.delete(f"/api/v1/google/accounts/{primary.id}").status_code == 409
+
+
+def _ms(days_ago: float) -> int:
+    from datetime import UTC, datetime, timedelta
+
+    return int((datetime.now(UTC) - timedelta(days=days_ago)).timestamp() * 1000)
+
+
+def test_new_account_first_sync_reads_30_days(db, user, fake, primary, mail_store):
+    add_mail(db, user, fake)
+    box = fake.mailbox("sub-2")
+    box.add_mail(subject="25 ngày trước", at_ms=_ms(25))
+    box.add_mail(subject="40 ngày trước", at_ms=_ms(40))
+    box.add_mail(
+        subject="Quảng cáo", labels=("INBOX", "CATEGORY_PROMOTIONS"), at_ms=_ms(2)
+    )  # theo gmail.categories
+
+    class Job:
+        user_id = user.user_id
+
+    service.run_initial_sync(db, Job())
+    assert {m.subject for m in mail_store.mails.values() if m.account_email == WORK} == {"25 ngày trước"}
+    q = [r.url.params["q"] for r in fake.calls("GET", r"/gmail/v1/users/me/messages$")]
+    assert "in:inbox newer_than:30d" in q
+
+
+def test_first_sync_capped_at_300(db, user, fake, primary, mail_store, monkeypatch):
+    monkeypatch.setattr(gmail, "FIRST_MAX", 5)
+    add_mail(db, user, fake)
+    for i in range(8):
+        fake.mailbox("sub-2").add_mail(subject=f"Thư {i}", at_ms=_ms(i + 1))
+
+    class Job:
+        user_id = user.user_id
+
+    service.run_initial_sync(db, Job())
+    assert len([m for m in mail_store.mails.values() if m.account_email == WORK]) == 5
+    assert gmail.FIRST_MAX == 5 and gmail.FIRST_DAYS == 30
+
+
+def test_rescan_one_account_reads_back_30_days(auth_client, db, user, fake, primary, mail_store):
+    add_mail(db, user, fake)
+    extra = _mail_account(db, user)
+
+    class Job:
+        user_id = user.user_id
+
+    service.run_initial_sync(db, Job())
+    db.flush()
+    r = auth_client.post(f"/api/v1/google/accounts/{extra.id}/rescan", json={})
+    assert r.status_code == 202
+    db.expire_all()
+    state, main = _gmail_state(db, extra), _gmail_state(db, primary)
+    assert state.history_id is None and state.needs_sync is True
+    assert main.history_id is not None  # tài khoản chính không bị quét lại
+    from datetime import UTC, datetime, timedelta
+
+    assert datetime.now(UTC) - state.updated_min > timedelta(days=29)

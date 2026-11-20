@@ -114,3 +114,29 @@ def test_create_draft_by_sender_email(db, user, fake, two_accounts):  # noqa: F8
     assert (d["account_id"], d["account_email"]) == (two_accounts.id, WORK)
     assert mail.get_draft(db, user.user_id, d["id"])["account_email"] == WORK
     assert d["google_draft_id"] in fake.mailbox("sub-2").drafts
+
+
+def test_conversations_newest_first_filter_by_account(auth_client, db, user, fake, two_accounts):  # noqa: F811
+    fake.gmail.add_mail(subject="Thư nhà cũ", thread_id="th1", at_ms=1795000000000)
+    fake.mailbox("sub-2").add_mail(subject="Thư công việc mới", thread_id="tw1", at_ms=1795000900000)
+    _sync(db, user)
+    # Thư cũ của tài khoản chính được Gmail đánh dấu quan trọng vẫn không chen lên trước thư mới hơn.
+    db.query(InboxMessage).filter_by(thread_ref="th1").update({"importance": "important"})
+    data = auth_client.get("/api/v1/inbox/conversations", params={"app": "gmail"}).json()["data"]
+    assert [c["title"] for c in data["items"]] == ["Thư công việc mới", "Thư nhà cũ"]
+    assert data["accounts"] == ["cong.viec@gmail.com", "dai.ca@gmail.com"]
+    only = auth_client.get("/api/v1/inbox/conversations", params={"account_email": WORK.upper()}).json()[
+        "data"
+    ]
+    assert [c["title"] for c in only["items"]] == ["Thư công việc mới"]
+    alias = auth_client.get("/api/v1/inbox/conversations", params={"app": "gmail", "account": WORK}).json()[
+        "data"
+    ]
+    assert [c["title"] for c in alias["items"]] == ["Thư công việc mới"]
+    # Con trỏ cũ ba phần vẫn nhận.
+    first = data["items"][0]
+    old = f"0|{first['last_posted_at']}|{first['conversation_key']}"
+    rest = auth_client.get("/api/v1/inbox/conversations", params={"app": "gmail", "cursor": old}).json()[
+        "data"
+    ]
+    assert [c["title"] for c in rest["items"]] == ["Thư nhà cũ"]

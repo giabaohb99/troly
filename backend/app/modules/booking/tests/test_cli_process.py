@@ -28,6 +28,17 @@ def _run(*args: str) -> subprocess.CompletedProcess:
         (("app.modules.trip.cli", "geocode", "--all"), None),
         (("app.modules.booking.cli", "rescan", "--days", "1"), 0),
         (("app.integrations.google.cli", "rescan-inbox", "--days", "7"), 0),
+        (
+            (
+                "app.integrations.google.cli",
+                "rescan-inbox",
+                "--account",
+                "khong-co@gmail.com",
+                "--days",
+                "30",
+            ),
+            1,
+        ),
     ],
 )
 def test_cli_runs_in_fresh_process(args, code):
