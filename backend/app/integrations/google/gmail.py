@@ -36,6 +36,9 @@ GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
 POLL = timedelta(minutes=5)
 FIRST_QUERY = "in:inbox newer_than:7d"
 FIRST_MAX = 200  # lần đầu tối đa 200 thư (mỗi thư metadata 20 đơn vị quota)
+SKIP_LABELS = frozenset(
+    {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "CATEGORY_UPDATES", "SPAM", "TRASH"}
+)
 THREAD_TEXT_MAX = 4000
 MAX_RECIPIENTS = 50
 DRAFTS_URL = "https://mail.google.com/mail/#drafts"
@@ -138,30 +141,8 @@ def _api(session: Session, user_id: int) -> tuple[GoogleAccount, GoogleApi]:
 # ---------- Đồng bộ hộp Chính ----------
 
 
-# Cài đặt gmail.categories (module setting giữ, MailStore đọc giúp): lấy những mục nào của hộp thư đến.
-# Thư IMPORTANT luôn vào; SPAM, TRASH luôn bỏ (lỗi thật 20/11: 22 trên 25 thư mang CATEGORY_UPDATES bị bỏ).
-CATEGORY_MODES = {
-    "primary": {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "CATEGORY_UPDATES"},
-    "primary_updates": {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS"},
-    "all": {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL"},
-}
-DEFAULT_CATEGORIES = "primary_updates"
-ALWAYS_SKIP = frozenset({"SPAM", "TRASH"})
-
-
-def categories_of(session: Session, user_id: int) -> str:
-    store = stores.mail_store()
-    getter = getattr(store, "gmail_categories", None)
-    mode = getter(session, user_id) if getter else None
-    return mode if mode in CATEGORY_MODES else DEFAULT_CATEGORIES
-
-
-def _wanted(labels: list[str], mode: str = DEFAULT_CATEGORIES) -> bool:
-    if "INBOX" not in labels or ALWAYS_SKIP.intersection(labels):
-        return False
-    if "IMPORTANT" in labels:
-        return True
-    return not CATEGORY_MODES.get(mode, CATEGORY_MODES[DEFAULT_CATEGORIES]).intersection(labels)
+def _wanted(labels: list[str]) -> bool:
+    return "INBOX" in labels and not SKIP_LABELS.intersection(labels)
 
 
 def _metadata(api: GoogleApi, message_id: str) -> dict:
@@ -211,8 +192,7 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
             log.info("historyId Gmail hết hạn, quét lại từ đầu", extra={"user_id": account.user_id})
             history_id = None
     if not history_id:
-        ids, history_id = _first(api, state.updated_min)
-    mode = categories_of(session, account.user_id)
+        ids, history_id = _first(api)
     mails = []
     for message_id in dict.fromkeys(ids):
         try:
@@ -221,13 +201,12 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
             if exc.status == 404:
                 continue  # thư đã xóa giữa chừng
             raise
-        if _wanted(item.get("labelIds") or [], mode):
+        if _wanted(item.get("labelIds") or []):
             mails.append(to_remote(item))
     saved = store.save_gmail_messages(session, account.user_id, mails) if mails else 0
     _scan_bookings_safely(session, account)
     now = clock.now()
     state.history_id = str(history_id)
-    state.updated_min = None
     state.last_sync_at, state.needs_sync = now, False
     state.next_sync_at = now + POLL
     state.status, state.last_error = "ok", None
@@ -235,35 +214,13 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
     return saved
 
 
-def rescan_inbox(session: Session, user_id: int, days: int = 7) -> None:
-    """Lượt đồng bộ sau quét lại `days` ngày (đổi gmail.categories, hoặc khi deploy). Thư đã có không ghi
-    trùng: MailStore bỏ trùng theo message_id."""
-    from sqlalchemy import select
-
-    account = oauth.require_account(session, user_id, "gmail")
-    state = session.scalar(
-        select(GoogleSyncState).where(
-            GoogleSyncState.google_account_id == account.id,
-            GoogleSyncState.service == "gmail",
-            GoogleSyncState.resource_id == "me",
-        )
-    )
-    if state is None:
-        return
-    state.history_id = None
-    state.updated_min = clock.now() - timedelta(days=max(1, min(days, 30)))
-    state.needs_sync, state.next_sync_at = True, clock.now()
-    session.flush()
-
-
-def _first(api: GoogleApi, since: datetime | None = None) -> tuple[list[str], str]:
+def _first(api: GoogleApi) -> tuple[list[str], str]:
     # Lấy historyId trước khi liệt kê: thư đến trong lúc quét sẽ nằm ở lượt history sau.
     history_id = api.request("GET", f"{GMAIL}/profile")["historyId"]
-    query = f"in:inbox after:{int(since.timestamp())}" if since else FIRST_QUERY
     ids: list[str] = []
     page = None
     while len(ids) < FIRST_MAX:
-        params = {"q": query, "maxResults": 100}
+        params = {"q": FIRST_QUERY, "maxResults": 100}
         if page:
             params["pageToken"] = page
         data = api.request("GET", f"{GMAIL}/messages", params=params)

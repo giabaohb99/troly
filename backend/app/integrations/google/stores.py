@@ -193,9 +193,6 @@ class MailStore(Protocol):
 
     def save_gmail_messages(self, session: Session, user_id: int, mails: list) -> int: ...
 
-    # Tùy chọn: giá trị cài đặt gmail.categories (primary, primary_updates, all); thiếu thì primary_updates.
-    # def gmail_categories(self, session: Session, user_id: int) -> str: ...
-
 
 class BookingStore(Protocol):
     """Module booking cài (QĐ-49): nhận thư nghi là đặt chỗ (gmail.BookingMail, đã có thân thư), tự bóc

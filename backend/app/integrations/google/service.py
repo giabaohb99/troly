@@ -76,67 +76,14 @@ def get_status(session: Session, user_id: int) -> dict:
     }
 
 
-def connect(session: Session, user_id: int, packs: list[str] | None, role: str = "primary") -> dict:
-    """role mail (QĐ-50): thêm một tài khoản Gmail khác, chỉ xin base + gmail."""
-    if role not in ("primary", "mail"):
-        raise ValidationError(fields={"role": "Chỉ nhận primary hoặc mail."})
-    packs = packs or []
+def connect(session: Session, user_id: int, packs: list[str]) -> dict:
     unknown = [p for p in packs if p not in PACKS]
     if unknown:
         raise ValidationError("Gói không hợp lệ: " + ", ".join(unknown), fields={"packs": "Không hợp lệ"})
-    if role == "primary" and not packs:
-        raise ValidationError(fields={"packs": "Chọn ít nhất một gói."})
-    return {"auth_url": oauth.start_connect(session, user_id, packs, role)}
-
-
-def list_accounts(session: Session, user_id: int) -> list[dict]:
-    """GET /google/accounts: tài khoản chính trước, rồi tài khoản Gmail thêm."""
-    out = []
-    for a in oauth.list_accounts(session, user_id):
-        states = _states(session, a.id)
-        synced = [s.last_sync_at for s in states if s.last_sync_at]
-        out.append(
-            {
-                "id": a.id,
-                "email": a.email,
-                "role": a.role,
-                "status": a.status,
-                "enabled_packs": list(a.enabled_packs or []),
-                "last_sync_at": max(synced) if synced else None,
-                "last_error": a.last_error or next((s.last_error for s in states if s.last_error), None),
-            }
-        )
-    return out
-
-
-def remove_account(session: Session, user_id: int, account_id: int, delete_messages: bool = True) -> dict:
-    """Gỡ một tài khoản Gmail thêm: thu hồi mã của chính nó (quyền cấp theo từng người dùng Google nên tài
-    khoản khác không ảnh hưởng), xóa tin của nó khỏi hộp tin nếu người dùng chọn."""
-    account = oauth.get_account_by_id(session, user_id, account_id)
-    if account.role == "primary":
-        raise ConflictError("Đây là tài khoản chính, dùng Ngắt kết nối.")
-    if account.status != "revoked":
-        oauth.revoke_account_tokens(account)
-    store = stores.mail_store()
-    hook = getattr(store, "on_account_removed", None)
-    if hook is not None:
-        hook(session, user_id, account.email, delete_messages)
-    session.delete(account)
-    session.flush()
-    return {"ok": True}
+    return {"auth_url": oauth.start_connect(session, user_id, packs)}
 
 
 def request_sync(session: Session, user_id: int, service: str) -> dict:
-    if service == "gmail":  # QĐ-50: đồng bộ ngay mọi tài khoản có Gmail
-        accounts = oauth.gmail_accounts(session, user_id)
-        if not accounts:
-            raise GoogleNotConnected()
-        for a in accounts:
-            for state in _states(session, a.id):
-                if state.service == "gmail" and state.resource_id == "me":
-                    state.needs_sync, state.next_sync_at = True, clock.now()
-        session.flush()
-        return {"queued": True}
     account = oauth.require_account(session, user_id, service if service in PACKS else None)
     state = session.scalar(
         select(GoogleSyncState).where(
@@ -222,18 +169,11 @@ def disconnect(session: Session, user_id: int, keep_data: bool) -> None:
 
 
 def run_initial_sync(session: Session, job) -> dict:
-    """Việc `google_initial_sync`: lần đầu kéo lịch, tạo kênh, tạo danh sách *Trợ lý*, đẩy việc sẵn có.
-    Chạy cho mọi tài khoản của người dùng (QĐ-50: tài khoản thêm chỉ có Gmail)."""
-    accounts = [a for a in oauth.list_accounts(session, job.user_id) if a.status == "active"]
-    if not accounts:
+    """Việc `google_initial_sync`: lần đầu kéo lịch, tạo kênh, tạo danh sách *Trợ lý*, đẩy việc sẵn có."""
+    account = oauth.get_account(session, job.user_id)
+    if account is None or account.status != "active":
         return {"skipped": True}
     result: dict = {}
-    for account in accounts:
-        _initial_sync_account(session, account, result)
-    return result
-
-
-def _initial_sync_account(session: Session, account: GoogleAccount, result: dict) -> None:
     for state in _states(session, account.id):
         if state.initial_sync_state == "done":
             continue
@@ -256,13 +196,14 @@ def _initial_sync_account(session: Session, account: GoogleAccount, result: dict
                 result["tasks"] = tasks_sync.pull_status(session, account, state)
             elif state.service == "gmail":
                 state.history_id = None
-                result["gmail"] = result.get("gmail", 0) + gmail.sync_gmail(session, account, state)
+                result["gmail"] = gmail.sync_gmail(session, account, state)
             state.initial_sync_state = "done"
         except Exception:
             state.initial_sync_state = "failed"
             state.status, state.last_error = "error", "Lấy dữ liệu lần đầu lỗi."
             session.flush()
             raise
+    return result
 
 
 def _store_ready(service: str) -> bool:
