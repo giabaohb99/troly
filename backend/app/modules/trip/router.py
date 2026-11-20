@@ -46,6 +46,7 @@ class StopIn(BaseModel):
     optional: bool | None = None
     stay_minutes: int | None = None
     place_query: str | None = None
+    area: str | None = None  # xã/phường, tỉnh: sửa khi dẫn đường ra nhầm tỉnh
     note: str | None = None
     phone: str | None = None
     cost_note: str | None = None

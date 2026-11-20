@@ -1,4 +1,5 @@
-"""Thông báo máy tự phát theo QĐ-38, QĐ-41: giao dịch vừa ghi, tin quan trọng mới, lượt chat xong.
+"""Thông báo máy tự phát theo QĐ-38, QĐ-41, QĐ-49: giao dịch vừa ghi, tin quan trọng mới, lượt chat xong,
+đặt chỗ vừa tự thêm vào Lịch.
 
 Máy hỏi `GET /device/notices?after=<cursor>` mỗi 15 phút và sau mỗi lô sự kiện. Lần đầu không có
 `after` thì chỉ trả `cursor` (không báo dồn). Loại đang tắt ở cài đặt thì bỏ qua, con trỏ vẫn tiến.
@@ -6,6 +7,8 @@ Máy hỏi `GET /device/notices?after=<cursor>` mỗi 15 phút và sau mỗi lô
 """
 
 import re
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -27,17 +30,65 @@ _FILE_ID = re.compile(r'file_id\\?"\s*:\s*(\d+)')
 _SENTENCE = re.compile(r"(?<=[.!?…])\s+")
 
 
-def _parse(cursor: str) -> tuple[int, int, int | None]:
-    """Con trỏ `<expense>.<inbox>.<message>`; bản cũ hai phần thì phần chat bắt đầu từ hiện tại."""
+def _parse(cursor: str) -> tuple[int, int, int | None, int | None]:
+    """Con trỏ `<expense>.<inbox>.<message>.<booking>`; bản cũ thiếu phần sau thì phần đó tính từ hiện tại
+    (không báo dồn)."""
     try:
-        parts = [int(p) for p in cursor.split(".")]
+        parts: list[int | None] = [int(p) for p in cursor.split(".")]
     except ValueError as exc:
         raise ValidationError(fields={"after": "Con trỏ không hợp lệ."}) from exc
-    if len(parts) == 2:
-        return parts[0], parts[1], None
-    if len(parts) == 3:
-        return parts[0], parts[1], parts[2]
-    raise ValidationError(fields={"after": "Con trỏ không hợp lệ."})
+    if not 2 <= len(parts) <= 4:
+        raise ValidationError(fields={"after": "Con trỏ không hợp lệ."})
+    parts += [None] * (4 - len(parts))
+    return parts[0], parts[1], parts[2], parts[3]
+
+
+# ---------- Đặt chỗ (QĐ-49) ----------
+# Bảng `tab_booking` của module booking (agent Google, migration `0013_booking`). Chưa có bảng thì bỏ qua.
+
+_WEEKDAY = ("T2", "T3", "T4", "T5", "T6", "T7", "CN")
+
+
+def _has_booking_table(session: Session) -> bool:
+    return session.execute(text("SELECT to_regclass('tab_booking') IS NOT NULL")).scalar_one()
+
+
+def _when(at: datetime | None, day: date | None, tz: str) -> str:
+    if at is not None:
+        local = at.astimezone(ZoneInfo(tz))
+        return f"{_WEEKDAY[local.weekday()]} {local:%d/%m %H:%M}"
+    if day is not None:
+        return f"{_WEEKDAY[day.weekday()]} {day:%d/%m}"
+    return ""
+
+
+def _booking_added(session: Session, user_id: int, after: int, upto: int, tz: str) -> list[dict]:
+    """Đặt chỗ đã tự thêm vào Lịch (`calendar_state = added`, có sự kiện); máy hiện nút Hoàn tác gọi
+    `POST /device/bookings/{booking_id}/undo`."""
+    rows = session.execute(
+        text(
+            "SELECT id, title, start_at, start_date, event_id, created_at FROM tab_booking "
+            "WHERE user_id = :u AND id > :a AND id <= :m AND calendar_state = 'added' AND event_id IS NOT NULL "
+            "ORDER BY id LIMIT :l"
+        ),
+        {"u": user_id, "a": after, "m": upto, "l": LIMIT},
+    ).all()
+    out = []
+    for r in rows:
+        body = ", ".join(x for x in ((r.title or "").strip(), _when(r.start_at, r.start_date, tz)) if x)
+        out.append(
+            {
+                "id": f"booking:{r.id}",
+                "kind": "booking_added",
+                "created_at": r.created_at,
+                "title": "Đã thêm đặt chỗ vào Lịch",
+                "body": body[:BODY_MAX] or "Mở Lịch để xem.",
+                "deep_link": f"troly://lich/su-kien/{r.event_id}",
+                "booking_id": r.id,
+                "event_id": r.event_id,
+            }
+        )
+    return out
 
 
 def first_sentence(value: str | None) -> str:
@@ -95,7 +146,17 @@ def _chat_done(session: Session, user_id: int, after: int, upto: int) -> list[di
     return out
 
 
-def list_notices(session: Session, user_id: int, after: str | None) -> dict:
+def list_notices(
+    session: Session, user_id: int, after: str | None, timezone: str = "Asia/Ho_Chi_Minh"
+) -> dict:
+    has_booking = _has_booking_table(session)
+    booking_max = (
+        session.execute(
+            text("SELECT coalesce(max(id), 0) FROM tab_booking WHERE user_id = :u"), {"u": user_id}
+        ).scalar_one()
+        if has_booking
+        else 0
+    )
     exp_max, inbox_max, msg_max = session.execute(
         text(
             "SELECT (SELECT coalesce(max(id), 0) FROM tab_expense WHERE user_id = :u), "
@@ -105,10 +166,10 @@ def list_notices(session: Session, user_id: int, after: str | None) -> dict:
         {"u": user_id},
     ).one()
     if after is None:
-        return {"items": [], "cursor": f"{exp_max}.{inbox_max}.{msg_max}"}
-    exp_after, inbox_after, msg_after = _parse(after)
+        return {"items": [], "cursor": f"{exp_max}.{inbox_max}.{msg_max}.{booking_max}"}
+    exp_after, inbox_after, msg_after, booking_after = _parse(after)
     items: list[dict] = []
-    next_exp, next_inbox, next_msg = exp_max, inbox_max, msg_max
+    next_exp, next_inbox, next_msg, next_booking = exp_max, inbox_max, msg_max, booking_max
 
     if setting_service.get_value(session, user_id, "notify.new_transaction"):
         rows = session.execute(
@@ -163,4 +224,13 @@ def list_notices(session: Session, user_id: int, after: str | None) -> dict:
         items.extend(done)
         if len(done) == LIMIT:
             next_msg = done[-1]["message_id"]
-    return {"items": items, "cursor": f"{next_exp}.{next_inbox}.{next_msg}"}
+    if (
+        has_booking
+        and booking_after is not None
+        and setting_service.get_value(session, user_id, "notify.booking_added")
+    ):
+        added = _booking_added(session, user_id, booking_after, booking_max, timezone)
+        items.extend(added)
+        if len(added) == LIMIT:
+            next_booking = added[-1]["booking_id"]
+    return {"items": items, "cursor": f"{next_exp}.{next_inbox}.{next_msg}.{next_booking}"}

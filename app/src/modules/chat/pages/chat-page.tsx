@@ -22,6 +22,9 @@ import { useOpenFile } from '@/shared/hooks/use-open-file'
 import { useOlderMessages } from '@/modules/chat/hooks/use-older-messages'
 import { mergeOlder } from '@/modules/chat/utils/older-messages'
 import { Alarm } from '@/core/native/alarm'
+import { TTS_NO_VI, Voice } from '@/core/native/voice'
+import { toSpeakable } from '@/shared/voice/speakable'
+import { useReadReplies } from '@/shared/voice/voice-prefs'
 
 // Mở từ thông báo tới tin cũ: tải thêm tối đa chừng này trang (50 tin mỗi trang) để tìm.
 const MAX_SEEK_PAGES = 20
@@ -152,9 +155,46 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadOlder đổi mỗi lần vẽ; chạy lại theo số tin là đủ
   }, [targetMessage, fileToOpen, today.isSuccess, setParams, messages.length, olderPages.hasMore, olderPages.loading])
 
-  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[] }) => {
+  // Hỏi bằng giọng thì đọc to câu trả lời (1.0.6, công tắc ở Cài đặt → Thông báo, mục Giọng nói). Chạm màn hình hoặc
+  // bấm micro thì dừng đọc.
+  const readReplies = useReadReplies()
+  const voiceTurnRef = useRef(false)
+  const speakingRef = useRef(false)
+  const stopSpeaking = () => {
+    if (!speakingRef.current) return
+    speakingRef.current = false
+    void Voice.stopSpeaking().catch(() => null)
+  }
+  useEffect(() => {
+    const handle = Voice.addListener('speakEnd', () => {
+      speakingRef.current = false
+    })
+    return () => {
+      void handle.then((h) => h.remove())
+      void Voice.stopSpeaking().catch(() => null)
+    }
+  }, [])
+  useEffect(() => {
+    if (turn?.status !== 'done' || !voiceTurnRef.current) return
+    voiceTurnRef.current = false
+    if (!readReplies) return
+    const text = toSpeakable(turn.assistant?.text ?? turn.text)
+    if (!text) return
+    speakingRef.current = true
+    Voice.speak({ text }).catch((error: { code?: string; message?: string }) => {
+      speakingRef.current = false
+      if (error?.code === TTS_NO_VI) {
+        toast.error(error.message || 'Máy chưa có giọng đọc tiếng Việt.', { action: { label: 'Mở cài đặt', onClick: () => void Voice.openTtsSettings() } })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi lượt chuyển sang xong
+  }, [turn?.status])
+
+  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean }) => {
     setDraft('')
-    void send(input)
+    stopSpeaking()
+    voiceTurnRef.current = !!input.voice
+    void send({ text: input.text, mode: input.mode, fileIds: input.fileIds })
   }
 
   // Màn chat có conversation_id của phiên khác hôm nay: xem phiên cũ, chỉ đọc.
@@ -176,7 +216,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col" onPointerDown={stopSpeaking}>
       <div className="flex shrink-0 items-start justify-between gap-2 pb-3">
         <div>
           <h1 className="text-2xl font-bold">Trợ lý</h1>

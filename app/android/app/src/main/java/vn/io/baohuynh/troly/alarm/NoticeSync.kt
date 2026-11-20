@@ -62,6 +62,17 @@ class NoticeWorker(context: Context, params: WorkerParameters) : Worker(context,
                     )
                     continue
                 }
+                if (item.optString("kind") == "booking_added") {
+                    ReminderNotifier.showBookingAdded(
+                        applicationContext,
+                        item.optString("id"),
+                        item.optString("title").ifEmpty { "Đã thêm đặt chỗ vào Lịch" },
+                        item.optString("body").takeIf { it.isNotEmpty() },
+                        item.optString("deep_link").takeIf { it.isNotEmpty() },
+                        item.optLong("booking_id"),
+                    )
+                    continue
+                }
                 val channel = when (item.optString("kind")) {
                     "transaction" -> ReminderNotifier.CHANNEL_TRANSACTION
                     "important_message" -> ReminderNotifier.CHANNEL_IMPORTANT

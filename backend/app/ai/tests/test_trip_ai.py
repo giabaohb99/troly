@@ -30,6 +30,7 @@ def _extract(**kw):
                 "date": "21/11",
                 "title": "Cần Thơ đi Phước Hải",
                 "route_text": "",
+                "area": "Phước Hải, Bà Rịa - Vũng Tàu",
                 "stops": [
                     {
                         "time_text": "~7h00",
@@ -47,6 +48,7 @@ def _extract(**kw):
                         "phone": "",
                         "note": "",
                         "optional": False,
+                        "area": "",
                     }
                 ],
             }
@@ -144,3 +146,17 @@ def test_summaries_fall_back_to_code_when_still_wrong(make_client):
     out = summarize_options(1, trip_title="X", options=OPTIONS[:1], client=make_client(fake))
     assert out[0] == fallback_summary(OPTIONS[0])
     assert out[0].summary.startswith("Đúng giờ, ít rủi ro: khoảng 512 km, 11 giờ 30 phút chạy xe.")
+
+
+def test_stop_area_falls_back_to_day_area(make_client):
+    """Lỗi thật 20/11: dẫn đường ra quán trùng tên ở tỉnh khác; mỗi điểm phải có khu vực."""
+    ex = _extract()
+    ex.days[0].stops.append(
+        ex.days[0].stops[0].model_copy(update={"title": "Ăn sáng", "area": " Thạnh Mỹ Lợi, TP. Hồ Chí Minh "})
+    )
+    fake = FakeClaude([_reply(ex)])
+    out = extract_trip(1, text=TEXT, client=make_client(fake))
+    first, second = out.days[0].stops
+    assert first.area == "Phước Hải, Bà Rịa - Vũng Tàu"  # để trống: lấy khu vực của ngày
+    assert second.area == "Thạnh Mỹ Lợi, TP. Hồ Chí Minh"
+    assert "area" in str(fake.requests[0]["system"])

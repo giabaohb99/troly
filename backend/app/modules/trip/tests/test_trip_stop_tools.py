@@ -221,3 +221,26 @@ def test_chat_go_again_duplicates_then_asks_to_evaluate(auth_client, db, evaluat
     assert "evaluate_trip" in str(result["content"])
     system = str(fake.requests[0]["system"])
     assert "archive_trip" in system and "duplicate_trip" in system
+
+
+def test_fix_wrong_area_for_navigation(db, ctx, evaluated):
+    """Dẫn đường ra quán trùng tên ở Cần Thơ: người dùng báo, bot sửa area của điểm."""
+    stop = _day1(db, evaluated)[1]
+    _call(ctx, "update_trip_stop", trip_id=evaluated, stop_id=stop.id, area="Phước Hải, Bà Rịa - Vũng Tàu")
+    db.refresh(stop)
+    assert stop.area == "Phước Hải, Bà Rịa - Vũng Tàu"
+    out = _call(
+        ctx,
+        "add_trip_stops",
+        trip_id=evaluated,
+        stops=[
+            {
+                "day_no": 1,
+                "title": "Đổ xăng ở Long Thành",
+                "category": "di_chuyen",
+                "area": "Long Thành, Đồng Nai",
+            }
+        ],
+    )
+    added = db.get(TripStop, out.result["da_them"][0]["stop_id"])
+    assert added.area == "Long Thành, Đồng Nai"

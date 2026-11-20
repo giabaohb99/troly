@@ -79,6 +79,7 @@ class StopDraft:
     optional: bool = False
     stay_minutes: int | None = None
     place_query: str | None = None
+    area: str | None = None
     source_url: str | None = None
     place_id: str | None = None
     lat: float | None = None
@@ -155,6 +156,7 @@ def normalize(extract: TripExtract, tz: str, today: date) -> Normalized:
                     phone=stop.phone,
                     cost_note=stop.cost_note,
                     note=stop.note,
+                    area=(stop.area or None) and stop.area.strip()[:200],
                 )
                 if i == 0:
                     d.time_text = stop.time_text

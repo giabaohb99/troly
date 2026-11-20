@@ -8,6 +8,7 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -15,7 +16,7 @@ from app.core.context import UserContext
 from app.core.errors import AppError, NotFoundError, ValidationError
 from app.core.models import JobQueue
 from app.integrations.google import maps
-from app.modules.trip import bridge, engine, links, places
+from app.modules.trip import bridge, engine, geocode, links, places
 from app.modules.trip.docx_export import DocDay, DocTrip, build_docx
 from app.modules.trip.hours_text import hours_from_text
 from app.modules.trip.models import CATEGORIES, RouteCache, Trip, TripFact, TripOption, TripStop
@@ -86,6 +87,8 @@ def serialize_stop(s: TripStop, leg: dict | None = None) -> dict:
         "optional": s.optional,
         "stay_minutes": s.stay_minutes,
         "place_query": s.place_query,
+        "area": s.area,
+        "search_query": _link_stop(s).query,  # chuỗi tìm Google Maps khi không có tọa độ: tên kèm địa phương
         "source_url": s.source_url,
         "place_id": s.place_id,
         "lat": _num(s.lat),
@@ -94,6 +97,7 @@ def serialize_stop(s: TripStop, leg: dict | None = None) -> dict:
         "phone": s.phone,
         "cost_note": s.cost_note,
         "note": s.note,
+        "booking": {k: v for k, v in s.booking.items() if k != "added_stop"} if s.booking else None,
         "leg_km": (leg or {}).get("leg_km"),
         "leg_minutes": (leg or {}).get("leg_minutes"),
     }
@@ -312,7 +316,7 @@ def unarchive_trip(session: Session, user: UserContext, trip_id: int) -> dict:
 
 STOP_COPY = (
     "day_no", "seq", "title", "category", "role", "time_text", "approx", "fixed", "optional", "stay_minutes",
-    "place_query", "source_url", "place_id", "lat", "lng", "coord_source", "coord_fetched_at",
+    "place_query", "area", "source_url", "place_id", "lat", "lng", "coord_source", "coord_fetched_at",
     "resolve_status", "phone", "cost_note", "note", "alternatives",
 )  # fmt: skip
 
@@ -424,6 +428,39 @@ def _queue(session: Session, user_id: int, kind: str, trip_id: int, extra: dict 
     return job.id
 
 
+def queue_geocode(session: Session, trip: Trip) -> bool:
+    """Đặt việc nền lấy tọa độ OpenStreetMap khi còn điểm chưa có tọa độ (1 yêu cầu mỗi giây nên không
+    chạy trong lượt chat). Đã có việc chờ thì thôi."""
+    missing = session.scalar(
+        select(func.count())
+        .select_from(TripStop)
+        .where(TripStop.trip_id == trip.id, TripStop.lat.is_(None), TripStop.role.in_(ROUTED_ROLES))
+    )
+    if not missing:
+        return False
+    stmt = (
+        pg_insert(JobQueue)
+        .values(
+            user_id=trip.user_id,
+            kind="trip_geocode",
+            payload={"trip_id": trip.id},
+            dedupe_key=f"trip_geocode:{trip.id}",
+            max_attempts=1,
+        )
+        .on_conflict_do_nothing()
+    )
+    queued = session.execute(stmt).rowcount > 0
+    if queued:
+        session.execute(text("NOTIFY troly_wake, 'job'"))
+    return queued
+
+
+def run_geocode(session: Session, job) -> dict:
+    """Việc nền trip_geocode (cũng dùng cho lệnh CLI chạy lại chuyến cũ)."""
+    trip = _get(session, job.user_id, job.payload["trip_id"])
+    return geocode.geocode_trip(session, trip)
+
+
 def import_trip(
     session: Session,
     user: UserContext,
@@ -523,6 +560,8 @@ def run_import(session: Session, job) -> dict:
         normalized = normalize(extract, tz, clock.now().astimezone(ZoneInfo(tz)).date())
         _save_import(session, trip, extract, normalized)
         resolve_places(session, trip)
+        geocode.fill_areas(trip, _stops(session, trip.id))
+        queue_geocode(session, trip)
         trip.status, trip.error = "draft", None
     except AppError as exc:
         trip.status, trip.error = "failed", exc.message
@@ -573,6 +612,7 @@ def _save_import(session: Session, trip: Trip, extract: TripExtract, n: Normaliz
             optional=d.optional,
             stay_minutes=d.stay_minutes,
             place_query=d.place_query,
+            area=d.area,
             source_url=d.source_url,
             place_id=d.place_id,
             lat=d.lat,
@@ -757,12 +797,18 @@ def _stop(session: Session, user_id: int, trip_id: int, stop_id: int) -> TripSto
     return stop
 
 
-STOP_FIELDS = {"title", "category", "planned_start", "planned_end", "fixed", "optional", "stay_minutes", "place_query", "note", "phone", "cost_note", "day_no", "seq"}  # fmt: skip
+STOP_FIELDS = {"title", "category", "planned_start", "planned_end", "fixed", "optional", "stay_minutes", "place_query", "area", "note", "phone", "cost_note", "day_no", "seq"}  # fmt: skip
 
 
 def _apply_stop(stop: TripStop, data: dict) -> None:
+    moved = ("area" in data and data["area"] != stop.area) or (
+        "place_query" in data and data["place_query"] != stop.place_query
+    )
     for key in STOP_FIELDS & data.keys():
         setattr(stop, key, data[key])
+    if moved and stop.coord_source == "osm":
+        # Tọa độ OpenStreetMap lấy theo tên và địa phương cũ: bỏ để lần đánh giá sau tìm lại.
+        stop.lat = stop.lng = stop.coord_source = stop.coord_fetched_at = None
     if stop.category not in CATEGORIES:
         raise ValidationError(fields={"category": "Loại điểm không hợp lệ."})
     if "lat" in data or "place_id" in data:
@@ -876,6 +922,7 @@ def evaluate_trip(session: Session, user: UserContext, trip_id: int, mode: str =
         raise TripBusy()
     trip.status = "evaluating"
     job_id = _queue(session, user.user_id, "trip_evaluate", trip.id, {"mode": mode})
+    queue_geocode(session, trip)
     return {"job_id": job_id, "status": "evaluating"}
 
 
@@ -1125,7 +1172,9 @@ def _estimate_legs(
                     "day_no": d.day_no,
                     "title": p.title,
                     "category": p.category,
-                    "address": None,
+                    "address": by_id[p.id].area
+                    if p.id in by_id
+                    else None,  # địa phương giúp AI ước tính đúng chỗ
                     "place_query": p.place_query,
                     "lat": p.lat,
                     "lng": p.lng,
@@ -1364,7 +1413,15 @@ def choose_option(session: Session, user: UserContext, trip_id: int, option_id: 
 
 def _link_stop(s: TripStop) -> links.LinkStop:
     return links.LinkStop(
-        s.id, s.title, s.category, s.stay_minutes or 0, _num(s.lat), _num(s.lng), s.place_query, s.place_id
+        s.id,
+        s.title,
+        s.category,
+        s.stay_minutes or 0,
+        _num(s.lat),
+        _num(s.lng),
+        s.place_query,
+        s.place_id,
+        s.area,
     )
 
 
@@ -1567,3 +1624,87 @@ def to_calendar(session: Session, user: UserContext, trip_id: int) -> dict:
             )
             event_ids.append(made["event"]["id"])
     return {"event_ids": event_ids}
+
+
+# ---------- Đặt phòng từ thư (QĐ-49, module booking gọi) ----------
+
+
+def _same_place(a: str | None, b: str | None) -> bool:
+    fa, fb = fold(a or ""), fold(b or "")
+    return bool(fa and fb) and (fa in fb or fb in fa)
+
+
+def attach_booking(
+    session: Session,
+    user: UserContext,
+    *,
+    night: date,
+    name: str,
+    area: str | None,
+    address: str | None,
+    phone: str | None,
+    booking: dict,
+) -> tuple[int, int] | None:
+    """Gắn đặt phòng vào chuyến có đêm `night`: vào điểm khách sạn trùng tên (hoặc điểm khách sạn duy nhất)
+    của ngày đó; không có thì thêm điểm khách sạn cuối ngày. Trả (trip_id, stop_id) hoặc None."""
+    trip = session.scalar(
+        select(Trip)
+        .where(
+            Trip.user_id == user.user_id,
+            Trip.archived_at.is_(None),
+            Trip.start_date <= night,
+            func.coalesce(Trip.end_date, Trip.start_date) >= night,
+            Trip.status.not_in(("importing", "failed")),
+        )
+        .order_by(Trip.start_date.desc())
+        .limit(1)
+    )
+    if trip is None:
+        return None
+    day_no = (night - trip.start_date).days + 1
+    day = [s for s in _stops(session, trip.id) if s.day_no == day_no]
+    hotels = [s for s in day if s.category == "khach_san" and s.role == "main" and not s.booking]
+    stop = next((s for s in hotels if _same_place(s.title, name) or _same_place(s.place_query, name)), None)
+    if stop is None and len(hotels) == 1:
+        stop = hotels[0]
+    added = stop is None
+    if added:
+        stop = TripStop(
+            user_id=user.user_id,
+            trip_id=trip.id,
+            day_no=day_no,
+            seq=max((s.seq for s in day), default=0) + 1,
+            title=name[:500],
+            category="khach_san",
+            role="main",
+            place_query=", ".join(x for x in (name, address) if x)[:500] or name,
+            area=area,
+            resolve_status="uncertain",
+        )
+        session.add(stop)
+    if phone and not stop.phone:
+        stop.phone = phone
+    if area and not stop.area:
+        stop.area = area
+    stop.booking = {**booking, "added_stop": added}
+    session.flush()
+    return trip.id, stop.id
+
+
+def update_stop_booking(session: Session, user: UserContext, stop_id: int, booking: dict) -> None:
+    stop = session.scalar(select(TripStop).where(TripStop.id == stop_id, TripStop.user_id == user.user_id))
+    if stop is not None and stop.booking:
+        stop.booking = {**booking, "added_stop": stop.booking.get("added_stop", False)}
+        session.flush()
+
+
+def detach_booking(session: Session, user: UserContext, stop_id: int) -> None:
+    """Hoàn tác: điểm do đặt phòng thêm vào thì xóa; điểm có sẵn thì chỉ bỏ thông tin đặt phòng."""
+    stop = session.scalar(select(TripStop).where(TripStop.id == stop_id, TripStop.user_id == user.user_id))
+    if stop is None:
+        return
+    if (stop.booking or {}).get("added_stop"):
+        session.delete(stop)
+    else:
+        stop.booking = None
+    session.flush()

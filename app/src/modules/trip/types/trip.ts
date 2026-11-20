@@ -41,6 +41,10 @@ export interface Stop {
   optional: boolean
   stay_minutes: number | null
   place_query: string | null
+  // Xã/phường, tỉnh của điểm và chuỗi tìm đầy đủ *tên, xã/phường, tỉnh* (máy chủ dựng). Tìm theo tên trần thì Google
+  // ra chỗ trùng tên gần người dùng (lỗi Phước Hải ra Cần Thơ).
+  area?: string | null
+  search_query?: string | null
   place_id: string | null
   lat: number | null
   lng: number | null
@@ -50,6 +54,23 @@ export interface Stop {
   note: string | null
   leg_km: number | null
   leg_minutes: number | null
+  // Đặt chỗ bóc từ thư xác nhận (QĐ-49), chỉ có ở khách sạn tự gắn từ email. Gọi dùng `phone`, dẫn đường dùng tọa độ.
+  booking?: StopBooking | null
+}
+
+export interface StopBooking {
+  booking_id: number
+  provider: string | null
+  booking_ref: string | null
+  check_in: string | null
+  check_out: string | null
+  guests: number | null
+  // Máy chủ gửi chuỗi số thập phân ("1250000.00").
+  price: string | number | null
+  currency: string | null
+  cancellation: string | null
+  status: 'confirmed' | 'changed' | 'cancelled'
+  source: 'email'
 }
 
 export interface TripDay {

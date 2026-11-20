@@ -120,6 +120,33 @@ object ReminderNotifier {
     }
 
     /**
+     * Đặt chỗ từ email đã thêm vào Lịch (QĐ-49): kênh Lịch, chạm mở sự kiện trên màn Lịch, nút Hoàn tác gọi máy chủ
+     * bằng mã thiết bị (BookingUndoReceiver) mà không cần mở app.
+     */
+    fun showBookingAdded(context: Context, id: String, title: String, body: String?, deepLink: String?, bookingId: Long) {
+        ensureChannels(context)
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+        val link = ReminderPlan.safeDeepLink(deepLink) ?: "troly://lich"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link), context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val builder = NotificationCompat.Builder(context, CHANNEL_REMINDER)
+            .setSmallIcon(R.drawable.ic_stat_reminder)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(body?.let { NotificationCompat.BigTextStyle().bigText(it) })
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(context, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        if (bookingId > 0) builder.addAction(0, "Hoàn tác", BookingUndoReceiver.undoIntent(context, bookingId, id, title))
+        if (NotifyPrefs(context).shouldSilence()) builder.setSilent(true)
+        try {
+            manager.notify(BookingUndoPlan.notificationId(id), builder.build())
+        } catch (_: SecurityException) {
+            // Mất quyền thông báo: bỏ qua.
+        }
+    }
+
+    /**
      * Trợ lý trả lời xong khi app không ở màn hình (QĐ-41). Không báo hai lần cho cùng [messageId]. Bấm mở đúng tin;
      * tin có tệp thì có nút Mở tệp.
      */

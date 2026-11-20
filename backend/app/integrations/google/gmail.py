@@ -204,6 +204,7 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
         if _wanted(item.get("labelIds") or []):
             mails.append(to_remote(item))
     saved = store.save_gmail_messages(session, account.user_id, mails) if mails else 0
+    _scan_bookings_safely(session, account)
     now = clock.now()
     state.history_id = str(history_id)
     state.last_sync_at, state.needs_sync = now, False
@@ -469,3 +470,126 @@ def send_draft(session: Session, user_id: int, google_draft_id: str, expected_ha
     _, api = _api(session, user_id)
     data = api.request("POST", f"{GMAIL}/drafts/send", json={"id": google_draft_id})
     return {"message_id": data.get("id"), "thread_id": data.get("threadId")}
+
+
+# ---------- Thư đặt chỗ (QĐ-49) ----------
+
+BOOKING_SENDERS = (
+    "booking.com", "agoda.com", "traveloka.com", "trip.com", "airbnb.com", "expedia.com", "vietnamairlines.com",
+    "vietjetair.com", "bambooairways.com", "vexere.com", "futabus.vn", "dsvn.vn", "mytour.vn", "ivivu.com",
+    "klook.com",
+)  # fmt: skip
+BOOKING_SUBJECTS = (
+    '"xác nhận"', "confirmation", "confirmed", '"đặt phòng"', '"đặt chỗ"', '"vé điện tử"', "e-ticket",
+    "reservation", "itinerary", '"hủy đặt"',
+)  # fmt: skip
+BOOKING_FIRST_DAYS = 60
+BOOKING_MAX_PER_SCAN = 50
+BOOKING_TEXT_MAX = 20000
+BOOKING_OVERLAP = timedelta(minutes=10)
+
+
+@dataclass
+class BookingMail:
+    """Thư nghi là đặt chỗ, kèm thân thư dạng chữ (đã bỏ HTML) để module booking gửi AI bóc tách."""
+
+    message_id: str
+    thread_id: str
+    subject: str
+    sender: str
+    date: datetime
+    text: str
+    url: str
+
+
+def booking_query(since: datetime) -> str:
+    """Không lọc category: thư Booking, Agoda... thường nằm ở Cập nhật hoặc Quảng cáo, không ở hộp Chính."""
+    terms = [f"from:{d}" for d in BOOKING_SENDERS] + [f"subject:{t}" for t in BOOKING_SUBJECTS]
+    return f"after:{int(since.timestamp())} {{{' '.join(terms)}}} -in:spam -in:trash"
+
+
+def _booking_state(session: Session, account: GoogleAccount) -> GoogleSyncState:
+    from sqlalchemy import select
+
+    state = session.scalar(
+        select(GoogleSyncState).where(
+            GoogleSyncState.google_account_id == account.id,
+            GoogleSyncState.service == "gmail",
+            GoogleSyncState.resource_id == "bookings",
+        )
+    )
+    if state is None:
+        state = GoogleSyncState(
+            user_id=account.user_id,
+            google_account_id=account.id,
+            service="gmail",
+            resource_id="bookings",
+            needs_sync=False,
+            initial_sync_state="done",
+        )
+        session.add(state)
+        session.flush()
+    return state
+
+
+def reset_booking_scan(session: Session, user_id: int, days: int = BOOKING_FIRST_DAYS) -> None:
+    """Lần quét sau đọc lại `days` ngày (deploy QĐ-49: bắt thư đặt phòng đã đến trước đó)."""
+    account = oauth.require_account(session, user_id, "gmail")
+    _booking_state(session, account).updated_min = clock.now() - timedelta(days=days)
+    session.flush()
+
+
+def scan_bookings(session: Session, account: GoogleAccount) -> int:
+    """Một lượt quét thư đặt chỗ mới; trả số thư module booking nhận là đặt chỗ."""
+    store = stores.booking_store()
+    if store is None:
+        return 0
+    state = _booking_state(session, account)
+    started = clock.now()
+    since = state.updated_min or started - timedelta(days=BOOKING_FIRST_DAYS)
+    api = GoogleApi(session, account)
+    data = api.request(
+        "GET", f"{GMAIL}/messages", params={"q": booking_query(since), "maxResults": BOOKING_MAX_PER_SCAN}
+    )
+    ids = [m["id"] for m in data.get("messages") or []]
+    done = store.seen(session, account.user_id, ids) if ids else set()
+    found = 0
+    for message_id in ids:
+        if message_id in done:
+            continue
+        try:
+            item = api.request("GET", f"{GMAIL}/messages/{message_id}", params={"format": "full"})
+        except GoogleHttpError as exc:
+            if exc.status == 404:
+                continue
+            raise
+        h = _headers(item.get("payload"))
+        mail = BookingMail(
+            message_id=item["id"],
+            thread_id=item.get("threadId") or item["id"],
+            subject=h.get("subject", ""),
+            sender=h.get("from", ""),
+            date=_date_of(item),
+            text=_text_of(item.get("payload") or {})[:BOOKING_TEXT_MAX],
+            url=f"https://mail.google.com/mail/#all/{item['id']}",
+        )
+        with session.begin_nested():
+            if store.handle_booking_mail(session, account.user_id, mail):
+                found += 1
+    # Lượt đầy thì lần sau đọc tiếp từ chỗ cũ (thư đã xét bỏ qua nhờ seen); không đầy thì tiến tới bây giờ.
+    if len(ids) < BOOKING_MAX_PER_SCAN:
+        state.updated_min = started - BOOKING_OVERLAP
+    state.last_sync_at = started
+    session.flush()
+    return found
+
+
+def _scan_bookings_safely(session: Session, account: GoogleAccount) -> None:
+    """Lỗi quét đặt chỗ không làm hỏng lượt đồng bộ hộp Chính."""
+    if stores.booking_store() is None:
+        return
+    try:
+        with session.begin_nested():
+            scan_bookings(session, account)
+    except Exception as exc:
+        log.warning("Quét thư đặt chỗ lỗi", extra={"user_id": account.user_id, "error": type(exc).__name__})

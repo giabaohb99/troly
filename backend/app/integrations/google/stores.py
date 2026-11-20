@@ -194,6 +194,16 @@ class MailStore(Protocol):
     def save_gmail_messages(self, session: Session, user_id: int, mails: list) -> int: ...
 
 
+class BookingStore(Protocol):
+    """Module booking cài (QĐ-49): nhận thư nghi là đặt chỗ (gmail.BookingMail, đã có thân thư), tự bóc
+    tách bằng AI, ghi đặt chỗ, thêm vào Lịch. `seen` trả các message_id đã xét để không gửi lại."""
+
+    def seen(self, session: Session, user_id: int, message_ids: list[str]) -> set[str]: ...
+
+    def handle_booking_mail(self, session: Session, user_id: int, mail) -> bool: ...
+
+
+_booking_store: BookingStore | None = None
 _mail_store: MailStore | None = None
 _file_store: FileStore | None = None
 _calendar_store: CalendarStore | None = None
@@ -234,3 +244,12 @@ def register_mail_store(store: MailStore | None) -> None:
 
 def mail_store() -> MailStore | None:
     return _mail_store
+
+
+def register_booking_store(store: BookingStore | None) -> None:
+    global _booking_store
+    _booking_store = store
+
+
+def booking_store() -> BookingStore | None:
+    return _booking_store

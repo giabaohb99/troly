@@ -158,6 +158,23 @@ class FakeGmail:
         items = sorted(self.messages.values(), key=lambda x: int(x["internalDate"]), reverse=True)
         if "in:inbox" in q:
             items = [x for x in items if "INBOX" in x["labelIds"]]
+        if m := re.search(r"after:(\d+)", q):
+            items = [x for x in items if int(x["internalDate"]) // 1000 > int(m.group(1))]
+        if "-in:spam" in q:
+            items = [x for x in items if not {"SPAM", "TRASH"} & set(x["labelIds"])]
+        if m := re.search(r"\{(.*)\}", q):  # nhóm HOẶC của Gmail: from:x subject:"y"
+            terms = re.findall(r'(from|subject):("[^"]+"|\S+)', m.group(1))
+
+            def hit(x: dict) -> bool:
+                for field, value in terms:
+                    value = value.strip('"').lower()
+                    header = x["headers"]["From" if field == "from" else "Subject"].lower()
+                    if value in header:
+                        return True
+                return False
+
+            items = [x for x in items if hit(x)]
+            q = q.replace(m.group(0), "")
         words = [w for w in q.split() if ":" not in w]
         for w in words:
             items = [x for x in items if w.lower() in (x["headers"]["Subject"] + x["text"]).lower()]

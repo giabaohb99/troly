@@ -81,7 +81,7 @@ Luật kiểm được (lọc, OTP, trùng lặp, giờ nhắc) viết thành h�
 | **Maps** (P4) | `navigate({lat, lng, query, mode, avoid, uri, fallbackUrl})`; `openUrl({url})`; `isMapsInstalled()` | |
 | **Secure** (P1) | `storeDeviceToken`, `hasDeviceToken`, `saveRefreshToken`, `loadRefreshToken`, `clearAll` | `deviceRevoked` |
 | **System** (P1, P2) | `getPermissions()`; `openSettings({target})` (`notification_listener`, `app_details`, `battery`, `samsung_never_sleeping`, `exact_alarm`, `unknown_sources`, `notifications`); `getDeviceInfo()` trả `{manufacturer, model, androidSdk, defaultSmsPackage}` | `permissionsChanged` |
-| **Voice** (P1) | `start({lang: 'vi-VN'})`, `stop()` bằng `SpeechRecognizer` của Android (Web Speech trong WebView chưa chắc chạy) | `partial`, `final`, `error` |
+| **Voice** (1.0.6) | `start({lang: 'vi-VN'})` (xin `RECORD_AUDIO` khi bấm lần đầu), `stop()`, `cancel()` bằng `SpeechRecognizer` (WebView không có Web Speech); `speak({text})`, `stopSpeaking()`, `ttsStatus()`, `openTtsSettings()` bằng `TextToSpeech` tiếng Việt của máy. Câu lỗi tiếng Việt ở `voice/VoiceText` (có JUnit). Manifest khai `<queries>` cho `RecognitionService` và `TTS_SERVICE` | `partial`, `final`, `error` {code, message}, `end`, `speakEnd` |
 
 Hai danh tính (`10` mục 3.7): giao diện gọi API bằng JWT, làm mới bằng mã làm mới (365 ngày, QĐ-27); lớp gốc gọi nhóm `/api/v1/device/*` và `/calendar/reminders` bằng `Authorization: Device <mã thiết bị>`. Mã thiết bị không đổi lấy JWT, không trả về JavaScript. Mọi yêu cầu gửi `X-App-Version`.
 
@@ -164,6 +164,8 @@ Android 15 tự che nội dung thông báo có OTP với app nghe thông báo [N
 - Kênh thông báo `nhac-lich`, `bao-thuc`, `cap-nhat`, `he-thong`; cần `POST_NOTIFICATIONS` [N15]. Nút **Xong** hoặc **Đã biết**, **Hoãn 10 phút**; bấm nút ghi sự kiện `reminder_action`. Chạm mở `troly://lich/su-kien/<id>` hoặc `troly://lich/viec/<id>`.
 - Trên máy (`alarm/`): `ReminderStore` giữ danh sách, `revision`, phần đã bấm Xong hoặc Đã biết, phần hoãn; `ReminderPlan` tính báo thức cần đặt (thuần Kotlin, có JUnit), tối đa 400 báo thức; nhắc lỡ giờ do máy tắt thì hiện bù nếu chưa quá 15 phút. Nhắc của việc (`source = task`) có nút **Xong**, của sự kiện có nút **Đã biết**. Đăng xuất hoặc `DEVICE_REVOKED` thì bỏ danh sách và hủy mọi báo thức.
 - Samsung hạn chế báo thức của app đang ngủ [N28], nên bước *Ứng dụng không bao giờ ngủ* là bắt buộc để nhắc chắc kêu.
+
+Đặt chỗ từ email (QĐ-49): notice `booking_added` `{id, title, body, deep_link, booking_id, event_id}` hiện ở kênh *Nhắc lịch*, chạm mở sự kiện trên màn Lịch, nút *Hoàn tác* (`alarm/BookingUndoReceiver`) đổi thông báo thành *Đang hoàn tác* rồi WorkManager gọi `POST /device/bookings/{id}/undo` bằng mã thiết bị khi có mạng; xong (hoặc 404) thì *Đã bỏ ... khỏi Lịch*, máy chủ từ chối thì hiện câu của máy chủ (`BookingUndoPlan`, có JUnit). Đã thống nhất với agent Google (20/11): 409 khi sự kiện đã sửa, `event_id` là sự kiện nhận phòng hoặc khởi hành; vé máy bay, xe, tàu chỉ vào Lịch, không gắn điểm.
 
 ### 3.10 Quyền và các bước Samsung
 

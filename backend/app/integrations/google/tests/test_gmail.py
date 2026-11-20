@@ -56,11 +56,17 @@ def test_incremental_sync_reads_history_only(db, fake, gmail_account, mail_store
     state = _state(db, gmail_account)
     fake.gmail.add_mail(subject="Thư cũ")
     gmail.sync_gmail(db, gmail_account, state)
-    lists = len(fake.calls("GET", r"/gmail/v1/users/me/messages$"))
+
+    def inbox_lists():
+        return [
+            r for r in fake.calls("GET", r"/gmail/v1/users/me/messages$") if "in:inbox" in r.url.params["q"]
+        ]
+
+    lists = len(inbox_lists())
     new = fake.gmail.add_mail(subject="Thư mới")
     assert gmail.sync_gmail(db, gmail_account, state) == 1
     assert new in mail_store.mails
-    assert len(fake.calls("GET", r"/gmail/v1/users/me/messages$")) == lists  # không liệt kê lại
+    assert len(inbox_lists()) == lists  # không liệt kê lại
     assert fake.calls("GET", r"/history$")[-1].url.params["labelId"] == "INBOX"
 
 

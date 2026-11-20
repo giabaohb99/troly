@@ -62,6 +62,11 @@
             android:name=".alarm.ReminderReceiver"
             android:exported="false" />
 
+        <!-- Nút Hoàn tác trên thông báo đặt chỗ từ email (QĐ-49); chỉ app gửi được. -->
+        <receiver
+            android:name=".alarm.BookingUndoReceiver"
+            android:exported="false" />
+
         <!-- Đặt lại báo thức sau khởi động máy, cập nhật app, đổi giờ, đổi múi giờ, đổi quyền báo thức chính xác. -->
         <receiver
             android:name=".alarm.ReminderBootReceiver"
@@ -80,6 +85,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Nói với trợ lý (plugin Voice, 1.0.6): chỉ dùng khi bấm micro. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -100,5 +107,12 @@
         <package android:name="com.google.android.apps.messaging" />
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.samsung.android.lool" />
+        <!-- Nói với trợ lý (plugin Voice): Android 11 trở lên cần khai để thấy dịch vụ nhận giọng và đọc văn bản. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 </manifest>

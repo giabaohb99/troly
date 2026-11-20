@@ -210,6 +210,7 @@ def test_ai_extract_converts_to_trip_schema():
         "phone": "",
         "note": "",
         "optional": False,
+        "area": "",
     }
     raw = AiExtract.model_validate(
         {
@@ -226,6 +227,7 @@ def test_ai_extract_converts_to_trip_schema():
                     "date": "",
                     "title": "",
                     "route_text": "",
+                    "area": "Phước Hải, Bà Rịa - Vũng Tàu",
                     "stops": [stop],
                 }
             ],
@@ -246,6 +248,7 @@ def test_ai_extract_converts_to_trip_schema():
         }
     )
     out = from_ai_extract(raw, TripExtract)
+    assert out.days[0].area == "Phước Hải, Bà Rịa - Vũng Tàu" and out.days[0].stops[0].area is None
     assert out.travel_mode == "motorbike" and out.start_date is None and out.origin_text is None
     assert out.days[0].stops[0].places[0].url is None and out.facts[0].day_no is None
     assert out.hotels[0].backups[0].label == "Khách sạn B"

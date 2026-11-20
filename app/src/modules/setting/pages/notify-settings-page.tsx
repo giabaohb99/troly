@@ -1,18 +1,59 @@
-import { ChevronRight, Moon } from 'lucide-react'
+import { ChevronRight, Moon, Volume2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { isNative } from '@/core/config'
 import { Alarm, NOTIFY_CHANNELS, type NotifyPrefs } from '@/core/native/alarm'
+import { Voice } from '@/core/native/voice'
 import type { SettingValues } from '@/modules/setting/api/setting-api'
 import { SettingSection, SubPage } from '@/modules/setting/components/sub-page'
 import { usePatchSettings, useSettings } from '@/modules/setting/hooks/use-settings'
 import { SkeletonList } from '@/shared/components/skeleton-list'
 import { queryKeys } from '@/shared/constants/query-keys'
+import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
 import { cn } from '@/shared/utils/cn'
+import { setReadReplies, useReadReplies } from '@/shared/voice/voice-prefs'
 
 const REMIND_OPTIONS = [0, 5, 10, 15, 30, 60]
+
+// Mục Giọng nói (1.0.6): đọc to câu trả lời khi hỏi bằng giọng (lưu trên máy, mặc định bật). Trên điện thoại hiện máy
+// có giọng đọc tiếng Việt chưa; chưa có thì nút mở cài đặt giọng đọc của máy để tải.
+function VoiceSection() {
+  const readReplies = useReadReplies()
+  const tts = useQuery({ queryKey: ['voice', 'tts'], queryFn: () => Voice.ttsStatus(), enabled: isNative, staleTime: 0 })
+  const tryVoice = () =>
+    Voice.speak({ text: 'Chào đại ca, em đọc câu trả lời như thế này.' }).catch((error: { message?: string }) =>
+      toast.error(error?.message || 'Không đọc được.'),
+    )
+  return (
+    <SettingSection title="Giọng nói">
+      <ToggleRow
+        title="Đọc trả lời khi hỏi bằng giọng"
+        text="Bấm micro hỏi thì trợ lý đọc to câu trả lời (khoảng 600 ký tự đầu). Chạm màn hình hoặc bấm micro để dừng."
+        checked={readReplies}
+        onChange={setReadReplies}
+      />
+      {isNative && tts.data && (
+        <div className="mt-1 flex flex-col gap-2 border-t pt-3 text-sm">
+          <p className={cn('flex items-center gap-2', tts.data.vietnamese ? 'text-primary' : 'text-destructive')}>
+            <Volume2 className="size-4 shrink-0" />
+            {tts.data.vietnamese ? 'Máy có giọng đọc tiếng Việt' : 'Máy chưa có giọng đọc tiếng Việt'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button size="sm" variant="outline" disabled={!tts.data.vietnamese} onClick={() => void tryVoice()}>
+              Thử đọc
+            </Button>
+            <Button size="sm" variant={tts.data.vietnamese ? 'ghost' : 'default'} onClick={() => void Voice.openTtsSettings()}>
+              Cài đặt giọng đọc
+            </Button>
+          </div>
+          {!tts.data.vietnamese && <p className="text-xs text-muted-foreground">Trong cài đặt giọng đọc, chọn Google và tải giọng tiếng Việt, rồi quay lại app.</p>}
+        </div>
+      )}
+    </SettingSection>
+  )
+}
 
 function ToggleRow({ title, text, checked, disabled, onChange }: { title: string; text: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
   return (
@@ -135,6 +176,8 @@ export function NotifySettingsPage() {
               onChange={(on) => saveServer({ 'calendar.app_reminds_google': on }, () => void Alarm.sync())}
             />
           </SettingSection>
+
+          <VoiceSection />
 
           {isNative && (
             <SettingSection title="Kênh trên máy">

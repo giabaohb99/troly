@@ -14,6 +14,7 @@ ENABLED_MODULES = [
     "calendar",
     "task",
     "trip",
+    "booking",
     "search",
     "report",
     "notice",
@@ -76,6 +77,9 @@ def register_integrations() -> None:
     mail = _import_if_exists("app.modules.inbox.google_store")
     if mail is not None and hasattr(google_stores, "register_mail_store"):
         google_stores.register_mail_store(mail.STORE)
+    booking = _import_if_exists("app.modules.booking.google_store")
+    if booking is not None and hasattr(google_stores, "register_booking_store"):
+        google_stores.register_booking_store(booking.STORE)
 
 
 def approval_executor(tool_name: str):

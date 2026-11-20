@@ -94,3 +94,12 @@ GMAIL_SCOPES = (
     ALL_SCOPES
     + " https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose"
 )
+
+
+@pytest.fixture(autouse=True)
+def booking_store_off():
+    """Bài kiểm phần Google không chạy quét đặt chỗ (module booking có thể đã đăng ký khi nạp app.main)."""
+    saved = stores.booking_store()
+    stores.register_booking_store(None)
+    yield
+    stores.register_booking_store(saved)

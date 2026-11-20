@@ -108,6 +108,8 @@ REGISTRY: dict[str, tuple[object, Callable, str]] = {
     "notify.important_message": (True, _bool, "Phải là true hoặc false."),
     # QĐ-41: lượt chat xong khi app không ở màn hình thì máy báo (mặc định bật).
     "notify.chat_done": (True, _bool, "Phải là true hoặc false."),
+    # QĐ-49: đặt chỗ tự thêm vào Lịch từ thư xác nhận thì máy báo, có nút Hoàn tác (mặc định bật).
+    "notify.booking_added": (True, _bool, "Phải là true hoặc false."),
     "calendar.app_reminds_google": (False, _bool, "Phải là true hoặc false."),
     "inbox.quiet_hours": (None, _quiet_hours, 'Dạng {start: "22:00", end: "07:00"} hoặc null.'),
     "trip.default_travel_mode": (

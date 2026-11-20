@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Risk, Stop, TripBrief } from '@/modules/trip/types/trip'
-import { canNavigate, defaultDayNo, formatDuration, formatKm, groupStops, navigationTarget, pickedDirectionsUrl, pickedInTripOrder, risksByStop, sortTrips, stopCoord } from '@/modules/trip/utils/trip-utils'
+import type { Risk, Stop, StopBooking, TripBrief } from '@/modules/trip/types/trip'
+import { bookingLines, canNavigate, defaultDayNo, formatBookingTime, formatDuration, formatKm, groupStops, navigationTarget, pickedDirectionsUrl, pickedInTripOrder, risksByStop, sortTrips, stopCoord, stopSearchText } from '@/modules/trip/utils/trip-utils'
 
 const brief = (id: number, start: string | null, end: string | null): TripBrief => ({
   id, title: `Chuyến ${id}`, start_date: start, end_date: end, nights: null, travel_mode: 'motorbike', status: 'planned', total_km: null, red_count: 0, yellow_count: 0, needs_confirmation_count: 0,
@@ -101,5 +101,61 @@ describe('chọn điểm để chỉ đường', () => {
     const url = pickedDirectionsUrl([stop({ lat: 1, lng: 2 }), stop({ lat: 3, lng: 4 })])
     expect(url).toContain('destination=3.000000,4.000000')
     expect(url).toContain('waypoints=1.000000,2.000000&')
+  })
+})
+
+describe('đặt chỗ từ email (QĐ-49)', () => {
+  const booking = (extra: Partial<StopBooking>): StopBooking => ({
+    booking_id: 71,
+    provider: 'Booking.com',
+    booking_ref: '4127839501',
+    check_in: '2026-11-21T14:00:00+07:00',
+    check_out: '2026-11-22T12:00:00+07:00',
+    guests: 2,
+    price: '1250000.00',
+    currency: 'VND',
+    cancellation: null,
+    status: 'confirmed',
+    source: 'email',
+    ...extra,
+  })
+
+  it('giờ nhận, trả phòng theo giờ Việt Nam; không ghi giờ thì chỉ ngày', () => {
+    expect(formatBookingTime('2026-11-21T07:00:00Z')).toBe('14:00 21/11')
+    expect(formatBookingTime('2026-11-21T00:00:00+07:00')).toBe('21/11')
+    expect(formatBookingTime(null)).toBeNull()
+  })
+
+  it('các dòng của khối đặt chỗ', () => {
+    expect(bookingLines(booking({}))).toEqual({
+      head: 'Đặt qua Booking.com, mã 4127839501',
+      times: 'Nhận phòng 14:00 21/11 · Trả phòng 12:00 22/11',
+      extra: '2 khách · 1.250.000 đ',
+    })
+    expect(bookingLines(booking({ provider: null, booking_ref: null, check_out: null, guests: null, price: '120.50', currency: 'USD' }))).toEqual({
+      head: 'Đặt chỗ từ email',
+      times: 'Nhận phòng 14:00 21/11',
+      extra: '120,5 USD',
+    })
+  })
+})
+
+describe('chuỗi tìm có địa phương (lỗi Phước Hải ra Cần Thơ)', () => {
+  it('dùng chuỗi đầy đủ của máy chủ', () => {
+    expect(stopSearchText(stop({ title: 'Quán Gió', search_query: 'Quán Gió, Phước Hải, Bà Rịa - Vũng Tàu', area: 'Phước Hải, Bà Rịa - Vũng Tàu' }))).toBe('Quán Gió, Phước Hải, Bà Rịa - Vũng Tàu')
+  })
+
+  it('không có chuỗi đầy đủ thì ghép tên với địa phương, không lặp khi tên đã có', () => {
+    expect(stopSearchText(stop({ title: 'Quán Gió', area: 'Phước Hải, Bà Rịa - Vũng Tàu' }))).toBe('Quán Gió, Phước Hải, Bà Rịa - Vũng Tàu')
+    expect(stopSearchText(stop({ title: 'Quán Gió', place_query: 'Quán Gió Phuoc Hai', area: 'Phước Hải' }))).toBe('Quán Gió Phuoc Hai')
+    expect(stopSearchText(stop({ title: 'Chùa Âng' }))).toBe('Chùa Âng')
+  })
+
+  it('dẫn đường và Chọn điểm: có tọa độ thì dùng tọa độ, không thì chuỗi có địa phương', () => {
+    const noCoord = stop({ lat: null, lng: null, title: 'Quán Gió', search_query: 'Quán Gió, Phước Hải, Bà Rịa - Vũng Tàu' })
+    expect(navigationTarget(noCoord).query).toBe('Quán Gió, Phước Hải, Bà Rịa - Vũng Tàu')
+    expect(stopCoord(noCoord)).toBe('Quán Gió, Phước Hải, Bà Rịa - Vũng Tàu')
+    expect(pickedDirectionsUrl([noCoord])).toContain('destination=Qu%C3%A1n%20Gi%C3%B3,%20Ph%C6%B0%E1%BB%9Bc%20H%E1%BA%A3i')
+    expect(stopCoord(stop({ lat: 10.42, lng: 107.37, search_query: 'X, Y' }))).toBe('10.420000,107.370000')
   })
 })

@@ -111,6 +111,7 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`. Sự kiện m�
 | `notify.new_transaction` | `false`: máy báo khi ghi giao dịch mới (QĐ-38) |
 | `notify.important_message` | `true`: máy báo khi có tin quan trọng (QĐ-38) |
 | `notify.chat_done` | `true`: lượt chat xong khi app không ở màn hình thì máy báo (QĐ-41) |
+| `notify.booking_added` | `true`: đặt chỗ tự thêm vào Lịch từ thư xác nhận thì máy báo, có nút Hoàn tác (QĐ-49) |
 | `calendar.app_reminds_google` | `false`: bật thì app nhắc cả sự kiện tạo trên Google, theo `remind_minutes` của sự kiện hoặc mặc định (QĐ-38) |
 | `inbox.quiet_hours` | `null` |
 | `trip.default_travel_mode` | `motorbike` |

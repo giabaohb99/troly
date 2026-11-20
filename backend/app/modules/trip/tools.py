@@ -186,6 +186,10 @@ class NewStop(BaseModel):
         default=None, description="Chuỗi tìm Google Maps, ví dụ: cây xăng gần Đất Đỏ, Bà Rịa - Vũng Tàu"
     )
     stay_minutes: int | None = Field(default=None, description="Dừng bao lâu; đổ xăng khoảng 10")
+    area: str | None = Field(
+        default=None,
+        description="Xã/phường hoặc thị trấn, tỉnh của điểm: Long Thành, Đồng Nai; để dẫn đường đúng nơi",
+    )
     note: str | None = None
 
 
@@ -203,6 +207,10 @@ class UpdateStopInput(BaseModel):
     category: Category | None = None
     place_query: str | None = None
     stay_minutes: int | None = None
+    area: str | None = Field(
+        default=None,
+        description="Sửa khu vực (xã/phường, tỉnh) khi người dùng báo dẫn đường ra nhầm nơi: Phước Hải, Bà Rịa - Vũng Tàu",
+    )
     note: str | None = None
     day_no: int | None = Field(default=None, description="Chuyển sang ngày khác")
     after_stop_id: int | None = Field(default=None, description="Dời tới sau điểm này")
@@ -567,7 +575,8 @@ TOOLS = [
         name="update_trip_stop",
         label="Đang sửa điểm trong chuyến",
         description=(
-            "Sửa hoặc dời một điểm dừng (tên, loại, chuỗi tìm, thời gian dừng, ngày, sau điểm nào). "
+            "Sửa hoặc dời một điểm dừng (tên, loại, chuỗi tìm, khu vực, thời gian dừng, ngày, sau điểm nào). Dẫn đường ra "
+            "nhầm tỉnh, nhầm quán trùng tên thì sửa area. "
             "Chuyến đã đánh giá thì tự đánh giá lại."
         ),
         input_model=UpdateStopInput,

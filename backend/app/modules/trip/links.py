@@ -5,8 +5,15 @@ Chia đoạn: cắt ở điểm nghỉ dài (khách sạn, ở lại từ 90 ph�
 không có thì dùng tên kèm địa chỉ (QĐ-36: V1 không có Maps Platform, app Google Maps tự tìm theo tên).
 """
 
+import unicodedata
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
+
+
+def _fold(value: str) -> str:
+    text = unicodedata.normalize("NFD", value.replace("đ", "d").replace("Đ", "D"))
+    return "".join(c for c in text if unicodedata.category(c) != "Mn").lower()
+
 
 MAPS_DIR = "https://www.google.com/maps/dir/"
 MAPS_SEARCH = "https://www.google.com/maps/search/"
@@ -24,6 +31,7 @@ class LinkStop:
     lng: float | None
     place_query: str | None
     place_id: str | None
+    area: str | None = None  # xã/phường, tỉnh: không có thì Google chọn chỗ trùng tên gần người dùng
 
     @property
     def located(self) -> bool:
@@ -31,7 +39,12 @@ class LinkStop:
 
     @property
     def query(self) -> str:
-        return (self.place_query or self.title or "").strip()
+        """Chuỗi tìm khi không có tọa độ: `<tên>, <địa phương>`."""
+        name = (self.place_query or self.title or "").strip()
+        area = (self.area or "").strip()
+        if not area or _fold(area) in _fold(name):
+            return name
+        return f"{name}, {area}" if name else area
 
     @property
     def routable(self) -> bool:
@@ -73,7 +86,7 @@ def navigate_url(s: LinkStop) -> str:
 
 
 def place_url(s: LinkStop) -> str:
-    params = {"api": "1", "query": s.place_query or s.title}
+    params = {"api": "1", "query": s.query}
     if s.place_id:
         params["query_place_id"] = s.place_id
     return MAPS_SEARCH + "?" + urlencode(params, quote_via=quote)
@@ -152,7 +165,7 @@ def day_actions(day_no: int, stops: list[LinkStop], max_waypoints: int) -> dict:
                     "id": f"p{s.id}",
                     "type": "open_map_place",
                     "label": "Xem điểm",
-                    "query": s.place_query or s.title,
+                    "query": s.query,
                     "place_id": s.place_id,
                 },
             }

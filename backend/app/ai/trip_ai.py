@@ -42,6 +42,10 @@ class TripStop(BaseModel):
     phone: str
     note: str
     optional: bool = Field(description="true nếu tệp nói có thể bỏ: nếu còn đói, nếu còn giờ, có thể")
+    area: str = Field(
+        description="Xã/phường hoặc thị trấn, tỉnh/thành của điểm này: Phước Hải, Bà Rịa - Vũng Tàu; "
+        "không chắc thì rỗng (máy lấy khu vực của ngày)"
+    )
 
 
 class TripDay(BaseModel):
@@ -50,6 +54,9 @@ class TripDay(BaseModel):
     date: str = Field(description="YYYY-MM-DD nếu tệp ghi ngày; không thì rỗng")
     title: str
     route_text: str = Field(description="Dòng Đường đi: ... nếu có")
+    area: str = Field(
+        description="Khu vực chính của ngày (nơi ở, nơi chơi chính): Phước Hải, Bà Rịa - Vũng Tàu"
+    )
     stops: list[TripStop]
 
 
@@ -108,7 +115,8 @@ Luật:
 - hotels: khách sạn theo đêm, booked = true nếu tệp nói đã đặt; backups là tên khách sạn dự phòng.
 - map_links: mỗi link tuyến đường (google.com/maps/dir) là một phần tử: day_no và label chép đúng chữ của link.
 - notes: chép nguyên văn từng ý của mục Lưu ý.
-- travel_mode: motorbike nếu đi xe máy, car nếu ô tô, walk nếu đi bộ, unknown nếu không rõ."""  # noqa: E501
+- travel_mode: motorbike nếu đi xe máy, car nếu ô tô, walk nếu đi bộ, unknown nếu không rõ.
+- area (để dẫn đường không nhầm quán trùng tên ở tỉnh khác): mỗi ngày và mỗi stop ghi xã/phường hoặc thị trấn và tỉnh/thành, dạng *Phước Hải, Bà Rịa - Vũng Tàu*. Tệp ghi địa danh thì chép đúng như tệp; không thì suy từ ngữ cảnh của ngày (điểm sau khi qua phà về tới nơi nào thì thuộc nơi đó; quán ăn, khách sạn thuộc nơi đang ở). Điểm trên đường đi giữa hai nơi thì ghi nơi gần nhất có trong tệp. Không chắc thì để rỗng."""  # noqa: E501
 
 SUMMARY_SYSTEM = """Bạn viết tóm tắt các phương án lịch trình đi xe máy cho người dùng, tiếng Việt, giọng gọn.
 - Số liệu, rủi ro đã được máy tính sẵn. Không đổi số, không làm tròn khác, không thêm hay bỏ rủi ro. Mọi con số bạn viết phải có trong dữ liệu.
@@ -160,7 +168,9 @@ def _clean_extract(result: TripExtract, source_text: str | None) -> TripExtract:
     for day in result.days:
         if day.date and not date_ok.match(day.date):
             day.date = ""
+        day.area = day.area.strip()
         for stop in day.stops:
+            stop.area = stop.area.strip() or day.area  # không chắc thì lấy khu vực của ngày
             for place in stop.places:
                 place.url = link(place.label)
     for hotel in result.hotels:

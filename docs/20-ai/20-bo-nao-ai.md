@@ -278,6 +278,7 @@ Luật chung:
 | report | `get_report` | Hỏi tổng quan | `kind` (`expense_overview`, `week_overview`, `inbox_pending`, `ai_cost`), `from`, `to` | Số liệu + `open_screen` `report` | Không | 4 |
 | setting | `get_settings` | Hỏi đang nghe app nào, ai quan trọng | (không) | Cài đặt, không có bí mật | Không | 4 |
 | setting | `update_setting` | Thêm bớt người quan trọng, từ khóa gấp | `key` (`vip_sender`, `urgent_keyword`), `op`, `value`, `app` | Kết quả + `open_screen` | Không | 4 |
+| booking | `list_bookings` | Hỏi giờ nhận phòng, mã đặt chỗ, chuyến bay (QĐ-49) | `kind`, `upcoming`, `limit` | Đặt chỗ bóc từ thư (giờ địa phương, giá, chính sách hủy, trạng thái lịch); rỗng thì gợi ý search_gmail | Không | 5 |
 | inbox | `search_gmail` | Tìm thư | `query`, `limit` | Thư, đoạn trích trong `du_lieu_ngoai` | Không | 5 |
 | inbox | `get_gmail_thread` | Đọc chuỗi thư | `thread_id` | Thư đã bỏ HTML, cắt 4.000 ký tự | Không | 5 |
 | inbox | `create_gmail_draft` | Soạn thư | `to`, `cc`, `subject`, `body`, `reply_to_thread_id` | `{draft_id}` + `open_link` kiểu `gmail` | Không | 5 |
@@ -367,6 +368,14 @@ Schema `BankNotificationExtract`:
 | `confidence` | number 0 tới 1 (kiểm khoảng ở mã) |
 
 Câu chat chi tiêu không có lần bóc tách riêng: model gọi thẳng `add_expense`. Cách đọc số nằm trong mô tả công cụ: *45k = 45.000; 1tr2 = 1.200.000; 200 cành = 200.000; số không đơn vị nhỏ hơn 1.000 hiểu là nghìn đồng; 2 lít xăng không phải số tiền*. Hàm chạy kiểm `0 < amount_vnd < 1.000.000.000` và `spent_at` không ở tương lai quá 1 giờ.
+
+### 3.10d Bóc thư đặt chỗ (QĐ-49, `ai/booking_extract.py`)
+
+`extract_booking(text, subject, sender, *, user_id, received_at, tz)` (Haiku, đầu ra có cấu trúc, không công cụ) cho job quét Gmail của agent Google. Trước khi gửi che số thẻ (13 tới 19 chữ số), dòng mã PIN, mật khẩu, khóa API; giữ mã đặt chỗ; thư có dấu hiệu OTP thì không gọi. Sau khi nhận: không phải đặt chỗ hoặc `confidence` dưới 0,5, hoặc không có ngày thì None; có giờ thì `start_at` có múi giờ, không thì `start_date`; mã giống số thẻ và trường còn chữ đã che bị bỏ. `looks_like_booking(subject, sender)` lọc rẻ trước.
+
+### 3.10a Khu vực của điểm dừng (lỗi 20/11: dẫn đường ra quán trùng tên ở tỉnh khác)
+
+`trip_ai.extract_trip` trả `area` cho mỗi ngày và mỗi điểm: xã/phường hoặc thị trấn, tỉnh/thành (*Phước Hải, Bà Rịa - Vũng Tàu*), chép đúng như tệp nếu tệp ghi, không thì suy từ ngữ cảnh ngày; điểm để trống thì mã lấy `area` của ngày. Lượt `trip_plan` ghi khu vực trong ngoặc sau tên từng điểm để bộ bóc tách đọc được. Trip dùng `area` ghép vào link tìm và tra tọa độ.
 
 ### 3.10b Ước tính chặng lịch trình (QĐ-36, `ai/trip_legs.py`)
 

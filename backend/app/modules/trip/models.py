@@ -93,7 +93,7 @@ class TripStop(UserOwnedMixin, Base):
         CheckConstraint("day_no >= 1", name="day_no"),
         CheckConstraint(_in("category", CATEGORIES), name="category"),
         CheckConstraint(_in("role", ROLES), name="role"),
-        CheckConstraint(_in("coord_source", ("user", "google")), name="coord_source"),
+        CheckConstraint(_in("coord_source", ("user", "google", "osm")), name="coord_source"),
         CheckConstraint(
             _in("resolve_status", ("ok", "uncertain", "not_found", "manual")), name="resolve_status"
         ),
@@ -118,6 +118,8 @@ class TripStop(UserOwnedMixin, Base):
     optional: Mapped[bool] = mapped_column(Boolean, server_default="false")
     stay_minutes: Mapped[int | None] = mapped_column(SmallInteger)
     place_query: Mapped[str | None] = mapped_column(Text)
+    # Xã/phường, tỉnh để tìm đúng chỗ khi không có tọa độ (geocode.py); migration 0012_trip_stop_area.
+    area: Mapped[str | None] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
     place_id: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
@@ -129,6 +131,8 @@ class TripStop(UserOwnedMixin, Base):
     cost_note: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
     alternatives: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    # Đặt phòng đọc từ thư (QĐ-49, module booking): mã, giờ nhận trả phòng, giá, hủy, trạng thái.
+    booking: Mapped[dict | None] = mapped_column(JSONB)
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR,
         Computed(

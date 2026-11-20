@@ -32,6 +32,10 @@ class ExtractStop(_Strict):
     phone: str | None = None
     note: str | None = None
     optional: bool = Field(False, description="true khi có: nếu còn đói, nếu còn lúa, có thể")
+    area: str | None = Field(
+        None,
+        description="Xã/phường và tỉnh của điểm này nếu biết, ví dụ: Phước Hải, Bà Rịa - Vũng Tàu; không biết thì null",
+    )
 
 
 class ExtractDay(_Strict):
@@ -40,6 +44,7 @@ class ExtractDay(_Strict):
     date: str | None = Field(None, description="YYYY-MM-DD nếu tệp ghi ngày; không thì null")
     title: str | None = None
     route_text: str | None = Field(None, description="Dòng Đường đi: ... nguyên văn")
+    area: str | None = Field(None, description="Khu vực của ngày: xã/phường, tỉnh nơi ở trong ngày")
     stops: list[ExtractStop] = Field(default_factory=list)
 
 

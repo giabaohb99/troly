@@ -190,5 +190,20 @@ def run_job(db, kind: str, trip_id: int):
     job = db.scalar(
         select(JobQueue).where(JobQueue.kind == kind, JobQueue.payload["trip_id"].as_integer() == trip_id)
     )
-    handler = jobs.run_import if kind == "trip_import" else jobs.run_evaluate
+    handler = {"trip_import": jobs.run_import, "trip_geocode": jobs.run_geocode}.get(kind, jobs.run_evaluate)
     return handler(db, job)
+
+
+@pytest.fixture(autouse=True)
+def osm_offline():
+    """Bài kiểm không bao giờ gọi Nominatim thật; bài cần thì dùng fixture `osm` (test_geocode.py)."""
+    import httpx
+
+    from app.integrations.osm import nominatim
+
+    def refuse(request):
+        raise httpx.ConnectError("không có mạng trong bài kiểm")
+
+    nominatim.set_transport(httpx.MockTransport(refuse))
+    yield
+    nominatim.set_transport(None)

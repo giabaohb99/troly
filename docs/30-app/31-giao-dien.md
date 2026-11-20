@@ -152,6 +152,8 @@ Email, mật khẩu, `[Đăng nhập]`. Địa chỉ api gắn sẵn. Sai mật 
 - **Rỗng:** *Nhắn một câu là em ghi, tra, nhắc. Bấm micro để nói.* và gợi ý: *cơm trưa 45k*, *Tháng này tiêu bao nhiêu rồi?*, *Tìm ghi chú về hợp đồng nhà*, *Giá vàng hôm nay*, *Hôm nay có tin gì quan trọng?* (từ Phase 2), *Lịch tuần này* (từ Phase 3).
 - Lời chào lần đầu là câu cố định (QĐ-26).
 
+**Nói với trợ lý (1.0.6):** ô nhập trống thì nút gửi thành nút micro lớn (56 px); đang nghe thì nút đỏ có vòng nháy, chữ tạm hiện trong ô nhập; im lặng thì tự dừng và tự gửi. Lượt hỏi bằng giọng thì đọc to câu trả lời (bỏ Markdown, link, khối mã; tối đa khoảng 600 ký tự rồi nói *Chi tiết em để trên màn hình*); chạm màn hình hoặc bấm micro thì dừng đọc. Công tắc *Đọc trả lời khi hỏi bằng giọng* (mặc định bật, lưu trên máy) ở Cài đặt → Thông báo, mục *Giọng nói*, kèm dòng máy có giọng đọc tiếng Việt chưa và nút *Cài đặt giọng đọc*. Máy chưa có giọng tiếng Việt thì báo kèm nút mở cài đặt giọng đọc.
+
 #### Tìm (Phase 1)
 
 ```
@@ -312,6 +314,8 @@ Email, mật khẩu, `[Đăng nhập]`. Địa chỉ api gắn sẵn. Sai mật 
 - **Điểm cần xác nhận** (`41` mục 5.3): mỗi dòng có tên trong tệp, 1 tới 3 gợi ý (nút *Xem*), *Chọn*, *Bỏ qua*. Điểm bỏ qua có nhãn *chưa định vị*, không có *Dẫn đường*.
 - Mỗi điểm: giờ, icon theo loại, tên, km và giờ chạy từ điểm trước, cảnh báo, `[Dẫn đường]`, `[Xem]`. Cuối ngày một nút mỗi đoạn từ `GET /trips/{id}/map-links?day_no=&max_waypoints=` (9 nếu có Google Maps, 3 nếu không). Dòng cố định *Thời gian xe máy do Google ước tính (bản thử nghiệm), có thể lệch.*
 - Ba chấm: *So sánh phương án* (chọn phương án khác hỏi bằng `ConfirmDialog`), *Đưa vào lịch* (`POST /trips/{id}/to-calendar`, toast *Đã đưa 5 mục vào lịch*), *Xuất Word*, *Hỏi trợ lý*, *Xóa chuyến* (thẻ duyệt).
+
+Khách sạn gắn từ thư xác nhận (QĐ-49, `stop.booking`): khối nhỏ dưới điểm ghi nơi đặt và mã đặt chỗ (chạm biểu tượng để chép), giờ nhận, trả phòng, số khách, giá, chính sách hủy; *Đã hủy* thì gạch chữ, *Đã đổi* ghi nhãn. Nút *Gọi* (số của khách sạn) và *Dẫn đường* dùng như điểm khác.
 
 #### Báo cáo (Phase 4)
 

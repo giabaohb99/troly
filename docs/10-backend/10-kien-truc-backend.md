@@ -160,7 +160,7 @@ Vòng chạy: chờ `troly_wake` hoặc `WORKER_POLL_SECONDS`; chạy job hàng 
 | Job | Lịch (giờ Việt Nam) | Việc | Chỗ đặt | Bản |
 |---|---|---|---|---|
 | `process_device_events` | mỗi vòng, lô 200 | `notification` sang expense (kể cả ghép cặp chuyển nội bộ) hoặc inbox; `reminder_action` `done` đánh dấu việc xong | `worker/jobs/device_events.py` | V1.2 |
-| `run_queued_jobs` | mỗi vòng, lô 5 | `tab_job_queue`: `trip_import`, `trip_evaluate`, `google_initial_sync` | `worker/jobs/queue.py` | V1.4 |
+| `run_queued_jobs` | mỗi vòng, lô 5 | `tab_job_queue`: `trip_import`, `trip_evaluate`, `trip_geocode` (tọa độ OpenStreetMap, khóa trùng `trip_geocode:<id>`), `google_initial_sync` | `worker/jobs/queue.py` | V1.4 |
 | `extract_file_text` | mỗi vòng, lô 5 | Tệp `extract_status = pending`: trích chữ vào `tab_file_text` (`11-co-so-du-lieu.md` mục 3.8) | `modules/file/jobs.py` | V1.1 |
 | `push_google_outbox` | mỗi vòng, lô 20 | Ghi lên Calendar, Tasks, Gmail, Drive, Sheets | `integrations/google/jobs.py` | V1.4 |
 | `sync_google_calendar` | mỗi vòng xét `needs_sync` (webhook, gộp 10 giây) hoặc `next_sync_at` (15 phút ±25%) | Kéo thay đổi bằng `syncToken` | `integrations/google/jobs.py` | V1.4 |

@@ -15,11 +15,13 @@ def build_jobs() -> list[Job]:
 
     s = get_settings()
     queue.HANDLERS["google_initial_sync"] = google_jobs.run_initial_sync
-    # Module trip (4-01) có jobs.py thì nhận hai việc nền nhập và đánh giá lịch trình.
+    # Module trip (4-01) có jobs.py thì nhận việc nền nhập, đánh giá lịch trình và lấy tọa độ
+    # OpenStreetMap (Nominatim 1 yêu cầu mỗi giây nên không chạy trong lượt chat).
     trip_jobs = _import_if_exists("app.modules.trip.jobs")
     if trip_jobs is not None:
         queue.HANDLERS["trip_import"] = trip_jobs.run_import
         queue.HANDLERS["trip_evaluate"] = trip_jobs.run_evaluate
+        queue.HANDLERS["trip_geocode"] = trip_jobs.run_geocode
 
     def extract_unless_disk_full() -> int:
         return 0 if disk.heavy_jobs_paused() else file_jobs.extract_file_text()

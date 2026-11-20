@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isNative } from '@/core/config'
+import { Voice } from '@/core/native/voice'
 
-// Web Speech API (nhận giọng nói của trình duyệt). Trong WebView Android thường không có: nút micro tự ẩn; plugin Voice làm sau (30 mục 3.4).
+// Nhận giọng nói (30 mục 3.4). Trên Android: plugin Voice (SpeechRecognizer, vì WebView không có Web Speech; lỗi
+// bản 1.0.5 là nút micro tự ẩn). Trên trình duyệt: Web Speech API.
 // Kiểu tự khai vì thư viện DOM của TypeScript chưa có đủ.
 interface RecognitionAlternative {
   transcript: string
@@ -43,7 +46,7 @@ interface SpeechRecognitionOptions {
   onError: (message: string) => void
 }
 
-export function useSpeechRecognition({ onFinal, onError }: SpeechRecognitionOptions) {
+function useWebSpeech({ onFinal, onError }: SpeechRecognitionOptions) {
   const [listening, setListening] = useState(false)
   const [interim, setInterim] = useState('')
   const recognitionRef = useRef<Recognition | null>(null)
@@ -93,3 +96,55 @@ export function useSpeechRecognition({ onFinal, onError }: SpeechRecognitionOpti
 
   return { supported, listening, interim, start, stop }
 }
+
+// Bản Android: lớp gốc nghe, gửi kết quả tạm (partial), kết quả cuối (final), lỗi, rồi end. Nút micro luôn hiện; máy
+// không có dịch vụ nhận giọng thì bấm sẽ báo lỗi rõ thay vì ẩn nút.
+function useNativeSpeech({ onFinal, onError }: SpeechRecognitionOptions) {
+  const [listening, setListening] = useState(false)
+  const [interim, setInterim] = useState('')
+  const finalRef = useRef('')
+  const handlersRef = useRef({ onFinal, onError })
+
+  useEffect(() => {
+    handlersRef.current = { onFinal, onError }
+  }, [onFinal, onError])
+
+  useEffect(() => {
+    const handles = [
+      Voice.addListener('partial', (e) => setInterim(e.text)),
+      Voice.addListener('final', (e) => {
+        finalRef.current = e.text
+      }),
+      Voice.addListener('error', (e) => handlersRef.current.onError(e.message)),
+      Voice.addListener('end', () => {
+        setListening(false)
+        setInterim('')
+        const text = finalRef.current.trim()
+        finalRef.current = ''
+        if (text) handlersRef.current.onFinal(text)
+      }),
+    ]
+    return () => {
+      void Voice.cancel().catch(() => null)
+      handles.forEach((h) => void h.then((x) => x.remove()))
+    }
+  }, [])
+
+  const start = useCallback(async () => {
+    finalRef.current = ''
+    setInterim('')
+    setListening(true)
+    try {
+      await Voice.start({ lang: 'vi-VN' })
+    } catch (error) {
+      setListening(false)
+      handlersRef.current.onError((error as { message?: string })?.message || 'Không bắt đầu nghe được.')
+    }
+  }, [])
+
+  const stop = useCallback(() => void Voice.stop().catch(() => null), [])
+
+  return { supported: true, listening, interim, start: () => void start(), stop }
+}
+
+export const useSpeechRecognition = isNative ? useNativeSpeech : useWebSpeech

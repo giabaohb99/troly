@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
 import { ACCEPTED_FILES, uploadFile, type UploadedFile } from '@/modules/chat/api/upload-api'
 import type { ChatMode } from '@/modules/chat/types/chat'
+import { Voice } from '@/core/native/voice'
 import { useSpeechRecognition } from '@/shared/voice/use-speech-recognition'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/utils/cn'
@@ -16,7 +17,8 @@ interface ComposerProps {
   busy: boolean
   draft: string
   onDraftChange: (text: string) => void
-  onSend: (input: { text: string; mode: ChatMode; fileIds: number[] }) => void
+  // voice: tin nói bằng micro (màn chat đọc to câu trả lời nếu bật).
+  onSend: (input: { text: string; mode: ChatMode; fileIds: number[]; voice?: boolean }) => void
 }
 
 interface PendingFile {
@@ -40,10 +42,10 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
   const tooLong = draft.length > MAX_MESSAGE_CHARS
 
   const submit = useCallback(
-    (text: string) => {
+    (text: string, voice = false) => {
       const content = text.trim()
       if ((!content && files.length === 0) || busy || uploading || content.length > MAX_MESSAGE_CHARS) return
-      onSend({ text: content, mode, fileIds: files.flatMap((f) => (f.uploaded ? [f.uploaded.id] : [])) })
+      onSend({ text: content, mode, fileIds: files.flatMap((f) => (f.uploaded ? [f.uploaded.id] : [])), voice })
       setMode('chat')
       setFiles([])
     },
@@ -51,7 +53,16 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
   )
 
   const handleSpeechError = useCallback((message: string) => toast.error(message), [])
-  const speech = useSpeechRecognition({ onFinal: submit, onError: handleSpeechError })
+  // Nói xong tự gửi (đang chạy xe không phải bấm Gửi).
+  const handleSpeechFinal = useCallback((text: string) => submit(text, true), [submit])
+  const speech = useSpeechRecognition({ onFinal: handleSpeechFinal, onError: handleSpeechError })
+  const startListening = () => {
+    // Đang đọc trả lời thì dừng đọc trước khi nghe.
+    void Voice.stopSpeaking().catch(() => null)
+    speech.start()
+  }
+  // Chưa gõ gì thì ô gửi thành nút micro lớn (31 mục 3.5): dễ bấm khi đang chạy xe.
+  const showMic = speech.supported && (speech.listening || (!draft.trim() && files.length === 0))
 
   // Ô nhập cao theo chữ, tối đa 6 dòng.
   useEffect(() => {
@@ -164,19 +175,6 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
           <Button type="button" size="icon" variant="ghost" className="size-11 shrink-0 rounded-full" aria-label="Đính tệp" disabled={files.length >= MAX_FILES} onClick={() => fileInputRef.current?.click()}>
             <Paperclip className="size-5" />
           </Button>
-          {speech.supported && (
-            <Button
-              type="button"
-              size="icon"
-              variant={speech.listening ? 'destructive' : 'secondary'}
-              className="size-11 shrink-0 rounded-full"
-              aria-label={speech.listening ? 'Dừng nghe' : 'Nói với trợ lý'}
-              disabled={busy}
-              onClick={() => (speech.listening ? speech.stop() : speech.start())}
-            >
-              {speech.listening ? <Square className="size-4" /> : <Mic className="size-5" />}
-            </Button>
-          )}
           <textarea
             ref={textareaRef}
             rows={1}
@@ -188,15 +186,31 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
             aria-label="Tin nhắn"
             className="min-h-11 min-w-0 flex-1 resize-none rounded-3xl bg-secondary px-4 py-2.5 text-base outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
           />
-          <Button
-            type="submit"
-            size="icon"
-            className="size-11 shrink-0 rounded-full"
-            aria-label="Gửi"
-            disabled={busy || uploading || tooLong || (!draft.trim() && files.length === 0)}
-          >
-            {busy ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
-          </Button>
+          {showMic ? (
+            <button
+              type="button"
+              aria-label={speech.listening ? 'Dừng nghe' : 'Nói với trợ lý'}
+              disabled={busy && !speech.listening}
+              onClick={() => (speech.listening ? speech.stop() : startListening())}
+              className={cn(
+                'relative flex size-14 shrink-0 items-center justify-center rounded-full text-white shadow-md transition-transform active:scale-95 disabled:opacity-50',
+                speech.listening ? 'bg-destructive' : 'bg-primary',
+              )}
+            >
+              {speech.listening && <span className="absolute inset-0 animate-ping rounded-full bg-destructive/40" aria-hidden />}
+              {busy && !speech.listening ? <Loader2 className="size-6 animate-spin" /> : speech.listening ? <Square className="relative size-5 fill-current" /> : <Mic className="size-7" />}
+            </button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              className="size-11 shrink-0 rounded-full"
+              aria-label="Gửi"
+              disabled={busy || uploading || tooLong || (!draft.trim() && files.length === 0)}
+            >
+              {busy ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
+            </Button>
+          )}
         </div>
       </div>
     </form>

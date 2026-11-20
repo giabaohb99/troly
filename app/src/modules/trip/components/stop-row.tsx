@@ -4,6 +4,8 @@ import {
   Bike,
   Clock,
   Coffee,
+  Copy,
+  Mail,
   Landmark,
   MapPin,
   Navigation,
@@ -16,8 +18,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Maps, placeUrl } from '@/core/native/maps'
-import type { Risk, Stop, StopCategory, TripFact } from '@/modules/trip/types/trip'
-import { canNavigate, formatDuration, formatKm, navigationTarget } from '@/modules/trip/utils/trip-utils'
+import type { Risk, Stop, StopBooking, StopCategory, TripFact } from '@/modules/trip/types/trip'
+import { bookingLines, canNavigate, formatDuration, formatKm, navigationTarget, stopSearchText } from '@/modules/trip/utils/trip-utils'
 import { Button } from '@/shared/ui/button'
 import { formatTime } from '@/shared/utils/format'
 import { cn } from '@/shared/utils/cn'
@@ -57,6 +59,38 @@ async function openMap(open: () => Promise<unknown>) {
 }
 
 // Một điểm trong ngày (31 mục 3.5): giờ, loại, tên, km và giờ chạy từ điểm trước, mốc cứng, rủi ro, Dẫn đường, Xem.
+// Đặt chỗ từ email (QĐ-49): nơi đặt, mã đặt chỗ (chạm để chép), giờ nhận, trả phòng, số khách, giá, chính sách hủy.
+// Đặt chỗ đã hủy thì gạch và ghi *Đã hủy*.
+function BookingInfo({ booking }: { booking: StopBooking }) {
+  const lines = bookingLines(booking)
+  const cancelled = booking.status === 'cancelled'
+  const copyRef = () => {
+    if (!booking.booking_ref) return
+    void navigator.clipboard
+      ?.writeText(booking.booking_ref)
+      .then(() => toast.success('Đã chép mã đặt chỗ'))
+      .catch(() => null)
+  }
+  return (
+    <div className={cn('mt-1 flex flex-col gap-0.5 rounded-xl border bg-primary/5 px-3 py-2 text-xs', cancelled && 'opacity-70')}>
+      <span className="flex flex-wrap items-center gap-1.5 font-medium">
+        <Mail className="size-3.5 shrink-0 text-primary" />
+        <span className={cn(cancelled && 'line-through')}>{lines.head}</span>
+        {booking.booking_ref && (
+          <button type="button" onClick={copyRef} aria-label="Chép mã đặt chỗ" className="text-primary">
+            <Copy className="size-3.5" />
+          </button>
+        )}
+        {cancelled && <span className="rounded-full bg-destructive/15 px-1.5 text-destructive">Đã hủy</span>}
+        {booking.status === 'changed' && <span className="rounded-full bg-warning/15 px-1.5 text-warning">Đã đổi</span>}
+      </span>
+      {lines.times && <span className={cn('text-foreground', cancelled && 'line-through')}>{lines.times}</span>}
+      {lines.extra && <span className="text-muted-foreground">{lines.extra}</span>}
+      {booking.cancellation && <span className="text-muted-foreground">Hủy: {booking.cancellation}</span>}
+    </div>
+  )
+}
+
 // Dẫn đường: xe hai bánh, tránh cao tốc (30 mục 3.12).
 interface StopRowProps {
   stop: Stop
@@ -124,6 +158,7 @@ export function StopRow({ stop, risks, facts, estimated, picked, onTogglePick }:
         ))}
         {stop.note && <span className="text-xs text-muted-foreground">{stop.note}</span>}
         {stop.cost_note && <span className="text-xs text-muted-foreground">{stop.cost_note}</span>}
+        {stop.booking && <BookingInfo booking={stop.booking} />}
         <div className="mt-1 flex flex-wrap gap-2">
           {canNavigate(stop) && (
             <Button
@@ -135,7 +170,7 @@ export function StopRow({ stop, risks, facts, estimated, picked, onTogglePick }:
             </Button>
           )}
           {stop.role !== 'generic' && (
-            <Button size="sm" variant="outline" onClick={() => void openMap(() => Maps.openUrl({ url: placeUrl(stop.place_query ?? stop.title, stop.place_id) }))}>
+            <Button size="sm" variant="outline" onClick={() => void openMap(() => Maps.openUrl({ url: placeUrl(stopSearchText(stop), stop.place_id) }))}>
               Xem
             </Button>
           )}

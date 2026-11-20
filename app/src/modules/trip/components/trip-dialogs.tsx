@@ -60,7 +60,7 @@ function ConfirmPlaceRow({ trip, item }: { trip: Trip; item: NeedsConfirmation }
             <span className="block truncate">{candidate.name}</span>
             {candidate.address && <span className="block truncate text-xs text-muted-foreground">{candidate.address}</span>}
           </span>
-          <Button size="sm" variant="ghost" onClick={() => void Maps.openUrl({ url: placeUrl(candidate.name, candidate.place_id) }).catch(() => toast.error('Không mở được bản đồ.'))}>
+          <Button size="sm" variant="ghost" onClick={() => void Maps.openUrl({ url: placeUrl([candidate.name, candidate.address].filter(Boolean).join(', '), candidate.place_id) }).catch(() => toast.error('Không mở được bản đồ.'))}>
             Xem
           </Button>
           <Button size="sm" disabled={busy} onClick={() => choose.mutate(index)}>
