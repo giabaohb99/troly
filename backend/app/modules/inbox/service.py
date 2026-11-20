@@ -253,6 +253,7 @@ def serialize_message(m: InboxMessage) -> dict:
         "conversation_key": m.conversation_key,
         "conversation_title": m.conversation_title,
         "is_group": m.is_group,
+        "account_email": m.account_email,
         "subject": m.subject,
         "text": m.text,
         "hidden_content": m.hidden_content,
@@ -281,9 +282,9 @@ _CONVERSATIONS = """
     )
     SELECT g.conversation_key, g.last_posted_at, g.unread_count, g.has_important,
            l.app, coalesce(l.conversation_title, l.sender) AS title, l.is_group,
-           l.sender AS last_sender, l.text AS last_text
+           l.sender AS last_sender, l.text AS last_text, l.account_email
     FROM g JOIN LATERAL (
-        SELECT app, conversation_title, sender, is_group, text FROM m
+        SELECT app, conversation_title, sender, is_group, text, account_email FROM m
         WHERE m.conversation_key = g.conversation_key ORDER BY posted_at DESC, id DESC LIMIT 1
     ) l ON true
     WHERE CAST(:c_key AS text) IS NULL
@@ -330,6 +331,7 @@ def list_conversations(
             "unread_count": r.unread_count,
             "importance": "important" if r.has_important else "normal",
             "is_private": r.conversation_key in private,
+            "account_email": r.account_email,
         }
         for r in rows[:limit]
     ]

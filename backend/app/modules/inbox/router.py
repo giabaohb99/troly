@@ -116,6 +116,7 @@ class DraftIn(BaseModel):
     subject: str | None = Field(default=None, max_length=500)
     body: str = Field(min_length=1, max_length=50_000)
     thread_ref: str | None = Field(default=None, max_length=200)
+    account_id: int | None = Field(default=None, ge=1)  # QĐ-50: tài khoản gửi; bỏ trống thì lớp Gmail chọn
 
 
 class DraftPatch(BaseModel):

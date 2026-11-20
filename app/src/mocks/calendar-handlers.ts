@@ -124,9 +124,16 @@ const guestsOf = (event: CalendarEvent) => event.attendees.filter((a) => !a.is_s
 // Gmail giả (QĐ-43): chưa cấp gói gmail thì 409 GOOGLE_NOT_CONNECTED như máy chủ.
 const gmailReady = () => google.connected && google.packs.some((p) => p.name === 'gmail' && p.enabled)
 const notConnected = () => fail(409, 'GOOGLE_NOT_CONNECTED', 'Chưa cấp quyền Gmail.')
-const gmailThreads: Record<string, { thread_id: string; subject: string; messages: { id: string; from_name: string | null; from_email: string; to: string[]; cc: string[]; date: string; text: string }[] }> = {
+const gmailThreads: Record<string, { thread_id: string; subject: string; account_email?: string; messages: { id: string; from_name: string | null; from_email: string; to: string[]; cc: string[]; date: string; text: string }[] }> = {
+  't-hoadon': {
+    thread_id: 't-hoadon',
+    subject: 'Hóa đơn điện tử tháng 11',
+    account_email: 'bao.congviec@gmail.com',
+    messages: [{ id: 'h1', from_name: 'VNPT', from_email: 'hoadon@vnpt.vn', to: ['bao.congviec@gmail.com'], cc: [], date: at(today, '07:10'), text: 'Hóa đơn cước tháng 11 của quý khách là 220.000 đ, hạn thanh toán 30/11.' }],
+  },
   't-hopdong': {
     thread_id: 't-hopdong',
+    account_email: 'giabao@gmail.com',
     subject: 'Hợp đồng thuê văn phòng 2027',
     messages: [
       { id: 'm1', from_name: 'Anh Minh', from_email: 'minh@example.com', to: ['giabao@gmail.com'], cc: [], date: at(shift(today, -1), '09:15'), text: 'Chào em, anh gửi bản nháp hợp đồng thuê văn phòng năm 2027. Em xem giúp điều khoản giá nhé.' },
@@ -136,7 +143,15 @@ const gmailThreads: Record<string, { thread_id: string; subject: string; message
   },
 }
 let draftId = 7000
-const drafts = new Map<number, { id: number; to: string[]; cc: string[]; subject: string; body: string; thread_ref: string | null; status: string }>()
+// Tài khoản Gmail thêm (QĐ-50): chỉ Gmail; tài khoản chính là tài khoản Google đang nối (id 1).
+const mailAccounts: { id: number; email: string }[] = [{ id: 2, email: 'bao.congviec@gmail.com' }]
+let nextAccountId = 3
+function accountsView() {
+  if (!google.connected) return []
+  const primary = { id: 1, email: google.email ?? 'giabao@gmail.com', role: 'primary' as const, enabled_packs: google.packs.filter((p) => p.enabled).map((p) => p.name), status: google.status === 'reauth_required' ? ('reauth_required' as const) : ('active' as const), last_sync_at: new Date().toISOString(), last_error: null }
+  return [primary, ...mailAccounts.map((a) => ({ ...a, role: 'mail' as const, enabled_packs: ['gmail'], status: 'active' as const, last_sync_at: new Date().toISOString(), last_error: null }))]
+}
+const drafts = new Map<number, { id: number; to: string[]; cc: string[]; subject: string; body: string; thread_ref: string | null; status: string; account_id?: number | null; account_email?: string | null }>()
 
 export const calendarHandlers = [
   http.get(`${API}/gmail/threads/:id`, ({ params }) => {
@@ -148,8 +163,11 @@ export const calendarHandlers = [
   }),
   http.post(`${API}/gmail/drafts`, async ({ request }) => {
     if (!gmailReady()) return notConnected()
-    const input = (await request.json()) as { to: string[]; cc: string[]; subject: string; body: string; thread_ref: string | null }
-    const draft = { id: ++draftId, ...input, status: 'draft' }
+    const input = (await request.json()) as { to: string[]; cc: string[]; subject: string; body: string; thread_ref: string | null; account_id?: number | null }
+    // QĐ-50: không chọn thì tài khoản của luồng thư, không thì tài khoản chính.
+    const byThread = input.thread_ref ? gmailThreads[input.thread_ref]?.account_email : undefined
+    const account = accountsView().find((a) => a.id === input.account_id) ?? accountsView().find((a) => a.email === byThread) ?? accountsView()[0]
+    const draft = { id: ++draftId, ...input, account_id: account?.id ?? null, account_email: account?.email ?? null, status: 'draft' }
     drafts.set(draft.id, draft)
     return ok(draft, 201)
   }),
@@ -157,6 +175,7 @@ export const calendarHandlers = [
     const draft = drafts.get(Number(params.id))
     if (!draft) return fail(404, 'NOT_FOUND', 'Không tìm thấy thư nháp.')
     return pendingFor(`Gửi thư: ${draft.subject || '(không tiêu đề)'}`, 'Thư chỉ đi khi bấm Duyệt.', [
+      ...(draft.account_email ? [{ label: 'Gửi từ', value: draft.account_email }] : []),
       { label: 'Tới', value: draft.to.join(', ') },
       ...(draft.cc.length ? [{ label: 'Cc', value: draft.cc.join(', ') }] : []),
       { label: 'Nội dung', value: draft.body.slice(0, 300) },
@@ -278,8 +297,23 @@ export const calendarHandlers = [
   }),
 
   http.get(`${API}/google/status`, () => ok({ ...google, failed_outbox_count: google.connected ? outbox.length : 0 })),
+  // Nhiều tài khoản Gmail (QĐ-50).
+  http.get(`${API}/google/accounts`, () => ok({ items: accountsView() })),
+  http.delete(`${API}/google/accounts/:id`, ({ params }) => {
+    const id = Number(params.id)
+    if (id === 1) return fail(409, 'CONFLICT', 'Đây là tài khoản chính, dùng Ngắt kết nối.')
+    const i = mailAccounts.findIndex((a) => a.id === id)
+    if (i < 0) return fail(404, 'NOT_FOUND', 'Không tìm thấy tài khoản.')
+    mailAccounts.splice(i, 1)
+    return ok({ ok: true })
+  }),
   http.post(`${API}/google/connect`, async ({ request }) => {
-    const { packs } = (await request.json()) as { packs: ('calendar' | 'tasks' | 'gmail')[] }
+    const { packs = [], role } = (await request.json()) as { packs?: ('calendar' | 'tasks' | 'gmail')[]; role?: 'mail' }
+    if (role === 'mail') {
+      const id = nextAccountId++
+      mailAccounts.push({ id, email: `them${id}@gmail.com` })
+      return ok({ auth_url: '/cai-dat/google?ket-qua=ok&tai-khoan=mail' })
+    }
     Object.assign(google, { connected: true, status: 'active', initial_sync: { state: 'running', message: 'Đang lấy lịch và việc lần đầu.' } })
     google.packs = (['calendar', 'tasks', 'gmail'] as const).map((name) => ({ name, enabled: packs.includes(name) || google.packs.some((p) => p.name === name && p.enabled), granted: true, last_sync_at: null, status: 'ok', last_error: null }))
     setTimeout(() => {

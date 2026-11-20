@@ -1,10 +1,11 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ChevronLeft, Loader2, Send } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { getErrorMessage } from '@/core/api/api-error'
 import { confirmOfPending } from '@/modules/inbox/utils/compose'
 import { createDraft, parseEmails, sendDraft } from '@/modules/inbox/api/gmail-api'
 import { GmailConnectHint, isGmailNotConnected } from '@/modules/inbox/components/gmail-connect-hint'
+import { defaultSenderId, useGoogleAccounts } from '@/shared/api/google-accounts-api'
 import { ConfirmCard } from '@/shared/components/confirm-card'
 import type { ConfirmInfo } from '@/shared/types/pending-action'
 import { Button } from '@/shared/ui/button'
@@ -17,6 +18,8 @@ interface ComposeState {
   cc?: string[]
   subject?: string
   threadRef?: string | null
+  // Tài khoản nhận luồng thư đang trả lời (QĐ-50).
+  accountEmail?: string | null
 }
 
 // Soạn thư mới hoặc trả lời (QĐ-43): soạn xong tạo nháp rồi xin gửi; máy chủ trả thẻ duyệt, thư chỉ đi khi bấm Duyệt.
@@ -32,6 +35,13 @@ export function EmailComposePage() {
   const [pending, setPending] = useState<ConfirmInfo | null>(null)
   const savingRef = useRef(false)
   const isReply = !!initial.threadRef
+  // Gửi từ (QĐ-50): chỉ hiện khi có từ hai tài khoản Gmail; mặc định tài khoản của luồng thư, không thì tài khoản chính.
+  const accounts = useGoogleAccounts()
+  const senders = (accounts.data ?? []).filter((a) => a.status !== 'revoked')
+  const [senderId, setSenderId] = useState<number | null>(null)
+  useEffect(() => {
+    if (senderId === null && accounts.data) setSenderId(defaultSenderId(accounts.data, initial.accountEmail))
+  }, [accounts.data, senderId, initial.accountEmail])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -51,7 +61,7 @@ export function EmailComposePage() {
     setSaving(true)
     setError(null)
     try {
-      const draft = await createDraft({ to: toList.valid, cc: ccList.valid, subject: subject.trim(), body: body.trim(), thread_ref: initial.threadRef ?? null })
+      const draft = await createDraft({ to: toList.valid, cc: ccList.valid, subject: subject.trim(), body: body.trim(), thread_ref: initial.threadRef ?? null, account_id: senderId })
       const result = await sendDraft(draft.id)
       setPending(confirmOfPending(result.pending_action, toList.valid.length))
     } catch (err) {
@@ -72,6 +82,25 @@ export function EmailComposePage() {
       </div>
       {isGmailNotConnected(error) && <GmailConnectHint />}
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {senders.length > 1 && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="mail-from">Gửi từ</Label>
+            <select
+              id="mail-from"
+              value={senderId ?? ''}
+              disabled={!!pending}
+              onChange={(e) => setSenderId(Number(e.target.value))}
+              className="h-10 rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring"
+            >
+              {senders.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.email}
+                  {a.role === 'primary' ? ' (chính)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="mail-to">Tới</Label>
           <Input id="mail-to" type="text" inputMode="email" autoComplete="off" value={to} disabled={!!pending} onChange={(e) => setTo(e.target.value)} placeholder="ten@example.com, ..." />

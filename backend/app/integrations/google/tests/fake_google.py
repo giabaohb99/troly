@@ -50,6 +50,8 @@ class FakeGoogle:
         from app.integrations.google.tests.fake_gmail import FakeGmail
 
         self.gmail = FakeGmail()
+        self.mailboxes: dict = {}
+        self.token_sub: dict[str, str] = {}
         # Calendar
         self.seq = 0
         self.events: dict[str, dict] = {}
@@ -77,10 +79,19 @@ class FakeGoogle:
         self.codes[code] = {"sub": sub, "email": email, "scope": scope}
         return code
 
-    def new_access(self, ttl: int = 3600) -> str:
+    def new_access(self, ttl: int = 3600, sub: str = "sub-1") -> str:
         token = f"at-{uuid.uuid4().hex[:10]}"
         self.access_tokens[token] = _now() + timedelta(seconds=ttl)
+        self.token_sub[token] = sub
         return token
+
+    def mailbox(self, sub: str):
+        """Hộp Gmail riêng của từng người dùng Google (QĐ-50); sub-1 là self.gmail."""
+        from app.integrations.google.tests.fake_gmail import FakeGmail
+
+        if sub == "sub-1":
+            return self.gmail
+        return self.mailboxes.setdefault(sub, FakeGmail())
 
     def put_event(self, event: dict) -> dict:
         """Thêm hoặc sửa sự kiện như người dùng sửa trên Google Calendar."""
@@ -144,7 +155,7 @@ class FakeGoogle:
         if url.host == "www.googleapis.com" and path.startswith("/calendar/v3"):
             return self._calendar(request, path.removeprefix("/calendar/v3"))
         if url.host == "gmail.googleapis.com":
-            return self.gmail.handle(request, path)
+            return self.mailbox(self.token_sub.get(auth, "sub-1")).handle(request, path)
         if url.host == "tasks.googleapis.com":
             return self._tasks(request, path.removeprefix("/tasks/v1"))
         return _err(404, "notFound")
@@ -160,7 +171,7 @@ class FakeGoogle:
             return httpx.Response(
                 200,
                 json={
-                    "access_token": self.new_access(),
+                    "access_token": self.new_access(sub=info["sub"]),
                     "expires_in": 3599,
                     "refresh_token": refresh,
                     "scope": scope,
@@ -177,7 +188,8 @@ class FakeGoogle:
                         "error_description": "Token has been expired or revoked.",
                     },
                 )
-            return httpx.Response(200, json={"access_token": self.new_access(), "expires_in": 3599})
+            sub = self.refresh_tokens[form["refresh_token"]]
+            return httpx.Response(200, json={"access_token": self.new_access(sub=sub), "expires_in": 3599})
         return httpx.Response(400, json={"error": "unsupported_grant_type"})
 
     # ---------- Calendar ----------

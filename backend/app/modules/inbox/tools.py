@@ -259,6 +259,7 @@ def run_search_gmail(ctx: ToolContext, data: SearchGmailInput) -> ToolOutput:
     items = [
         {
             "thread_id": r["thread_id"],
+            "account_email": r.get("account_email"),  # hộp thư nhận (QĐ-50: nhiều tài khoản)
             "from": r["from_name"] or r["from_email"],
             "from_email": r["from_email"],
             "date": _when(r["date"], tz),
@@ -281,6 +282,7 @@ def run_get_gmail_thread(ctx: ToolContext, data: GmailThreadInput) -> ToolOutput
     tz = ctx.user.timezone
     result = {
         "thread_id": t["thread_id"],
+        "account_email": t.get("account_email"),
         "messages": [
             {
                 "from": m["from_name"] or m["from_email"],
@@ -311,6 +313,11 @@ class GmailDraftInput(BaseModel):
     reply_to_thread_id: str | None = Field(
         default=None, description="thread_id khi trả lời thư (get_gmail_thread)"
     )
+    from_account: str | None = Field(
+        default=None,
+        description="Email tài khoản gửi; chỉ điền khi người dùng nói rõ gửi từ địa chỉ nào. Null: trả lời thì "
+        "tài khoản nhận thư, thư mới thì tài khoản chính",
+    )
 
 
 class SendDraftInput(BaseModel):
@@ -322,6 +329,25 @@ def _mail():
     from app.modules.inbox import mail
 
     return mail
+
+
+def _sender_account(ctx: ToolContext, email: str | None) -> dict:
+    """Email người dùng nói (gửi từ x@gmail.com) thành account_id của tài khoản Gmail đã nối (QĐ-50)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return {}
+    from app.integrations.google import service as google
+
+    accounts = [
+        a for a in google.list_accounts(ctx.session, ctx.user.user_id) if "gmail" in a["enabled_packs"]
+    ]
+    match = next((a for a in accounts if (a["email"] or "").lower() == email), None)
+    if match is None:
+        have = ", ".join(a["email"] for a in accounts if a["email"]) or "chưa có tài khoản Gmail nào"
+        raise AiError(
+            "VALIDATION_ERROR", f"Không có tài khoản gửi {email}. Tài khoản Gmail đang nối: {have}."
+        )
+    return {"account_id": match["id"]}
 
 
 def run_create_gmail_draft(ctx: ToolContext, data: GmailDraftInput) -> ToolOutput:
@@ -338,6 +364,7 @@ def run_create_gmail_draft(ctx: ToolContext, data: GmailDraftInput) -> ToolOutpu
                 "subject": (data.subject or "").strip() or None,
                 "body": data.body,
                 "thread_ref": data.reply_to_thread_id,
+                **_sender_account(ctx, data.from_account),
             },
         )
     except Exception as exc:
@@ -350,6 +377,7 @@ def run_create_gmail_draft(ctx: ToolContext, data: GmailDraftInput) -> ToolOutpu
     return ToolOutput(
         result={
             "draft_id": d["id"],
+            "from_account": d.get("account_email"),
             "to": d["to"],
             "cc": d["cc"],
             "subject": d["subject"],
@@ -366,7 +394,10 @@ def prepare_send_draft(ctx: ToolContext, data: SendDraftInput) -> ApprovalDraft:
         raise AiError("CONFLICT", "Thư này đã gửi rồi.")
     if d["status"] == "discarded":
         raise AiError("NOT_FOUND", "Nháp này đã bỏ.")
-    details = [{"label": "Người nhận", "value": ", ".join(d["to"])}]
+    details = []
+    if d.get("account_email"):
+        details.append({"label": "Gửi từ", "value": d["account_email"]})
+    details.append({"label": "Người nhận", "value": ", ".join(d["to"])})
     if d["cc"]:
         details.append({"label": "CC", "value": ", ".join(d["cc"])})
     details += [

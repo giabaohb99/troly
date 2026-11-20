@@ -30,7 +30,9 @@ class GoogleAccount(UserOwnedMixin, Base):
     __table_args__ = (
         CheckConstraint("role IN ('primary','mail')", name="role"),
         # QĐ-50: một tài khoản chính mỗi người dùng; tài khoản thêm (role mail) chỉ có Gmail.
-        Index("uq_tab_google_account_primary", "user_id", unique=True, postgresql_where=text("role = 'primary'")),
+        Index(
+            "uq_tab_google_account_primary", "user_id", unique=True, postgresql_where=text("role = 'primary'")
+        ),
         CheckConstraint("status IN ('active','reauth_required','revoked')", name="status"),
     )
 

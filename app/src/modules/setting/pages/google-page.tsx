@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
 import { isNative } from '@/core/config'
+import { GmailAccountsSection } from '@/modules/setting/components/gmail-accounts-section'
 import { connectGoogle, disconnectGoogle, listOutbox, retryOutbox, syncGoogle, type OutboxItem } from '@/modules/setting/api/google-api'
 import { ErrorState } from '@/shared/components/error-state'
 import { queryKeys } from '@/shared/constants/query-keys'
@@ -27,6 +28,8 @@ const RESULT_TEXT: Record<string, { ok: boolean; text: string }> = {
   ok: { ok: true, text: 'Đã kết nối Google. Đang lấy lịch và việc lần đầu.' },
   huy: { ok: false, text: 'Đã hủy, chưa kết nối Google.' },
   'thieu-quyen': { ok: false, text: 'Thiếu quyền: khi Google hỏi, tích đủ các ô rồi thử lại.' },
+  // QĐ-50: chọn trùng tài khoản chính khi thêm tài khoản Gmail.
+  'da-co': { ok: false, text: 'Tài khoản này đã là tài khoản chính. Chọn một tài khoản Gmail khác.' },
   loi: { ok: false, text: 'Kết nối Google bị lỗi, thử lại sau.' },
 }
 
@@ -60,12 +63,18 @@ export function GooglePage() {
   useEffect(() => {
     if (!result) return
     const info = RESULT_TEXT[result] ?? RESULT_TEXT.loi
-    if (info.ok) toast.success(info.text)
+    // Về từ luồng thêm tài khoản Gmail (QĐ-50).
+    const addedMail = params.get('tai-khoan') === 'mail'
+    if (info.ok) toast.success(addedMail ? 'Đã thêm tài khoản Gmail. Thư của tài khoản này sẽ vào Hộp tin.' : info.text)
+    else if (addedMail && result === 'huy')
+      toast.error('Đã hủy, chưa thêm tài khoản. Nếu Google báo chặn ứng dụng, cần thêm email này vào danh sách Test users của ứng dụng rồi thử lại.')
     else toast.error(info.text)
     if (isNative) void Browser.close().catch(() => undefined)
     void queryClient.invalidateQueries({ queryKey: queryKeys.google.status })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.google.accounts })
     void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
     setParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi có kết quả mới
   }, [result, queryClient, setParams])
 
   const connect = useMutation({
@@ -196,6 +205,8 @@ export function GooglePage() {
               })}
             </ul>
           </section>
+
+          <GmailAccountsSection />
 
           {(outbox.data?.length ?? 0) > 0 && (
             <section className="rounded-2xl border border-warning/40 bg-warning/5 p-4">

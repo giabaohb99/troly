@@ -131,3 +131,36 @@ def test_patch_discard_and_config_hides_gmail_app(auth_client, db, user, fake, g
 def test_drafts_need_gmail_connected(auth_client):
     resp = auth_client.post("/api/v1/gmail/drafts", json={"to": ["a@example.com"], "body": "x"})
     assert resp.status_code == 409
+
+
+# ---------- Mục Gmail vào hộp tin (gmail.categories) ----------
+
+
+def test_gmail_categories_setting_store_and_rescan(db, user, gmail_user, monkeypatch):
+    from app.core.errors import ValidationError
+    from app.integrations.google.models import GoogleSyncState
+    from app.modules.inbox.google_store import STORE
+    from app.modules.setting import service as setting_service
+
+    assert STORE.gmail_categories(db, user.user_id) == "primary_updates"  # mặc định
+    with pytest.raises(ValidationError):
+        setting_service.update(db, user.user_id, {"gmail.categories": "promotions"})
+    calls = []
+    monkeypatch.setattr(gmail, "rescan_inbox", lambda s, u, days: calls.append((u, days)))
+    setting_service.update(db, user.user_id, {"gmail.categories": "all"})
+    assert STORE.gmail_categories(db, user.user_id) == "all" and calls == [(user.user_id, 7)]
+    setting_service.update(db, user.user_id, {"gmail.categories": "all"})  # không đổi: không quét lại
+    assert calls == [(user.user_id, 7)]
+    monkeypatch.undo()
+    # Hàm thật: lượt đồng bộ sau quét lại 7 ngày.
+    setting_service.update(db, user.user_id, {"gmail.categories": "primary"})
+    state = db.query(GoogleSyncState).filter(GoogleSyncState.service == "gmail").one()
+    assert state.history_id is None and state.needs_sync
+
+
+def test_gmail_categories_change_without_gmail_is_saved(db, user):
+    from app.modules.inbox import google_store  # noqa: F401  (đăng ký việc quét lại)
+    from app.modules.setting import service as setting_service
+
+    out = setting_service.update(db, user.user_id, {"gmail.categories": "primary"})
+    assert out["gmail.categories"] == "primary"

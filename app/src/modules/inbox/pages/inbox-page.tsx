@@ -53,7 +53,11 @@ function ConversationRow({ item, onOpen }: { item: Conversation; onOpen: () => v
           <span className={cn('min-w-0 flex-1 truncate', unread ? 'font-semibold' : 'font-medium')}>{item.title ?? 'Không rõ'}</span>
           <span className="shrink-0 text-xs text-muted-foreground">{formatWhen(item.last_posted_at)}</span>
         </span>
-        {item.app === 'gmail' && item.last_sender && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{item.last_sender}</span>}
+        {item.app === 'gmail' && (item.last_sender || item.account_email) && (
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+            {[item.last_sender, item.account_email ? `tới ${item.account_email}` : null].filter(Boolean).join(' · ')}
+          </span>
+        )}
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn('line-clamp-1 min-w-0 flex-1 text-sm', unread ? 'text-foreground' : 'text-muted-foreground')}>{preview}</span>
           {unread && <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{item.unread_count}</span>}

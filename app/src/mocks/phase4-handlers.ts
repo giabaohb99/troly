@@ -156,6 +156,7 @@ const settings: SettingValues = {
   'notify.new_transaction': false,
   'notify.important_message': true,
   'calendar.app_reminds_google': false,
+  'gmail.categories': 'primary_updates',
   'trip.ferries': [{ name: 'Cát Lái', place_query: 'Bến phà Cát Lái', first_time: '04:00', last_time: '23:00', hotline: '028 3742 2222', note: null, updated_at: '2026-03-01' }],
 }
 

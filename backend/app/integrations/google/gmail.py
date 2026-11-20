@@ -24,7 +24,7 @@ from email.utils import getaddresses, parseaddr
 from sqlalchemy.orm import Session
 
 from app.core import clock
-from app.core.errors import AppError, ValidationError
+from app.core.errors import AppError, NotFoundError, ValidationError
 from app.integrations.google import oauth, stores
 from app.integrations.google.client import GoogleApi
 from app.integrations.google.errors import GoogleHttpError
@@ -61,6 +61,7 @@ class RemoteMail:
     date: datetime
     labels: list[str] = field(default_factory=list)
     important: bool = False
+    account_email: str | None = None  # QĐ-50: thư của tài khoản nào
 
 
 # ---------- Tiện ích ----------
@@ -130,9 +131,31 @@ def _text_of(payload: dict) -> str:
     return _strip_html("\n".join(rich))
 
 
-def _api(session: Session, user_id: int) -> tuple[GoogleAccount, GoogleApi]:
-    account = oauth.require_account(session, user_id, "gmail")
+def _api(
+    session: Session, user_id: int, account_id: int | None = None, email: str | None = None
+) -> tuple[GoogleAccount, GoogleApi]:
+    """QĐ-50: chọn tài khoản theo id hoặc email; không có thì tài khoản chính (hoặc tài khoản Gmail đầu tiên)."""
+    account = oauth.gmail_account(session, user_id, account_id, email)
     return account, GoogleApi(session, account)
+
+
+def _who(account: GoogleAccount) -> dict:
+    return {"account_id": account.id, "account_email": account.email}
+
+
+def _owner_of_thread(session: Session, user_id: int, thread_id: str) -> tuple[GoogleAccount, GoogleApi, dict]:
+    """Mã luồng thư theo từng hộp thư: thử từng tài khoản có Gmail, tài khoản chính trước."""
+    accounts = oauth.gmail_accounts(session, user_id)
+    if not accounts:
+        raise oauth.GoogleNotConnected("Chưa bật gmail trong kết nối Google.")
+    for account in accounts:
+        api = GoogleApi(session, account)
+        try:
+            return account, api, api.request("GET", f"{GMAIL}/threads/{thread_id}", params={"format": "full"})
+        except GoogleHttpError as exc:
+            if exc.status != 404:
+                raise
+    raise NotFoundError("Không tìm thấy luồng thư.")
 
 
 # ---------- Đồng bộ hộp Chính ----------
@@ -172,7 +195,7 @@ def _metadata(api: GoogleApi, message_id: str) -> dict:
     )
 
 
-def to_remote(item: dict) -> RemoteMail:
+def to_remote(item: dict, account_email: str | None = None) -> RemoteMail:
     h = _headers(item.get("payload"))
     name, address = parseaddr(h.get("from", ""))
     labels = list(item.get("labelIds") or [])
@@ -186,6 +209,7 @@ def to_remote(item: dict) -> RemoteMail:
         date=_date_of(item),
         labels=labels,
         important="IMPORTANT" in labels,
+        account_email=account_email,
     )
 
 
@@ -222,7 +246,7 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
                 continue  # thư đã xóa giữa chừng
             raise
         if _wanted(item.get("labelIds") or [], mode):
-            mails.append(to_remote(item))
+            mails.append(to_remote(item, account.email))
     saved = store.save_gmail_messages(session, account.user_id, mails) if mails else 0
     _scan_bookings_safely(session, account)
     now = clock.now()
@@ -235,24 +259,31 @@ def sync_gmail(session: Session, account: GoogleAccount, state: GoogleSyncState)
     return saved
 
 
-def rescan_inbox(session: Session, user_id: int, days: int = 7) -> None:
+def rescan_inbox(session: Session, user_id: int, days: int = 7, account_id: int | None = None) -> None:
     """Lượt đồng bộ sau quét lại `days` ngày (đổi gmail.categories, hoặc khi deploy). Thư đã có không ghi
     trùng: MailStore bỏ trùng theo message_id."""
     from sqlalchemy import select
 
-    account = oauth.require_account(session, user_id, "gmail")
-    state = session.scalar(
-        select(GoogleSyncState).where(
-            GoogleSyncState.google_account_id == account.id,
-            GoogleSyncState.service == "gmail",
-            GoogleSyncState.resource_id == "me",
-        )
+    accounts = (
+        [oauth.gmail_account(session, user_id, account_id)]
+        if account_id
+        else oauth.gmail_accounts(session, user_id)
     )
-    if state is None:
-        return
-    state.history_id = None
-    state.updated_min = clock.now() - timedelta(days=max(1, min(days, 30)))
-    state.needs_sync, state.next_sync_at = True, clock.now()
+    if not accounts:
+        raise oauth.GoogleNotConnected("Chưa bật gmail trong kết nối Google.")
+    for account in accounts:
+        state = session.scalar(
+            select(GoogleSyncState).where(
+                GoogleSyncState.google_account_id == account.id,
+                GoogleSyncState.service == "gmail",
+                GoogleSyncState.resource_id == "me",
+            )
+        )
+        if state is None:
+            continue
+        state.history_id = None
+        state.updated_min = clock.now() - timedelta(days=max(1, min(days, 30)))
+        state.needs_sync, state.next_sync_at = True, clock.now()
     session.flush()
 
 
@@ -293,36 +324,53 @@ def _history(api: GoogleApi, start: str) -> tuple[list[str], str]:
 # ---------- Đọc cho công cụ AI và màn luồng thư ----------
 
 
-def search(session: Session, user_id: int, query: str, limit: int = 10) -> list[dict]:
-    """Công cụ search_gmail: cú pháp tìm của Gmail (from:, subject:, newer_than:...)."""
+def search(
+    session: Session, user_id: int, query: str, limit: int = 10, account_id: int | None = None
+) -> list[dict]:
+    """Công cụ search_gmail: cú pháp tìm của Gmail (from:, subject:, newer_than:...). Không chỉ tài khoản
+    thì tìm ở mọi tài khoản có Gmail, gộp theo ngày mới trước."""
     if not (query or "").strip():
         raise ValidationError(fields={"query": "Nhập điều cần tìm."})
-    _, api = _api(session, user_id)
-    data = api.request(
-        "GET", f"{GMAIL}/messages", params={"q": query.strip(), "maxResults": max(1, min(limit, 25))}
-    )
+    if account_id is not None:
+        accounts = [_api(session, user_id, account_id)[0]]
+    else:
+        accounts = oauth.gmail_accounts(session, user_id) or [_api(session, user_id)[0]]
+    limit = max(1, min(limit, 25))
     out = []
-    for m in data.get("messages") or []:
-        r = to_remote(_metadata(api, m["id"]))
-        out.append(
-            {
-                "message_id": r.message_id,
-                "thread_id": r.thread_id,
-                "from_name": r.from_name,
-                "from_email": r.from_email,
-                "subject": r.subject,
-                "date": r.date,
-                "snippet": r.snippet,
-            }
-        )
-    return out
+    for account in accounts:
+        api = GoogleApi(session, account)
+        data = api.request("GET", f"{GMAIL}/messages", params={"q": query.strip(), "maxResults": limit})
+        for m in data.get("messages") or []:
+            r = to_remote(_metadata(api, m["id"]), account.email)
+            out.append(
+                {
+                    "message_id": r.message_id,
+                    "thread_id": r.thread_id,
+                    "from_name": r.from_name,
+                    "from_email": r.from_email,
+                    "subject": r.subject,
+                    "date": r.date,
+                    "snippet": r.snippet,
+                    **_who(account),
+                }
+            )
+    return sorted(out, key=lambda x: x["date"], reverse=True)[:limit]
 
 
-def get_thread(session: Session, user_id: int, thread_id: str) -> dict:
+def get_thread(
+    session: Session,
+    user_id: int,
+    thread_id: str,
+    account_id: int | None = None,
+    account_email: str | None = None,
+) -> dict:
     """Luồng thư, thư cũ trước; chữ đã bỏ HTML, tổng tối đa 4.000 ký tự (ưu tiên thư mới).
     `reply` là gợi ý cho nút Trả lời: gửi lại người gửi thư cuối không phải mình."""
-    account, api = _api(session, user_id)
-    data = api.request("GET", f"{GMAIL}/threads/{thread_id}", params={"format": "full"})
+    if account_id is not None or account_email:
+        account, api = _api(session, user_id, account_id, account_email)
+        data = api.request("GET", f"{GMAIL}/threads/{thread_id}", params={"format": "full"})
+    else:
+        account, api, data = _owner_of_thread(session, user_id, thread_id)
     me = (account.email or "").lower()
     messages = []
     for item in data.get("messages") or []:
@@ -362,7 +410,13 @@ def get_thread(session: Session, user_id: int, thread_id: str) -> dict:
     for m in messages:
         for k in ("_reply_to", "_message_id", "_subject"):
             m.pop(k)
-    return {"thread_id": data.get("id", thread_id), "subject": subject, "messages": messages, "reply": reply}
+    return {
+        "thread_id": data.get("id", thread_id),
+        "subject": subject,
+        "messages": messages,
+        "reply": reply,
+        **_who(account),
+    }
 
 
 # ---------- Nháp ----------
@@ -419,9 +473,10 @@ def _prepare(api, to, cc, subject, body, thread_id) -> tuple[dict, list[str], li
     return message, to, cc, subject
 
 
-def _draft_result(data: dict, to, cc, subject, body) -> dict:
+def _draft_result(data: dict, to, cc, subject, body, account: GoogleAccount) -> dict:
     msg = data.get("message") or {}
     return {
+        **_who(account),
         "google_draft_id": data["id"],
         "message_id": msg.get("id"),
         "thread_id": msg.get("threadId"),
@@ -429,7 +484,7 @@ def _draft_result(data: dict, to, cc, subject, body) -> dict:
         "cc": cc,
         "subject": subject,
         "body_hash": body_hash(to, cc, subject, body),
-        "web_url": DRAFTS_URL,
+        "web_url": f"https://mail.google.com/mail/u/{account.email}/#drafts" if account.email else DRAFTS_URL,
     }
 
 
@@ -442,13 +497,20 @@ def create_draft(
     subject: str | None,
     body: str,
     thread_id: str | None = None,
+    account_id: int | None = None,
+    account_email: str | None = None,
 ) -> dict:
-    """drafts.create. Trả `{google_draft_id, message_id, thread_id, to, cc, subject, body_hash, web_url}`;
-    module inbox lưu tab_gmail_draft với body_hash này. Trả lời trong luồng thì tiêu đề trống lấy Re: gốc."""
-    _, api = _api(session, user_id)
+    """drafts.create. Trả `{account_id, account_email, google_draft_id, message_id, thread_id, to, cc, subject,
+    body_hash, web_url}`; module inbox lưu tab_gmail_draft với body_hash này. Trả lời trong luồng thì tiêu đề
+    trống lấy Re: gốc. Tài khoản gửi (QĐ-50): chỉ rõ thì theo đó; trả lời thì tài khoản nhận luồng đó; không
+    thì tài khoản chính."""
+    if account_id is None and not account_email and thread_id:
+        account, api, _ = _owner_of_thread(session, user_id, thread_id)
+    else:
+        account, api = _api(session, user_id, account_id, account_email)
     message, to, cc, subject = _prepare(api, to, cc, subject, body, thread_id)
     data = api.request("POST", f"{GMAIL}/drafts", json={"message": message})
-    return _draft_result(data, to, cc, subject, body)
+    return _draft_result(data, to, cc, subject, body, account)
 
 
 def update_draft(
@@ -461,19 +523,21 @@ def update_draft(
     subject: str | None,
     body: str,
     thread_id: str | None = None,
+    account_id: int | None = None,
 ) -> dict:
-    """drafts.update (PATCH /gmail/drafts/{id}); trả như create_draft với body_hash mới."""
-    _, api = _api(session, user_id)
+    """drafts.update (PATCH /gmail/drafts/{id}); trả như create_draft với body_hash mới. account_id là tài
+    khoản đã tạo nháp (tab_gmail_draft.google_account_id)."""
+    account, api = _api(session, user_id, account_id)
     message, to, cc, subject = _prepare(api, to, cc, subject, body, thread_id)
     data = api.request(
         "PUT", f"{GMAIL}/drafts/{google_draft_id}", json={"id": google_draft_id, "message": message}
     )
-    return _draft_result(data, to, cc, subject, body)
+    return _draft_result(data, to, cc, subject, body, account)
 
 
-def delete_draft(session: Session, user_id: int, google_draft_id: str) -> None:
+def delete_draft(session: Session, user_id: int, google_draft_id: str, account_id: int | None = None) -> None:
     """Bỏ nháp; nháp đã mất trên Gmail thì coi như xong."""
-    _, api = _api(session, user_id)
+    _, api = _api(session, user_id, account_id)
     try:
         api.request("DELETE", f"{GMAIL}/drafts/{google_draft_id}", ok=(200, 204))
     except GoogleHttpError as exc:
@@ -481,9 +545,9 @@ def delete_draft(session: Session, user_id: int, google_draft_id: str) -> None:
             raise
 
 
-def read_draft(session: Session, user_id: int, google_draft_id: str) -> dict:
+def read_draft(session: Session, user_id: int, google_draft_id: str, account_id: int | None = None) -> dict:
     """Nháp đúng như trên Gmail lúc này: `{to, cc, subject, body, body_hash}`."""
-    _, api = _api(session, user_id)
+    _, api = _api(session, user_id, account_id)
     try:
         data = api.request("GET", f"{GMAIL}/drafts/{google_draft_id}", params={"format": "raw"})
     except GoogleHttpError as exc:
@@ -504,13 +568,16 @@ def read_draft(session: Session, user_id: int, google_draft_id: str) -> dict:
     }
 
 
-def send_draft(session: Session, user_id: int, google_draft_id: str, expected_hash: str) -> dict:
+def send_draft(
+    session: Session, user_id: int, google_draft_id: str, expected_hash: str, account_id: int | None = None
+) -> dict:
     """Chạy khi người dùng duyệt thẻ send_gmail_draft: băm lại nháp trên Gmail, khớp mới drafts.send.
-    Trả `{message_id, thread_id}`; lệch thì ném DraftChanged (ACTION_PAYLOAD_CHANGED)."""
-    current = read_draft(session, user_id, google_draft_id)
+    Trả `{message_id, thread_id}`; lệch thì ném DraftChanged (ACTION_PAYLOAD_CHANGED). account_id là tài
+    khoản đã tạo nháp (thẻ hiện *Gửi từ: email*)."""
+    current = read_draft(session, user_id, google_draft_id, account_id)
     if current["body_hash"] != expected_hash:
         raise DraftChanged()
-    _, api = _api(session, user_id)
+    _, api = _api(session, user_id, account_id)
     data = api.request("POST", f"{GMAIL}/drafts/send", json={"id": google_draft_id})
     return {"message_id": data.get("id"), "thread_id": data.get("threadId")}
 
@@ -543,6 +610,7 @@ class BookingMail:
     date: datetime
     text: str
     url: str
+    account_email: str | None = None
 
 
 def booking_query(since: datetime) -> str:
@@ -577,8 +645,11 @@ def _booking_state(session: Session, account: GoogleAccount) -> GoogleSyncState:
 
 def reset_booking_scan(session: Session, user_id: int, days: int = BOOKING_FIRST_DAYS) -> None:
     """Lần quét sau đọc lại `days` ngày (deploy QĐ-49: bắt thư đặt phòng đã đến trước đó)."""
-    account = oauth.require_account(session, user_id, "gmail")
-    _booking_state(session, account).updated_min = clock.now() - timedelta(days=days)
+    accounts = oauth.gmail_accounts(session, user_id)
+    if not accounts:
+        raise oauth.GoogleNotConnected("Chưa bật gmail trong kết nối Google.")
+    for account in accounts:
+        _booking_state(session, account).updated_min = clock.now() - timedelta(days=days)
     session.flush()
 
 
@@ -614,7 +685,10 @@ def scan_bookings(session: Session, account: GoogleAccount) -> int:
             sender=h.get("from", ""),
             date=_date_of(item),
             text=_text_of(item.get("payload") or {})[:BOOKING_TEXT_MAX],
-            url=f"https://mail.google.com/mail/#all/{item['id']}",
+            url=f"https://mail.google.com/mail/u/{account.email}/#all/{item['id']}"
+            if account.email
+            else f"https://mail.google.com/mail/#all/{item['id']}",
+            account_email=account.email,
         )
         with session.begin_nested():
             if store.handle_booking_mail(session, account.user_id, mail):

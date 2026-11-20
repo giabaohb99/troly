@@ -95,3 +95,76 @@ def test_gmail_not_connected_offers_settings(ctx, monkeypatch):
     monkeypatch.setattr(gmail, "search", off)
     out = _call(ctx, "search_gmail", query="from:hanh", limit=None)
     assert out.result["trang_thai"] == "chua_noi_gmail" and out.actions[0]["screen"] == "settings_google"
+
+
+def test_multi_account_search_shows_account(ctx, monkeypatch):
+    def search(session, user_id, query, limit=10):
+        return [
+            {
+                "message_id": "m1",
+                "thread_id": "t1",
+                "from_name": "Chị Hạnh",
+                "from_email": "hanh@example.com",
+                "subject": "Họp",
+                "date": NOW,
+                "snippet": "Mai họp nhé",
+                "account_id": 2,
+                "account_email": "cong.viec@example.com",
+            }
+        ]
+
+    monkeypatch.setattr(gmail, "search", search)
+    out = _call(ctx, "search_gmail", query="from:hanh", limit=None)
+    assert out.result["items"][0]["account_email"] == "cong.viec@example.com"
+
+
+def test_draft_from_account_and_send_card_shows_sender(ctx, monkeypatch):
+    from app.modules.inbox import mail
+
+    seen = {}
+    draft = {
+        "id": 5,
+        "to": ["hanh@example.com"],
+        "cc": [],
+        "subject": "Xin nghỉ",
+        "snippet": "Mai em xin nghỉ",
+        "status": "draft",
+        "web_url": "https://mail.google.com/mail/#drafts/x",
+        "account_email": "cong.viec@example.com",
+    }
+
+    def create_draft(session, user_id, data):
+        seen.update(data)
+        return draft
+
+    from app.integrations.google import service as google
+
+    monkeypatch.setattr(
+        google,
+        "list_accounts",
+        lambda session, user_id: [
+            {"id": 1, "email": "dai.ca@gmail.com", "enabled_packs": ["calendar", "gmail"]},
+            {"id": 2, "email": "cong.viec@example.com", "enabled_packs": ["gmail"]},
+        ],
+    )
+    monkeypatch.setattr(mail, "create_draft", create_draft)
+    monkeypatch.setattr(mail, "get_draft", lambda session, user_id, draft_id: draft)
+    out = _call(
+        ctx,
+        "create_gmail_draft",
+        to=["hanh@example.com"],
+        body="Mai em xin nghỉ",
+        subject="Xin nghỉ",
+        from_account=" cong.viec@example.com ",
+    )
+    assert seen["account_id"] == 2 and out.result["from_account"] == "cong.viec@example.com"
+    seen.clear()
+    _call(ctx, "create_gmail_draft", to=["hanh@example.com"], body="Thư mới")
+    assert seen["body"] == "Thư mới" and "account_id" not in seen  # không nói gửi từ đâu: để mặc định
+    from app.ai.schemas import AiError
+
+    with pytest.raises(AiError, match="dai.ca@gmail.com"):
+        _call(ctx, "create_gmail_draft", to=["hanh@example.com"], body="x", from_account="la@example.com")
+    spec = next(t for t in tools.TOOLS if t.name == "send_gmail_draft")
+    card = spec.prepare(ctx, spec.input_model.model_validate({"draft_id": 5}))
+    assert card.details[0] == {"label": "Gửi từ", "value": "cong.viec@example.com"}

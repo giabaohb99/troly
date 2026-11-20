@@ -55,6 +55,7 @@ export const queryKeys = {
   google: {
     status: ['google', 'status'] as const,
     outbox: ['google', 'outbox'] as const,
+    accounts: ['google', 'accounts'] as const,
   },
   inbox: {
     all: ['inbox'] as const,

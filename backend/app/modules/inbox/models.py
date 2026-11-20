@@ -62,6 +62,8 @@ class InboxMessage(UserOwnedMixin, Base):
     conversation_key: Mapped[str] = mapped_column(Text)
     conversation_title: Mapped[str | None] = mapped_column(Text)
     is_group: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    # QĐ-50: thư Gmail của tài khoản nào (nhiều tài khoản); tin thông báo máy để trống.
+    account_email: Mapped[str | None] = mapped_column(CITEXT)
     subject: Mapped[str | None] = mapped_column(Text)
     text: Mapped[str] = mapped_column(Text)
     hidden_content: Mapped[bool] = mapped_column(Boolean, server_default="false")
@@ -114,6 +116,7 @@ class GmailDraft(UserOwnedMixin, Base):
     google_account_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("tab_google_account.id", ondelete="CASCADE")
     )
+    account_email: Mapped[str | None] = mapped_column(CITEXT)  # QĐ-50: tài khoản gửi
     google_draft_id: Mapped[str | None] = mapped_column(Text)
     thread_ref: Mapped[str | None] = mapped_column(Text)
     to_addrs: Mapped[list[str]] = mapped_column(ARRAY(CITEXT))

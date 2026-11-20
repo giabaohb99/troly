@@ -68,6 +68,8 @@ export interface SettingValues {
   'calendar.app_reminds_google'?: boolean
   // QĐ-41: notice chat_done khi trợ lý trả lời lúc app chạy nền.
   'notify.chat_done'?: boolean
+  // Loại thư Gmail vào Hộp tin (QĐ-50): primary | primary_updates (mặc định) | all (trừ Quảng cáo, Mạng xã hội).
+  'gmail.categories'?: string
   [key: string]: unknown
 }
 

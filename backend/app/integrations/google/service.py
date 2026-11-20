@@ -230,6 +230,7 @@ def run_initial_sync(session: Session, job) -> dict:
     result: dict = {}
     for account in accounts:
         _initial_sync_account(session, account, result)
+    session.flush()  # trạng thái done ghi xuống ngay, không chờ lần flush sau của nơi gọi
     return result
 
 

@@ -137,7 +137,8 @@ const mockInbox: InboxMessage[] = [
   inboxRow(3, 'telegram', 'telegram:du-an-a', 'Tuấn', 'file mới đã up', 120, { conversation_title: 'Nhóm Dự án A', is_group: true }),
   inboxRow(4, 'zalo', 'zalo:hung', 'Anh Hùng', null, 300),
   inboxRow(5, 'sms', 'sms:me', 'Mẹ', 'Tối về ăn cơm nhé con', 2000, { status: 'seen' }),
-  inboxRow(6, 'gmail', 'gmail:t-hopdong', 'Anh Minh', 'Em gửi trước thứ Năm giúp anh nhé, chị Lan cần chốt.', 90, { source: 'gmail', subject: 'Hợp đồng thuê văn phòng 2027', conversation_title: 'Hợp đồng thuê văn phòng 2027' }),
+  inboxRow(6, 'gmail', 'gmail:t-hopdong', 'Anh Minh', 'Em gửi trước thứ Năm giúp anh nhé, chị Lan cần chốt.', 90, { source: 'gmail', subject: 'Hợp đồng thuê văn phòng 2027', conversation_title: 'Hợp đồng thuê văn phòng 2027', account_email: 'giabao@gmail.com' }),
+  inboxRow(10, 'gmail', 'gmail:t-hoadon', 'VNPT', 'Hóa đơn cước tháng 11 của quý khách là 220.000 đ, hạn thanh toán 30/11.', 120, { source: 'gmail', subject: 'Hóa đơn điện tử tháng 11', conversation_title: 'Hóa đơn điện tử tháng 11', account_email: 'bao.congviec@gmail.com', status: 'seen' }),
 ]
 function mockConversations() {
   const keys = [...new Set(mockInbox.map((m) => m.conversation_key))]
@@ -148,6 +149,7 @@ function mockConversations() {
       conversation_key: key, app: last.app, title: last.conversation_title ?? last.sender, is_group: last.is_group, last_sender: last.sender, last_text: last.text,
       last_posted_at: last.posted_at, unread_count: rows.filter((m) => m.status === 'new').length,
       importance: rows.some((m) => m.importance === 'important' && m.status !== 'done') ? 'important' : 'normal', is_private: false,
+      account_email: (last as { account_email?: string }).account_email ?? null,
     }
   }).sort((a, b) => Number(b.importance === 'important') - Number(a.importance === 'important') || Date.parse(b.last_posted_at) - Date.parse(a.last_posted_at))
 }

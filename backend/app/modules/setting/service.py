@@ -112,6 +112,13 @@ REGISTRY: dict[str, tuple[object, Callable, str]] = {
     "notify.booking_added": (True, _bool, "Phải là true hoặc false."),
     "calendar.app_reminds_google": (False, _bool, "Phải là true hoặc false."),
     "inbox.quiet_hours": (None, _quiet_hours, 'Dạng {start: "22:00", end: "07:00"} hoặc null.'),
+    # Mục Gmail vào hộp tin: primary (chỉ Chính), primary_updates (Chính và Cập nhật), all (trừ Quảng cáo,
+    # Mạng xã hội). Thư IMPORTANT luôn vào, SPAM và TRASH luôn bỏ (lớp Gmail lọc).
+    "gmail.categories": (
+        "primary_updates",
+        _choice("primary", "primary_updates", "all"),
+        "Chỉ nhận primary, primary_updates, all.",
+    ),
     "trip.default_travel_mode": (
         "motorbike",
         _choice("motorbike", "car", "walk"),
@@ -127,6 +134,17 @@ REGISTRY: dict[str, tuple[object, Callable, str]] = {
         "Tối đa 10 bến: {name, place_query, first_time HH:MM, last_time HH:MM, hotline, note, updated_at YYYY-MM-DD}.",
     ),
 }
+
+
+# Module khác đăng ký việc chạy khi một khóa đổi giá trị (inbox quét lại Gmail khi đổi gmail.categories).
+# Hàm nhận (session, user_id, cũ, mới); setting không import module khác.
+_CHANGE_HOOKS: dict[str, list[Callable]] = {}
+
+
+def on_change(key: str, hook: Callable) -> None:
+    hooks = _CHANGE_HOOKS.setdefault(key, [])
+    if hook not in hooks:
+        hooks.append(hook)
 
 
 def defaults() -> dict:
@@ -161,6 +179,10 @@ def update(session: Session, user_id: int, changes: dict) -> dict:
     if errors:
         raise ValidationError("Cài đặt chưa hợp lệ.", fields=errors)
     for key, value in clean.items():
+        old = get_value(session, user_id, key) if _CHANGE_HOOKS.get(key) else None
         stmt = insert(Setting).values(user_id=user_id, key=key, value=value)
         session.execute(stmt.on_conflict_do_update(index_elements=["user_id", "key"], set_={"value": value}))
+        if old != value:
+            for hook in _CHANGE_HOOKS.get(key, []):
+                hook(session, user_id, old, value)
     return get_all(session, user_id)["values"]

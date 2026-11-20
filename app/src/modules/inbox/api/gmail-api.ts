@@ -17,6 +17,8 @@ export interface GmailMessage {
 export interface GmailThread {
   thread_id: string
   subject: string
+  // Tài khoản nhận luồng thư (QĐ-50); trả lời mặc định gửi từ tài khoản này.
+  account_email?: string | null
   messages: GmailMessage[]
   reply: { to: string[]; cc: string[]; subject: string; in_reply_to: string | null } | null
 }
@@ -27,11 +29,14 @@ export interface DraftInput {
   subject: string
   body: string
   thread_ref: string | null
+  // Tài khoản gửi (QĐ-50); null là tài khoản của luồng thư khi trả lời, không thì tài khoản chính.
+  account_id?: number | null
 }
 
 export interface GmailDraft extends DraftInput {
   id: number
   status: string
+  account_email?: string | null
 }
 
 export const GMAIL_KEY_PREFIX = 'gmail:'

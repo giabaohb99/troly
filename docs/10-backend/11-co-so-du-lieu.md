@@ -114,6 +114,7 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`. Sự kiện m�
 | `notify.booking_added` | `true`: đặt chỗ tự thêm vào Lịch từ thư xác nhận thì máy báo, có nút Hoàn tác (QĐ-49) |
 | `calendar.app_reminds_google` | `false`: bật thì app nhắc cả sự kiện tạo trên Google, theo `remind_minutes` của sự kiện hoặc mặc định (QĐ-38) |
 | `inbox.quiet_hours` | `null` |
+| `gmail.categories` | `"primary_updates"`: mục Gmail vào hộp tin, `primary` (chỉ Chính), `primary_updates` (Chính và Cập nhật), `all` (trừ Quảng cáo, Mạng xã hội); thư `IMPORTANT` luôn vào, `SPAM`, `TRASH` luôn bỏ; đổi thì quét lại 7 ngày (`gmail.rescan_inbox`), thư đã có không ghi trùng |
 | `trip.default_travel_mode` | `motorbike` |
 | `trip.night_start`, `trip.night_end` | `18:00`, `05:30` |
 | `trip.ride_break_minutes` | `90` |
@@ -338,6 +339,7 @@ Chỉ mục `(user_id, spent_at DESC) WHERE deleted_at IS NULL`; `(user_id) WHER
 | conversation_key | text NN | Băm `(app, conversation_title hoặc sender_key)`; Gmail theo `thread_ref` |
 | conversation_title | text | |
 | is_group | boolean NN default false | |
+| account_email | citext | Thư Gmail của tài khoản nào (QĐ-50, nhiều tài khoản); tin thông báo máy để trống. Gỡ tài khoản kèm `delete_messages` thì xóa tin của email đó (migration `0015_inbox_account`) |
 | contact_id | bigint FK `tab_contact` SET NULL | |
 | subject | text | Thư Gmail |
 | text | text NN, tối đa 4.000 | Gmail: đoạn trích |
@@ -357,7 +359,7 @@ Nhóm Zalo không đặt `conversation_title`, `is_group_conversation`: tiêu đ
 
 **`tab_contact`** (V1.8): (cột chung); `google_account_id NN FK CASCADE`; `resource_name NN`; `etag`; `display_name NN`; `phones text[]` (dạng `+84`); `emails citext[]`; `birthday_day`, `birthday_month`, `birthday_year smallint` (năm rỗng khi không rõ); `remind_birthday`, `is_important boolean NN default false`; `synced_at NN`; `deleted_at`. UQ `(user_id, resource_name)`; GIN `phones`, `emails`.
 
-**`tab_gmail_draft`** (V1.8): (cột chung); `google_account_id NN FK CASCADE`; `google_draft_id` (rỗng tới khi `drafts.create` xong); `thread_ref`; `to_addrs`, `cc_addrs citext[] NN`; `subject NN`; `body NN`; `body_hash NN`; `status` CK `draft`, `sending`, `sent`, `discarded`; `pending_action_id FK SET NULL`; `approved_at`, `sent_at`; `sent_message_id`. Gửi chỉ qua `tab_pending_action` (`tool_name = send_gmail_draft`, input `{draft_id}`, chạy ở `modules/inbox/approvals.py`); nháp trên Gmail lệch `body_hash` thì 409 `ACTION_PAYLOAD_CHANGED`, nháp giữ `draft`. `thread_ref` chỉ là luồng đang trả lời. Thư Gmail hộp Chính vào `tab_inbox_message` với `conversation_key = gmail:<thread_id>`, `conversation_title` là tiêu đề, `text` là đoạn trích; thư có OTP bỏ cả thư (QĐ-43). Cột `citext[]` đọc ra list nhờ `core/db` đăng ký kiểu `citext` với psycopg lúc mở kết nối.
+**`tab_gmail_draft`** (V1.8): (cột chung); `google_account_id NN FK CASCADE` (tài khoản gửi, QĐ-50: trả lời theo tài khoản nhận luồng, thư mới theo `account_id` chọn hoặc tài khoản chính); `account_email citext`; `google_draft_id` (rỗng tới khi `drafts.create` xong); `thread_ref`; `to_addrs`, `cc_addrs citext[] NN`; `subject NN`; `body NN`; `body_hash NN`; `status` CK `draft`, `sending`, `sent`, `discarded`; `pending_action_id FK SET NULL`; `approved_at`, `sent_at`; `sent_message_id`. Gửi chỉ qua `tab_pending_action` (`tool_name = send_gmail_draft`, input `{draft_id}`, chạy ở `modules/inbox/approvals.py`); nháp trên Gmail lệch `body_hash` thì 409 `ACTION_PAYLOAD_CHANGED`, nháp giữ `draft`. `thread_ref` chỉ là luồng đang trả lời. Thư Gmail hộp Chính vào `tab_inbox_message` với `conversation_key = gmail:<thread_id>`, `conversation_title` là tiêu đề, `text` là đoạn trích; thư có OTP bỏ cả thư (QĐ-43). Cột `citext[]` đọc ra list nhờ `core/db` đăng ký kiểu `citext` với psycopg lúc mở kết nối.
 
 ### 3.11 Calendar và task
 

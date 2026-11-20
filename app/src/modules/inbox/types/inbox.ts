@@ -14,6 +14,8 @@ export interface Conversation {
   unread_count: number
   importance: 'normal' | 'important'
   is_private: boolean
+  // Thư Gmail: tài khoản nhận (QĐ-50, nhiều tài khoản).
+  account_email?: string | null
 }
 
 export interface InboxMessage {
@@ -31,6 +33,8 @@ export interface InboxMessage {
   status: InboxStatus
   importance: 'normal' | 'important'
   importance_reason: string | null
+  // Thư Gmail: tài khoản nhận (QĐ-50).
+  account_email?: string | null
 }
 
 export const APP_LABELS: Record<InboxApp, string> = {

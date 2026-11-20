@@ -79,7 +79,9 @@ def get_account(session: Session, user_id: int) -> GoogleAccount | None:
 
 def list_accounts(session: Session, user_id: int) -> list[GoogleAccount]:
     """Tài khoản chính trước, rồi tài khoản thêm theo ngày nối (QĐ-50)."""
-    rows = session.scalars(select(GoogleAccount).where(GoogleAccount.user_id == user_id).order_by(GoogleAccount.id))
+    rows = session.scalars(
+        select(GoogleAccount).where(GoogleAccount.user_id == user_id).order_by(GoogleAccount.id)
+    )
     return sorted(rows, key=lambda a: (a.role != "primary", a.id))
 
 
@@ -101,7 +103,8 @@ def gmail_account(
         account = get_account_by_id(session, user_id, account_id)
     elif email:
         account = next(
-            (a for a in list_accounts(session, user_id) if (a.email or "").lower() == email.strip().lower()), None
+            (a for a in list_accounts(session, user_id) if (a.email or "").lower() == email.strip().lower()),
+            None,
         )
         if account is None:
             raise NotFoundError(f"Chưa nối tài khoản Gmail {email}.")
@@ -121,7 +124,9 @@ def gmail_account(
 
 def gmail_accounts(session: Session, user_id: int) -> list[GoogleAccount]:
     return [
-        a for a in list_accounts(session, user_id) if a.status == "active" and "gmail" in (a.enabled_packs or [])
+        a
+        for a in list_accounts(session, user_id)
+        if a.status == "active" and "gmail" in (a.enabled_packs or [])
     ]
 
 
@@ -268,7 +273,9 @@ def finish_connect(
         return _finish_mail(session, user_id, sub, email, granted, packs_ok, token)
     other = session.scalar(select(GoogleAccount).where(GoogleAccount.google_sub == sub))
     if other is not None and (other.user_id != user_id or other.role == "mail"):
-        return CallbackResult("da-co", "Tài khoản Google này đã nối làm tài khoản thêm, gỡ trước khi đặt làm chính.", [])
+        return CallbackResult(
+            "da-co", "Tài khoản Google này đã nối làm tài khoản thêm, gỡ trước khi đặt làm chính.", []
+        )
 
     account = get_account(session, user_id)
     if account is not None and account.google_sub != sub and account.status != "revoked":

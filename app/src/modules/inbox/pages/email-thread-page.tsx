@@ -21,7 +21,10 @@ export function EmailThreadPage() {
         <Button size="icon" variant="ghost" aria-label="Quay lại" onClick={() => navigate('/hop-tin?loai=gmail')}>
           <ChevronLeft className="size-5" />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-bold">{data?.subject || 'Thư'}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-lg font-bold">{data?.subject || 'Thư'}</h1>
+          {data?.account_email && <p className="truncate text-xs text-muted-foreground">Hộp thư {data.account_email}</p>}
+        </div>
       </div>
       {thread.isPending && <SkeletonList />}
       {thread.isError && (isGmailNotConnected(thread.error) ? <GmailConnectHint /> : <ErrorState error={thread.error} onRetry={() => void thread.refetch()} />)}
@@ -42,7 +45,7 @@ export function EmailThreadPage() {
         <Button
           onClick={() =>
             navigate('/hop-tin/email/soan', {
-              state: { to: data.reply?.to ?? [], cc: data.reply?.cc ?? [], subject: data.reply?.subject ?? `Re: ${data.subject}`, threadRef: data.thread_id },
+              state: { to: data.reply?.to ?? [], cc: data.reply?.cc ?? [], subject: data.reply?.subject ?? `Re: ${data.subject}`, threadRef: data.thread_id, accountEmail: data.account_email ?? null },
             })
           }
         >
