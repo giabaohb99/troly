@@ -158,6 +158,17 @@ def min_supported_version_code() -> int | None:
     )
 
 
+def release_download_url(latest: dict) -> str:
+    """Link ký mới mỗi lần gọi, sống `R2_RELEASE_PRESIGN_SECONDS` (mặc định 30 phút)."""
+    s = get_settings()
+    return storage.presign_get(
+        s.r2_bucket,
+        latest["apk_key"],
+        f"troly-{latest.get('version_name')}.apk",
+        expires=s.r2_release_presign_seconds,
+    )
+
+
 def release_info(current_version_code: int | None) -> dict:
     latest = latest_release()
     if not latest:
@@ -171,9 +182,8 @@ def release_info(current_version_code: int | None) -> dict:
         "latest": {
             "version_code": code,
             "version_name": latest.get("version_name"),
-            "download_url": storage.presign_get(
-                get_settings().r2_bucket, latest["apk_key"], f"troly-{latest.get('version_name')}.apk"
-            ),
+            "download_url": release_download_url(latest),
+            "download_expires_in": get_settings().r2_release_presign_seconds,
             "sha256": latest.get("sha256"),
             "size_bytes": latest.get("size_bytes"),
             "notes": latest.get("notes"),

@@ -2,7 +2,7 @@ from html import escape
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -199,15 +199,19 @@ def privacy_page() -> str:
     return _PAGE.format(title="Chính sách riêng tư", body=body)
 
 
+_NO_STORE = {"Cache-Control": "no-store"}
+
+
 @public_router.get("/tai-app", response_class=HTMLResponse)
-def download_page() -> str:
+def download_page() -> HTMLResponse:
+    """Nút tải trỏ tới /tai-app/apk (ký link mới lúc bấm) nên trang mở lâu vẫn tải được."""
     info = service.release_info(None)
     latest = info["latest"]
     if latest is None:
         body = "<h1>Tải app Trợ lý</h1><p>Chưa có bản phát hành.</p>"
     else:
         body = f"""<h1>Tải app Trợ lý {escape(str(latest["version_name"]))}</h1>
-<p><a href="{escape(latest["download_url"])}">Tải tệp APK</a> (liên kết sống 5 phút, tải lại trang nếu hết hạn).</p>
+<p><a href="/tai-app/apk">Tải tệp APK</a></p>
 <p>SHA-256: <code>{escape(str(latest["sha256"]))}</code></p>
 <h2>Cài trên Galaxy S25+</h2><ol>
 <li>Mở tệp vừa tải, cho phép trình duyệt <em>Cài ứng dụng không rõ nguồn gốc</em>, rồi bấm Cài đặt.</li>
@@ -215,4 +219,15 @@ def download_page() -> str:
 <li>Cài đặt &gt; Pin và chăm sóc thiết bị &gt; Pin &gt; Giới hạn sử dụng nền &gt; <em>Ứng dụng không bao giờ ngủ</em>
 &gt; thêm Trợ lý.</li>
 <li>Nếu máy chặn cài từ nguồn ngoài, cài bằng <code>adb install</code> từ máy tính.</li></ol>"""
-    return _PAGE.format(title="Tải app Trợ lý", body=body)
+    return HTMLResponse(_PAGE.format(title="Tải app Trợ lý", body=body), headers=_NO_STORE)
+
+
+@public_router.get("/tai-app/apk")
+def download_apk():
+    """302 sang link R2 ký mới (30 phút); chưa có bản phát hành thì 404."""
+    latest = service.latest_release()
+    if not latest:
+        return HTMLResponse(
+            _PAGE.format(title="Tải app Trợ lý", body="<p>Chưa có bản phát hành.</p>"), status_code=404
+        )
+    return RedirectResponse(service.release_download_url(latest), status_code=302, headers=_NO_STORE)

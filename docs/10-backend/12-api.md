@@ -93,7 +93,7 @@ Chỉ vài trần cơ bản (QĐ-27 mục 7). Đếm trong bộ nhớ của mộ
 | `POST /chat/messages` | 20 câu mỗi phút | `RATE_CHAT_PER_MIN` |
 | Mọi đường khác | 300 yêu cầu mỗi phút | `RATE_USER_PER_MIN` |
 
-Thân JSON tối đa 1 MB; tệp 25 MB (đi thẳng R2); tin chat 4.000 ký tự, tối đa 4 tệp; URL ký sẵn R2 sống 300 giây (`R2_PRESIGN_SECONDS`) cho cả tải lên và tải về.
+Thân JSON tối đa 1 MB; tệp 25 MB (đi thẳng R2); tin chat 4.000 ký tự, tối đa 4 tệp; URL ký sẵn R2 sống 300 giây (`R2_PRESIGN_SECONDS`) cho cả tải lên và tải về; riêng link APK bản phát hành sống 1.800 giây (`R2_RELEASE_PRESIGN_SECONDS`).
 
 ### 3.8 Chống gửi trùng
 
@@ -248,7 +248,7 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | POST | `/device/events` | D | `events` (1 tới 50) | `{accepted, duplicates, rejected: [{client_event_id, code}]}` | V1.2 |
 | GET | `/device/config` | D | `If-None-Match` | Mục 5.8 | V1.2 |
 | POST | `/device/heartbeat` | D | Mục 5.8 | `{server_time, config_revision}` | V1.2 |
-| GET | `/device/release` | U/D | `current_version_code` | `{update_available, required, latest}` | V1.0 |
+| GET | `/device/release` | U/D | `current_version_code` | `{update_available, required, latest}`; `latest.download_url` ký mới mỗi lần gọi, sống `latest.download_expires_in` giây (1.800); app gọi lại lúc bấm tải | V1.0 |
 | POST | `/device/health` | D | `days[]` | `{accepted}` | V2 |
 
 Bỏ theo QĐ-27: `/users`, `/me/export`, `DELETE /me`, `/consents`, `/admin/audit-log`, `/admin/releases`, `/device/web-bundle`, `/dev/jobs/*`; `/admin/worker` thành `/system/status`.
@@ -350,7 +350,8 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 | Đường | Nội dung |
 |---|---|
 | `GET /chinh-sach-rieng-tu` | Dữ liệu thu, gửi tới đâu, giữ bao lâu; Google cần trang này cho màn đồng ý OAuth |
-| `GET /tai-app` | Bản APK mới nhất từ `latest.json`, `sha256`, nút tải, các bước cài trên Galaxy S25+ (`50-ha-tang-trien-khai.md`) |
+| `GET /tai-app` | Bản APK mới nhất từ `latest.json`, `sha256`, nút tải, các bước cài trên Galaxy S25+ (`50-ha-tang-trien-khai.md`); `Cache-Control: no-store`; nút tải trỏ tới `/tai-app/apk` nên trang mở lâu vẫn tải được |
+| `GET /tai-app/apk` | 302 sang link R2 ký mới (1.800 giây) của APK mới nhất; chưa có bản phát hành thì 404 |
 
 ## 6. Kiểm thử
 

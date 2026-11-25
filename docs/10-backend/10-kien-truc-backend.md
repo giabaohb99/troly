@@ -122,6 +122,7 @@ Cấu hình chỉ đọc từ biến môi trường của container (compose `en
 | | `R2_ENDPOINT` | dựng từ `R2_ACCOUNT_ID` | Máy cá nhân trỏ S3 giả |
 | | `R2_BUCKET` | `assistant` | Một bucket, tiền tố `files/`, `backups/weekly/`, `backups/premigrate/`, `releases/` (QĐ-31) |
 | | `R2_PRESIGN_SECONDS` | `300` | |
+| | `R2_RELEASE_PRESIGN_SECONDS` | `1800` | Link tải APK của `/device/release`, `/tai-app/apk` (lỗi thật 25/11: 300 giây hết hạn trước khi người dùng bấm cập nhật) |
 | Sao lưu | `BACKUP_WEEKDAY` | `6` (chủ nhật; 0 là thứ Hai) | QĐ-16 |
 | | `BACKUP_HOUR`, `BACKUP_MINUTE` | `2`, `0` | Giờ Việt Nam |
 | | `BACKUP_KEEP` | `5` | Gồm bản trước migration; không mã hóa `age` (QĐ-27) |

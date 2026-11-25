@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getAppVersion, isDebugBuild } from '@/core/config'
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '@/core/theme'
-import { canInstallApk, startApkDownload } from '@/core/native/update'
+import { canInstallApk } from '@/core/native/update'
 import { useLogout, useSession } from '@/modules/auth/hooks/use-session'
 import { getCostStatus, getProfile } from '@/modules/setting/api/setting-api'
 import { DeviceList } from '@/modules/setting/components/device-list'
@@ -13,6 +13,8 @@ import { ProfileDialog } from '@/modules/setting/components/profile-dialog'
 import { ProfileHistoryDialog } from '@/modules/setting/components/profile-history-dialog'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { PageHeader } from '@/shared/components/page-header'
+import { UpdateControls } from '@/shared/components/update-banner'
+import { useApkUpdate } from '@/shared/hooks/use-apk-update'
 import { needsReconnect, useGoogleStatus } from '@/shared/hooks/use-google-status'
 import { useRelease } from '@/shared/hooks/use-release'
 import { useFeatures } from '@/shared/hooks/use-features'
@@ -67,6 +69,7 @@ export function SettingsPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const version = getAppVersion()
   const theme = useSyncExternalStore(subscribeTheme, getThemePref)
+  const apkUpdate = useApkUpdate()
 
   const checkUpdate = async () => {
     const result = await release.refetch()
@@ -173,6 +176,11 @@ export function SettingsPage() {
             <div className="rounded-xl bg-info/10 p-3">
               <p className="font-medium">Có bản {release.data.latest.version_name}</p>
               {release.data.latest.notes && <p className="text-muted-foreground">{release.data.latest.notes}</p>}
+              {canInstallApk && !isDebugBuild() && (
+                <div className="mt-2">
+                  <UpdateControls state={apkUpdate} size="sm" />
+                </div>
+              )}
             </div>
           )}
           {isDebugBuild() && <p className="text-xs text-muted-foreground">Bản thử: không tự kiểm bản mới, cập nhật bằng cách cài APK debug mới.</p>}
@@ -181,12 +189,6 @@ export function SettingsPage() {
               {release.isFetching ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
               Kiểm tra cập nhật
             </Button>
-            {canInstallApk && release.data?.update_available && (
-              <Button size="sm" onClick={() => void startApkDownload(release.data)}>
-                <Download className="size-4" />
-                Cập nhật
-              </Button>
-            )}
           </div>
         </div>
       </Section>

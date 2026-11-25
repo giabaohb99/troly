@@ -11,6 +11,7 @@ import vn.io.baohuynh.troly.plugin.NotifyPlugin;
 import vn.io.baohuynh.troly.plugin.SecurePlugin;
 import vn.io.baohuynh.troly.plugin.ShareInPlugin;
 import vn.io.baohuynh.troly.plugin.SystemPlugin;
+import vn.io.baohuynh.troly.plugin.UpdatePlugin;
 import vn.io.baohuynh.troly.plugin.VoicePlugin;
 
 public class MainActivity extends BridgeActivity {
@@ -25,6 +26,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FilesPlugin.class);
         registerPlugin(VoicePlugin.class);
         registerPlugin(ShareInPlugin.class);
+        registerPlugin(UpdatePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

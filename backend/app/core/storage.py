@@ -33,12 +33,13 @@ def presign_put(bucket: str, key: str, mime: str) -> str:
     )
 
 
-def presign_get(bucket: str, key: str, filename: str | None = None) -> str:
+def presign_get(bucket: str, key: str, filename: str | None = None, expires: int | None = None) -> str:
+    """Link GET ký sẵn; `expires` (giây) mặc định `R2_PRESIGN_SECONDS`."""
     params = {"Bucket": bucket, "Key": key}
     if filename:
         params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
     return _client().generate_presigned_url(
-        "get_object", Params=params, ExpiresIn=get_settings().r2_presign_seconds
+        "get_object", Params=params, ExpiresIn=expires or get_settings().r2_presign_seconds
     )
 
 

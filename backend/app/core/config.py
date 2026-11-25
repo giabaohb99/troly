@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     r2_endpoint: str = ""
     r2_bucket: str = "assistant"  # một bucket, chia tiền tố files/, backups/, releases/ (QĐ-31)
     r2_presign_seconds: int = 300
+    # Link tải APK sống lâu hơn (người dùng mở màn cập nhật rồi mới bấm; lỗi thật 25/11 với 300 giây).
+    r2_release_presign_seconds: int = 1800
 
     backup_weekday: int = 6
     backup_hour: int = 2
