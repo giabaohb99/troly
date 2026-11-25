@@ -78,6 +78,19 @@ def update_profile(
     return serialize_profile(profile)
 
 
+def apply_ai_changes(session: Session, user_id: int, changes: list[dict], reason: str) -> dict | None:
+    """Ghi các thay đổi do lượt rút trí nhớ đề xuất (QĐ-59), lưu bản cũ để người dùng quay lại; không đổi thì None."""
+    from app.modules.memory.tools import apply_changes
+
+    if not changes:
+        return None
+    profile = _get_or_create_profile(session, user_id, lock=True)
+    content = apply_changes(profile.content or "", changes)
+    if content is None or len(content) > PROFILE_MAX_CHARS:
+        return None
+    return update_profile(session, user_id, content, profile.version, changed_by="ai", reason=reason[:200])
+
+
 def _trim_revisions(session: Session, user_id: int) -> None:
     keep_from = session.scalar(
         select(ProfileMemoryRevision.version)

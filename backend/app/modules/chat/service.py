@@ -647,6 +647,7 @@ def iter_turn_events(prepared: PreparedTurn) -> Iterator[tuple[str, dict]]:
         return
     if answer_text is not None:
         maybe_auto_title(prepared, answer_text)
+        maybe_update_memory(prepared, answer_text)
 
 
 # ---------- Đặt tên phiên tự động (QĐ-51) ----------
@@ -686,6 +687,44 @@ def maybe_auto_title(prepared: PreparedTurn, answer: str) -> None:
 
     if AUTO_TITLE_BACKGROUND:
         threading.Thread(target=run, name=f"chat-title-{conversation_id}", daemon=True).start()
+    else:
+        run()
+
+
+# ---------- Trí nhớ sau mỗi câu trả lời (QĐ-59) ----------
+# Bài kiểm bật MEMORY_IN_TESTS; MEMORY_BACKGROUND = False để chạy đồng bộ cho dễ kiểm.
+MEMORY_IN_TESTS = False
+MEMORY_BACKGROUND = True
+
+
+def maybe_update_memory(prepared: PreparedTurn, answer: str) -> None:
+    """Sau câu trả lời: Haiku đọc câu vừa nói, rút điều bền lâu về người dùng vào hồ sơ lõi dùng chung. Chạy nền,
+    câu xã giao thì bỏ qua; lỗi chỉ ghi log."""
+    if os.environ.get("ENV") == "test" and not MEMORY_IN_TESTS:
+        return
+    from app.ai.memory_extract import is_trivial
+
+    if is_trivial(prepared.text):
+        return
+    user_id, question = prepared.user.user_id, prepared.text
+
+    def run() -> None:
+        try:
+            from app.ai.memory_extract import extract_changes
+
+            with SessionLocal() as session:
+                profile = memory_service.get_profile_markdown(session, user_id)
+            changes = extract_changes(user_id, profile, question, answer)
+            if not changes:
+                return
+            with SessionLocal() as session:
+                if memory_service.apply_ai_changes(session, user_id, changes, "Rút từ trò chuyện"):
+                    session.commit()
+        except Exception:
+            log.exception("Cập nhật trí nhớ lỗi")
+
+    if MEMORY_BACKGROUND:
+        threading.Thread(target=run, name=f"chat-memory-{prepared.conversation_id}", daemon=True).start()
     else:
         run()
 

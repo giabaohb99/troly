@@ -160,3 +160,24 @@ def test_referenced_sessions_give_summary_and_recent_messages(db, user):
     assert service.referenced_context(db, user.user_id, [999999], here.id) is None
     long = _conversation(db, user, "Dài", [("user", "x" * 4000), ("assistant", "y" * 4000)] * 5, at)
     assert len(service.referenced_context(db, user.user_id, [long.id], here.id)) <= service.REF_CONTEXT_CHARS + 300
+
+
+def test_memory_updated_after_answer_and_shared(auth_client, db, user, fake_claude, monkeypatch):
+    """Sau câu trả lời, lượt rút trí nhớ chạy nền ghi điều bền lâu vào hồ sơ lõi dùng chung; câu xã giao thì bỏ qua."""
+    import json
+
+    from app.modules.memory import service as memory_service
+
+    monkeypatch.setattr(service, "MEMORY_IN_TESTS", True)
+    monkeypatch.setattr(service, "MEMORY_BACKGROUND", False)
+    fact = {"op": "add", "section": "Mục tiêu", "fact": "Đang vay mua nhà lãi 9%"}
+    fake_claude.script += [
+        text_reply("Dạ em ghi nhận."),
+        {"content": [{"type": "text", "text": json.dumps({"changes": [fact]}, ensure_ascii=False)}]},
+        text_reply("Dạ."),
+    ]
+    assert send(auth_client, "anh đang vay mua nhà lãi 9% nha em").status_code == 200
+    profile = memory_service.get_profile(db, user.user_id)
+    assert "Đang vay mua nhà lãi 9%" in profile["content"] and profile["updated_by"] == "ai"
+    assert send(auth_client, "ok em").status_code == 200
+    assert len(fake_claude.requests) == 3  # câu xã giao: không gọi rút trí nhớ

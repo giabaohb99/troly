@@ -32,7 +32,7 @@ class AiRun(Base):
         Index("ix_tab_ai_run_created", "created_at"),
         CheckConstraint(
             "purpose IN ('chat','compaction','bank_extract','file_extract',"
-            "'trip_extract','trip_evaluate','eval','session_title')",
+            "'trip_extract','trip_evaluate','eval','session_title','memory_extract')",
             name="purpose",
         ),
         CheckConstraint("mode IN ('chat','think','research','summary')", name="mode"),

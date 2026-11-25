@@ -90,6 +90,22 @@ def remove_line(markdown: str, line: str) -> str:
     return _render(head, sections)
 
 
+def apply_changes(markdown: str, changes: list[dict]) -> str | None:
+    """Áp các thay đổi rút từ lượt chat (QĐ-59) vào hồ sơ: bỏ dòng khớp đúng một dòng, thêm dòng chưa có. Không đổi
+    gì thì None."""
+    content = markdown
+    for change in changes:
+        if change.get("op") == "remove":
+            lines = find_lines(content, change.get("match") or "")
+            if len(lines) == 1:
+                content = remove_line(content, lines[0])
+        elif change.get("op") == "add":
+            added = add_fact(content, change.get("section") or "Ghi nhớ khác", change.get("fact") or "")
+            if added is not None:
+                content = added
+    return None if content.strip() == markdown.strip() else content
+
+
 class RememberInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     section: Section = Field(description="Mục của hồ sơ lõi")
