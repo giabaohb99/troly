@@ -8,10 +8,11 @@ import { ApiError, getErrorMessage } from '@/core/api/api-error'
 import { createSession } from '@/modules/chat/api/chat-api'
 import { ActionList } from '@/modules/chat/components/action-list'
 import { Composer } from '@/modules/chat/components/composer'
+import type { SharedPayload } from '@/core/native/share-in'
 import { MessageBubble } from '@/modules/chat/components/message-bubble'
 import { RenameSessionDialog, SessionActionsDialog, useSessionMutations } from '@/modules/chat/components/session-actions'
 import { SessionsDrawer } from '@/modules/chat/components/sessions-drawer'
-import { sessionTitle } from '@/modules/chat/utils/sessions'
+import { sessionTitle, rememberOpenSession } from '@/modules/chat/utils/sessions'
 import { chatViewKey, useChatStatus, useChatTurn, useChatView } from '@/modules/chat/hooks/use-chat'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { ErrorState } from '@/shared/components/error-state'
@@ -78,17 +79,13 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
     navigate('/', { replace: true })
   }, [missing, navigate])
 
-  // Từ màn chia sẻ (QĐ-51 bước 2): gửi ngay chữ và tệp đã tải lên vào phiên vừa chọn, một lần.
+  // Chia sẻ từ app khác (QĐ-51 bước 2): vào thẳng ô nhập của phiên đang mở; nhận xong thì xóa khỏi lịch sử điều hướng.
   const location = useLocation()
-  const autoSentRef = useRef(false)
+  const incoming = (location.state as { shared?: SharedPayload } | null)?.shared ?? null
+  const clearIncoming = () => navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
   useEffect(() => {
-    const auto = (location.state as { autoSend?: { text: string; fileIds: number[] } } | null)?.autoSend
-    if (!auto || autoSentRef.current) return
-    autoSentRef.current = true
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
-    void send({ text: auto.text, mode: 'chat', fileIds: auto.fileIds })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy một lần khi mở từ màn chia sẻ
-  }, [])
+    if (session?.id) rememberOpenSession(session.id)
+  }, [session?.id])
   const [draft, setDraft] = useState(() => params.get('hoi') ?? '')
   const bottomRef = useRef<HTMLDivElement>(null)
   const openFile = useOpenFile()
@@ -240,7 +237,7 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi lượt chuyển sang xong
   }, [turn?.status])
 
-  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean; connectors?: boolean }) => {
+  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean; connectors?: number[] }) => {
     setDraft('')
     stopSpeaking()
     voiceTurnRef.current = !!input.voice
@@ -318,7 +315,7 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
         {today.isSuccess && messages.length === 0 && !turn && (
           <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-8 text-center">
             <AppMark className="size-14" />
-            <p className="text-sm text-muted-foreground">Nhắn một câu là em ghi, tra, nhắc. Bật Tìm web để hỏi tin mới, Nghĩ kỹ cho câu khó.</p>
+            <p className="text-sm text-muted-foreground">Nhắn một câu là em ghi, tra, nhắc. Gõ @ để gọi thêm Tìm sâu, Nghĩ kỹ hoặc hệ thống đã kết nối.</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((text) => (
                 <Button
@@ -397,7 +394,7 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
         </div>
       </div>
 
-      <Composer busy={busy} draft={draft} onDraftChange={setDraft} onSend={handleSend} />
+      <Composer busy={busy} draft={draft} onDraftChange={setDraft} onSend={handleSend} incoming={incoming} onIncomingDone={clearIncoming} />
     </div>
   )
 }

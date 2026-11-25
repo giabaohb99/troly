@@ -20,9 +20,15 @@ export function sessionTitle(s: ChatSession | null | undefined): string {
 
 const lastAt = (s: ChatSession) => Date.parse(s.last_message_at ?? s.started_at ?? s.created_at ?? s.local_date ?? '') || 0
 
-// Phiên nhận chia sẻ mặc định (QĐ-51 bước 2): phiên hoạt động gần nhất, không tính ghim; không có phiên thì null.
-export function defaultShareTarget(items: ChatSession[]): number | null {
-  return [...items].sort((a, b) => lastAt(b) - lastAt(a))[0]?.id ?? null
+// Phiên đang mở (hoặc mở gần nhất) trong lần chạy app này: chia sẻ từ app khác vào đúng khung chat đó (QĐ-51 bước 2).
+let openSessionId: number | null = null
+
+export function rememberOpenSession(id: number): void {
+  openSessionId = id
+}
+
+export function openSessionPath(): string {
+  return openSessionId ? `/?phien=${openSessionId}` : '/'
 }
 
 // Ghim trước, rồi theo lần nhắn cuối giảm dần (máy chủ đã xếp; app xếp lại cho chắc khi gộp nhiều trang).

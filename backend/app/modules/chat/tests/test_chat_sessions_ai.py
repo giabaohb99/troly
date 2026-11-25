@@ -120,3 +120,28 @@ def test_search_chat_history_returns_snippets_and_open_button(db, user):
     assert out.actions[0]["screen"] == "chat" and out.actions[0]["params"] == {"conversation_id": old.id}
     none = spec.run(ctx, spec.input_model.model_validate({"query": "vé máy bay Đà Lạt"}))
     assert none.result["items"] == [] and "không đoán" in none.result["ghi_chu"]
+
+
+def test_connectors_stick_to_session_for_two_hours(db, user):
+    """Lượt trước trong phiên đã gắn kết nối thì lượt sau giữ (như Claude giữ connector trong cuộc trò chuyện)."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from app.ai.models import AiRun
+
+    at = datetime(2026, 11, 25, 7, tzinfo=UTC)
+    work = _conversation(db, user, "Việc DEGO", [("user", "việc tuần này"), ("assistant", "Có 3 việc.")], at)
+    other = _conversation(db, user, "Chi tiêu", [("user", "cơm 45k"), ("assistant", "Đã ghi.")], at)
+
+    def run(conv, servers, when):
+        db.add(AiRun(user_id=user.user_id, purpose="chat", model="claude-haiku-5-5", conversation_id=conv.id,
+                     cost_usd=Decimal("0"), mcp_servers_used=servers, created_at=when))  # fmt: skip
+        db.flush()
+
+    run(work, ["c7"], at)
+    run(other, None, at)
+    assert service.sticky_connector_ids(db, user.user_id, work.id, at + timedelta(minutes=30)) == [7]
+    assert service.sticky_connector_ids(db, user.user_id, other.id, at) == []
+    assert service.sticky_connector_ids(db, user.user_id, work.id, at + timedelta(hours=3)) == []
+    run(work, None, at + timedelta(minutes=40))  # lượt sau không dùng nữa (người dùng tắt): thôi giữ
+    assert service.sticky_connector_ids(db, user.user_id, work.id, at + timedelta(minutes=50)) == []

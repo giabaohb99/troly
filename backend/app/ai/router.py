@@ -43,7 +43,7 @@ def _name_words(name: str) -> set[str]:
 def pick_connectors(
     text: str, connectors: list[tuple[int, str]], use_connectors: bool | list[int] | None
 ) -> tuple[tuple[int, str], ...]:
-    """Kết nối gắn vào lượt (QĐ-56): nút Kết nối bật (True là tất cả, danh sách là các id đó); không bật thì
+    """Kết nối gắn vào lượt (QĐ-56): gọi bằng @ hoặc giữ theo phiên (danh sách id; True là tất cả); không có thì
     kết nối có tên nhắc trong câu (*ERP*, *DEGO*), hoặc tất cả khi câu hỏi việc ở công ty."""
     if not connectors:
         return ()
@@ -164,7 +164,7 @@ def choose_turn(
 ) -> TurnPlan:
     """Điểm vào cho chat.service. `previous_task` là việc của lượt ngay trước (prompt.turn_task_of).
     `connectors`: (id, tên) kết nối MCP đang hoạt động (`ai.mcp.active_connectors`, rỗng khi cờ
-    FEATURE_CONNECTORS tắt); `use_connectors`: nút Kết nối trên app (QĐ-56), xem `pick_connectors`.
+    FEATURE_CONNECTORS tắt); `use_connectors`: kết nối gọi bằng @ trên app hoặc giữ theo phiên (QĐ-56), xem `pick_connectors`.
     `has_attachments` để dành cho luật tóm tắt tệp dài (hiện chưa đổi model)."""
     picked = pick_connectors(text, list(connectors or []), use_connectors)
     return plan_turn(TurnInput(text, mode), settings or get_ai_settings(), previous_task, picked)

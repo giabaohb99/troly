@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatSession } from '@/modules/chat/types/chat'
-import { defaultShareTarget, matchSession, sessionTitle, sortSessions } from '@/modules/chat/utils/sessions'
+import { matchSession, openSessionPath, rememberOpenSession, sessionTitle, sortSessions } from '@/modules/chat/utils/sessions'
 
 const s = (id: number, extra: Partial<ChatSession> = {}): ChatSession => ({ id, title: null, pinned: false, last_message_at: null, last_preview: null, created_at: null, ...extra })
 
@@ -31,9 +31,8 @@ describe('phiên chat (QĐ-51)', () => {
     expect(matchSession(session, '  ')).toBe(true)
   })
 
-  it('chia sẻ mặc định vào phiên hoạt động gần nhất, không ưu tiên phiên ghim', () => {
-    const items = [s(1, { pinned: true, last_message_at: '2026-11-19T08:00:00Z' }), s(2, { last_message_at: '2026-11-25T08:00:00Z' }), s(3, { last_message_at: '2026-11-24T08:00:00Z' })]
-    expect(defaultShareTarget(items)).toBe(2)
-    expect(defaultShareTarget([])).toBeNull()
+  it('chia sẻ từ app khác vào phiên đang mở', () => {
+    rememberOpenSession(7)
+    expect(openSessionPath()).toBe('/?phien=7')
   })
 })

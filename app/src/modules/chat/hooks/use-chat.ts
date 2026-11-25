@@ -29,8 +29,8 @@ export interface SendInput {
   text: string
   mode: ChatMode
   fileIds: number[]
-  // Lượt này dùng công cụ của các kết nối đã nối (QĐ-56).
-  connectors?: boolean
+  // Kết nối gọi bằng @ cho lượt này (QĐ-56); không có thì máy chủ tự chọn.
+  connectors?: number[]
 }
 
 // Một lượt chat qua SSE: hiện chữ chạy dần, nhãn công cụ, hành động; xong thì ghép vào phiên đang mở.
@@ -70,7 +70,7 @@ export function useChatTurn(viewKey: readonly unknown[] = queryKeys.chat.today, 
             attachment_file_ids: input.fileIds,
             mode: input.mode,
             ...(conversationRef.current ? { conversation_id: conversationRef.current } : {}),
-            ...(input.connectors ? { use_connectors: true } : {}),
+            ...(input.connectors?.length ? { use_connectors: input.connectors } : {}),
           },
           (event) => {
             if (event.event === 'tool.started') usedTool = true

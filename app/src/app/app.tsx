@@ -7,6 +7,7 @@ import { AppLayout } from '@/app/app-layout'
 import { ErrorBoundary } from '@/app/error-boundary'
 import { lazyPage } from '@/app/lazy-page'
 import { ShareIn } from '@/core/native/share-in'
+import { openSessionPath } from '@/modules/chat/utils/sessions'
 import { FeatureGate } from '@/shared/components/feature-gate'
 import { useAndroidBack } from '@/app/use-android-back'
 import { RequireAuth } from '@/modules/auth/components/require-auth'
@@ -25,7 +26,6 @@ const ZaloChatPage = lazyPage(() => import('@/modules/inbox/pages/zalo-chat-page
 const ZaloNewPage = lazyPage(() => import('@/modules/inbox/pages/zalo-new-page').then((m) => m.ZaloNewPage))
 const ConnectorsPage = lazyPage(() => import('@/modules/setting/pages/connectors-page').then((m) => m.ConnectorsPage))
 const ConnectorPage = lazyPage(() => import('@/modules/setting/pages/connector-page').then((m) => m.ConnectorPage))
-const SharePage = lazyPage(() => import('@/modules/chat/pages/share-page').then((m) => m.SharePage))
 const MarkdownPage = lazyPage(() => import('@/modules/file/pages/markdown-page').then((m) => m.MarkdownPage))
 const EmailThreadPage = lazyPage(() => import('@/modules/inbox/pages/email-thread-page').then((m) => m.EmailThreadPage))
 const EmailComposePage = lazyPage(() => import('@/modules/inbox/pages/email-compose-page').then((m) => m.EmailComposePage))
@@ -67,9 +67,9 @@ const queryClient: QueryClient = new QueryClient({
 function DeepLinks() {
   const navigate = useNavigate()
   useAndroidBack()
-  // Chia sẻ từ app khác vào Trợ lý (QĐ-51 bước 2): mở màn chọn phiên với chữ và tệp đã nhận.
+  // Chia sẻ từ app khác vào Trợ lý (QĐ-51 bước 2): vào ô nhập của khung chat đang mở (hoặc mở gần nhất).
   useEffect(() => {
-    const handle = ShareIn.addListener('shared', (payload) => navigate('/chia-se', { state: payload }))
+    const handle = ShareIn.addListener('shared', (payload) => navigate(openSessionPath(), { state: { shared: payload } }))
     return () => {
       void handle.then((h) => h.remove())
     }
@@ -102,7 +102,6 @@ export function App() {
                 <Route path="cai-dat" element={<SettingsPage />} />
                 <Route path="hop-tin" element={<InboxPage />} />
                 <Route path="xem-tep/:fileId" element={<MarkdownPage />} />
-                <Route path="chia-se" element={<SharePage />} />
                 <Route path="hop-tin/email/soan" element={<EmailComposePage />} />
                 <Route path="hop-tin/email/:threadId" element={<EmailThreadPage />} />
                 <Route path="hop-tin/:conversationKey" element={<ConversationPage />} />

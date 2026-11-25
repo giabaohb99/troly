@@ -12,7 +12,7 @@ import { cn } from '@/shared/utils/cn'
 const PURPOSE_LABEL: Record<string, string> = {
   chat: 'Trò chuyện',
   summary: 'Tóm tắt',
-  research: 'Tìm web',
+  research: 'Tìm sâu',
   bank_extract: 'Đọc thông báo ngân hàng',
   trip_extract: 'Đọc lịch trình',
   trip_evaluate: 'Đánh giá chuyến',

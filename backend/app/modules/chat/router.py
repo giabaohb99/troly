@@ -22,7 +22,7 @@ class SendMessageIn(BaseModel):
     mode: Literal["chat", "think", "research", "summary"] | None = None
     # QĐ-51: phiên nhận tin; bỏ trống thì phiên hoạt động gần nhất (chưa có thì tạo).
     conversation_id: int | None = Field(default=None, ge=1)
-    # QĐ-56: nút Kết nối; true là mọi kết nối đang hoạt động, danh sách là các connector_id đó (chỉ đọc).
+    # QĐ-56: kết nối gọi bằng @; true là mọi kết nối đang hoạt động, danh sách là các connector_id đó (chỉ đọc).
     use_connectors: bool | list[int] | None = None
 
 

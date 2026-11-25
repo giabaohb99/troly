@@ -382,6 +382,25 @@ def prepare_turn(
         raise
 
 
+STICKY_CONNECTOR_HOURS = 2
+
+
+def sticky_connector_ids(session: Session, user_id: int, conversation_id: int, now: datetime) -> list[int]:
+    """Kết nối giữ theo phiên: lượt chat gần nhất của phiên (trong 2 giờ) đã gắn máy chủ MCP nào thì lượt này gắn
+    lại, để câu hỏi nối tiếp (*còn việc nào trễ không*) không cần nhắc lại tên hệ thống."""
+    from app.ai.models import AiRun
+
+    row = session.execute(
+        select(AiRun.mcp_servers_used, AiRun.created_at)
+        .where(AiRun.user_id == user_id, AiRun.conversation_id == conversation_id, AiRun.purpose == "chat")
+        .order_by(AiRun.id.desc())
+        .limit(1)
+    ).first()
+    if row is None or not row.mcp_servers_used or row.created_at < now - timedelta(hours=STICKY_CONNECTOR_HOURS):
+        return []
+    return [int(name[1:]) for name in row.mcp_servers_used if name[:1] == "c" and name[1:].isdigit()]
+
+
 def _previous_task(session: Session, user: UserContext, conversation_id: int) -> str | None:
     """Việc của lượt trước, chỉ khi bot kết lượt đó bằng câu hỏi (đang chờ người dùng đáp: ngày đi, *tìm nhé?*)."""
     from app.ai.prompt import turn_task_of
@@ -442,6 +461,8 @@ def _prepare_new_turn(
     from app.ai.router import choose_turn
 
     conversation = _target_conversation(session, user, conversation_id, now)
+    if not use_connectors:
+        use_connectors = sticky_connector_ids(session, user.user_id, conversation.id, now) or None
     plan = choose_turn(
         text,
         mode,
