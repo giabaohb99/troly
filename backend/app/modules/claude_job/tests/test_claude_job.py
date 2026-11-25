@@ -120,3 +120,39 @@ def test_failure_and_cancel(client, db, user, runner_token):
 )
 def test_split_question(raw, want):
     assert service.split_question(raw) == want
+
+
+def test_files_attached_to_report_and_profile_sent(client, db, user, runner_token, monkeypatch):
+    import base64
+
+    from app.core import storage
+    from app.core.middleware import CLAUDE_FILE_MAX_BODY, MAX_BODY, body_limit
+    from app.modules.memory import service as memory_service
+
+    saved = {}
+    monkeypatch.setattr(storage, "put_bytes", lambda bucket, key, data, mime: saved.update({key: data}))
+    monkeypatch.setattr(storage, "presign_get", lambda *a, **k: "https://r2.example/tep")
+    memory_service.update_profile(db, user.user_id, "## Công việc\n- Làm ở DEGO\n", None)
+    conv = _conversation(db, user, ("user", "nhờ Claude viết báo cáo ERP tháng 11 xuất Word"))
+    job = service.create_job(db, user.user_id, conv.id, None)
+    db.commit()
+    claimed = client.post("/api/v1/internal/claude/jobs/claim", headers=runner_token).json()["data"]["job"]
+    assert "Làm ở DEGO" in claimed["system_append"] and "TROLY_OUTBOX" in claimed["system_append"]
+    data = base64.b64encode(b"PK\x03\x04 bao cao").decode()
+    up = client.post(
+        f"/api/v1/internal/claude/jobs/{job['id']}/files",
+        headers=runner_token,
+        json={"name": "Báo cáo ERP tháng 11.docx", "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "data_b64": data},
+    )  # fmt: skip
+    assert up.status_code == 200, up.text and saved
+    client.post(
+        f"/api/v1/internal/claude/jobs/{job['id']}/finish",
+        headers=runner_token,
+        json={"ok": True, "result": "Đã viết báo cáo, tệp ở dưới."},
+    )
+    report = db.query(Message).filter_by(conversation_id=conv.id, role="assistant").order_by(Message.id.desc()).first()
+    [card] = report.actions
+    assert card["type"] == "file" and card["name"] == "Báo cáo ERP tháng 11.docx" and card["size_bytes"] == 12
+    assert body_limit("/api/v1/internal/claude/jobs/3/files") == CLAUDE_FILE_MAX_BODY
+    assert body_limit("/api/v1/chat/messages") == MAX_BODY

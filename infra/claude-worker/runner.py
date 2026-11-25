@@ -9,9 +9,12 @@ CLAUDE_WORKER_TOKEN (khóa nội bộ, trùng với .env của troly), CLAUDE_CO
 `claude setup-token`), CLAUDE_MAX_TURNS (mặc định 150), CLAUDE_TIMEOUT_SECONDS (mặc định 7200).
 """
 
+import base64
 import json
 import logging
+import mimetypes
 import os
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -23,6 +26,9 @@ MAX_TURNS = os.environ.get("CLAUDE_MAX_TURNS", "150")
 TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT_SECONDS", "7200"))
 WORKDIR = os.path.expanduser(os.environ.get("CLAUDE_WORKDIR", "~/work"))
 IDLE_SECONDS = 10
+OUTBOX_ROOT = os.path.join(WORKDIR, "outbox")
+MAX_FILES = 10
+MAX_FILE_BYTES = 25 * 1024 * 1024
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("claude-worker")
@@ -39,6 +45,33 @@ def call(path: str, body: dict | None = None) -> dict:
         return json.loads(resp.read())["data"]
 
 
+def outbox_of(job_id: int) -> str:
+    path = os.path.join(OUTBOX_ROOT, str(job_id))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def upload_outbox(job_id: int, path: str) -> None:
+    """Tải tệp thành phẩm trong hộp ra lên app (thẻ tệp trong tin báo), rồi dọn hộp ra."""
+    files = sorted(
+        (os.path.join(root, name) for root, _, names in os.walk(path) for name in names),
+        key=os.path.getmtime,
+    )[:MAX_FILES]
+    for f in files:
+        size = os.path.getsize(f)
+        if not size or size > MAX_FILE_BYTES:
+            log.warning("Bỏ tệp %s (%d byte)", os.path.basename(f), size)
+            continue
+        with open(f, "rb") as fh:
+            data = base64.b64encode(fh.read()).decode()
+        mime = mimetypes.guess_type(f)[0] or "application/octet-stream"
+        try:
+            call(f"/internal/claude/jobs/{job_id}/files", {"name": os.path.basename(f), "mime": mime, "data_b64": data})
+        except (urllib.error.URLError, OSError) as exc:
+            log.warning("Tải tệp %s lỗi: %s", os.path.basename(f), exc)
+    shutil.rmtree(path, ignore_errors=True)
+
+
 def run_claude(job: dict) -> dict:
     cmd = [
         "claude", "-p", job["prompt"],
@@ -49,8 +82,9 @@ def run_claude(job: dict) -> dict:
     ]  # fmt: skip
     if job.get("resume_session_id"):
         cmd += ["--resume", job["resume_session_id"]]
+    env = {**os.environ, "TROLY_OUTBOX": outbox_of(job["id"])}
     try:
-        proc = subprocess.run(cmd, cwd=WORKDIR, capture_output=True, text=True, timeout=TIMEOUT)
+        proc = subprocess.run(cmd, cwd=WORKDIR, env=env, capture_output=True, text=True, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"Quá {TIMEOUT // 60} phút chưa xong, đã dừng."}
     except FileNotFoundError:
@@ -97,6 +131,7 @@ def main() -> None:
         started = time.monotonic()
         result = run_claude(job)
         log.info("Xong việc #%s sau %ds, ok=%s", job["id"], time.monotonic() - started, result.get("ok"))
+        upload_outbox(job["id"], outbox_of(job["id"]))
         for attempt in range(5):
             try:
                 call(f"/internal/claude/jobs/{job['id']}/finish", result)

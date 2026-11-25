@@ -15,6 +15,16 @@ log = logging.getLogger("troly.access")
 
 MAX_BODY = 1024 * 1024
 DEVICE_EVENTS_MAX_BODY = 256 * 1024
+# Tệp kết quả của Claude trên VPS (QĐ-60): 25 MB sau base64, chỉ trình chạy nội bộ gọi.
+CLAUDE_FILE_MAX_BODY = 36 * 1024 * 1024
+
+
+def body_limit(path: str) -> int:
+    if path.endswith("/device/events"):
+        return DEVICE_EVENTS_MAX_BODY
+    if path.startswith("/api/v1/internal/claude/jobs/") and path.endswith("/files"):
+        return CLAUDE_FILE_MAX_BODY
+    return MAX_BODY
 
 
 def client_ip(request: Request) -> str:
@@ -31,7 +41,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         status = 500
         try:
             length = int(request.headers.get("content-length") or 0)
-            limit = DEVICE_EVENTS_MAX_BODY if request.url.path.endswith("/device/events") else MAX_BODY
+            limit = body_limit(request.url.path)
             if length > limit:
                 response: Response = JSONResponse(
                     status_code=413, content=error_body("PAYLOAD_TOO_LARGE", "Dữ liệu gửi lên quá lớn.")

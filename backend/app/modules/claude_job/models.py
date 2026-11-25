@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UserOwnedMixin
@@ -34,5 +35,7 @@ class ClaudeJob(UserOwnedMixin, Base):
     runs: Mapped[int] = mapped_column(Integer, server_default="0")
     turns: Mapped[int] = mapped_column(Integer, server_default="0")
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 4), server_default="0")
+    # Tệp thành phẩm trình chạy tải lên (thẻ tệp trong tin báo): [{file_id, name, mime, size_bytes}].
+    files: Mapped[list] = mapped_column(JSONB, server_default="[]")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

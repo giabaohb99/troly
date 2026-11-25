@@ -48,6 +48,23 @@ def finish_job(
     return ok({"job": data})
 
 
+class FileIn(BaseModel):
+    name: str = Field(max_length=300)
+    mime: str | None = Field(default=None, max_length=100)
+    data_b64: str
+
+
+@router.post("/internal/claude/jobs/{job_id}/files")
+def add_file(
+    job_id: int,
+    body: FileIn,
+    authorization: str | None = Header(default=None),
+    session: Session = Depends(get_session),
+) -> dict:
+    service.check_runner_token(authorization)
+    return ok({"file": service.add_file(session, job_id, body.name, body.mime or "", body.data_b64)})
+
+
 @router.get("/claude/jobs")
 def list_jobs(user: UserContext = Depends(get_current_user), session: Session = Depends(get_session)) -> dict:
     return ok({"items": service.list_jobs(session, user.user_id, 20)})

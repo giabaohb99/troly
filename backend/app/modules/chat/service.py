@@ -1067,7 +1067,9 @@ def latest_user_text(session: Session, user_id: int, conversation_id: int) -> st
     )
 
 
-def post_report(session: Session, user_id: int, conversation_id: int, note: str, text: str) -> int:
+def post_report(
+    session: Session, user_id: int, conversation_id: int, note: str, text: str, actions: list[dict] | None = None
+) -> int:
     """Báo cáo từ việc chạy nền (Claude trên VPS, QĐ-60) vào phiên: một tin user ẩn ghi nguồn (giữ luân phiên
     user/assistant cho lịch sử) rồi tin trả lời hiện, bật notify_done để máy báo thông báo. Trả id tin trả lời."""
     now = clock.now()
@@ -1080,7 +1082,8 @@ def post_report(session: Session, user_id: int, conversation_id: int, note: str,
     answer = repo.add_message(
         session,
         Message(user_id=user_id, conversation_id=conversation_id, turn_id=turn_id, role="assistant",
-                content=[{"type": "text", "text": text}], text=text, model="Claude Code trên VPS", notify_done=True),
+                content=[{"type": "text", "text": text}], text=text, model="Claude Code trên VPS", notify_done=True,
+                actions=actions or None),
     )  # fmt: skip
     repo.touch_conversation(session, user_id, conversation_id, now, visible=True)
     return answer.id
