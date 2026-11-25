@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Brain, FileText, Globe, Loader2, Mic, Paperclip, Plug, Send, Square, X } from 'lucide-react'
+import { FileText, Loader2, MessageSquare, Mic, Paperclip, Send, Square, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { sharedFileToFile, type SharedPayload } from '@/core/native/share-in'
 import { findMention, mentionOptions, removeMention, type MentionOption, type MentionQuery } from '@/modules/chat/utils/mentions'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
 import { ACCEPTED_FILES, uploadFile, type UploadedFile } from '@/modules/chat/api/upload-api'
+import { listSessions } from '@/modules/chat/api/chat-api'
 import type { ChatMode } from '@/modules/chat/types/chat'
+import { sessionTitle } from '@/modules/chat/utils/sessions'
+import { queryKeys } from '@/shared/constants/query-keys'
 import { Voice } from '@/core/native/voice'
 import { useSpeechRecognition } from '@/shared/voice/use-speech-recognition'
-import { useConnectors } from '@/shared/api/connectors-api'
-import { useFeatures } from '@/shared/hooks/use-features'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/utils/cn'
 import { fileKindLabel, formatFileSize, isImageFile, truncateMiddle } from '@/shared/utils/open-file'
@@ -22,8 +24,10 @@ interface ComposerProps {
   draft: string
   onDraftChange: (text: string) => void
   // voice: tin nói bằng micro (màn chat đọc to câu trả lời nếu bật).
-  // connectors: id các kết nối gọi bằng @ cho lượt này.
-  onSend: (input: { text: string; mode: ChatMode; fileIds: number[]; voice?: boolean; connectors?: number[] }) => void
+  // refs: id các đoạn chat khác gọi vào bằng @ cho lượt này (QĐ-58).
+  onSend: (input: { text: string; mode: ChatMode; fileIds: number[]; voice?: boolean; refs?: number[] }) => void
+  // Đoạn chat đang mở: không hiện trong danh sách @.
+  sessionId?: number | null
   // Chia sẻ từ app khác (QĐ-51 bước 2): tệp vào hàng đính kèm, chữ nối vào ô nhập; nhận xong gọi onIncomingDone.
   incoming?: SharedPayload | null
   onIncomingDone?: () => void
@@ -39,16 +43,17 @@ interface PendingFile {
   uploaded: UploadedFile | null
 }
 
-// Ô nhập chat (31 mục 3.5): đính tệp, micro, gõ @ để gọi thêm kết nối, Tìm sâu, Nghĩ kỹ. Không gọi gì thì trợ lý
-// tự quyết (tìm web nhanh, tự gắn kết nối khi câu nói về việc công ty). Thẻ @ tự bỏ sau khi gửi.
-export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncomingDone }: ComposerProps) {
-  const [mode, setMode] = useState<ChatMode>('chat')
-  const [picked, setPicked] = useState<{ id: number; name: string }[]>([])
+// Ô nhập chat (31 mục 3.5): đính tệp, micro, gõ @ để gọi một đoạn chat khác vào (QĐ-58). Trợ lý tự quyết phần còn
+// lại: tìm web, tự gắn kết nối khi câu nói về việc công ty. Thẻ @ tự bỏ sau khi gửi.
+export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncomingDone, sessionId = null }: ComposerProps) {
+  const [picked, setPicked] = useState<MentionOption[]>([])
   const [mention, setMention] = useState<MentionQuery | null>(null)
-  const features = useFeatures()
-  const connectorList = useConnectors(features.connectors)
-  const connected = features.connectors ? (connectorList.data ?? []).filter((c) => c.status === 'connected') : []
-  const options = mention ? mentionOptions(connected, mention.query) : []
+  // Chỉ tải danh sách đoạn chat khi đang gõ @.
+  const sessions = useQuery({ queryKey: [...queryKeys.chat.sessionsAll, 'goi'], queryFn: () => listSessions('', null), enabled: !!mention, staleTime: 30_000 })
+  const choices: MentionOption[] = (sessions.data?.items ?? [])
+    .filter((x) => x.id !== sessionId && !picked.some((p) => p.id === x.id))
+    .map((x) => ({ id: x.id, label: sessionTitle(x), hint: x.last_preview ?? '' }))
+  const options = mention ? mentionOptions(choices, mention.query) : []
   const [files, setFiles] = useState<PendingFile[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -59,13 +64,12 @@ export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncom
     (text: string, voice = false) => {
       const content = text.trim()
       if ((!content && files.length === 0) || busy || uploading || content.length > MAX_MESSAGE_CHARS) return
-      onSend({ text: content, mode, fileIds: files.flatMap((f) => (f.uploaded ? [f.uploaded.id] : [])), voice, connectors: picked.length ? picked.map((c) => c.id) : undefined })
-      setMode('chat')
+      onSend({ text: content, mode: 'chat', fileIds: files.flatMap((f) => (f.uploaded ? [f.uploaded.id] : [])), voice, refs: picked.length ? picked.map((c) => c.id) : undefined })
       setPicked([])
       setMention(null)
       setFiles([])
     },
-    [busy, files, mode, onSend, uploading, picked],
+    [busy, files, onSend, uploading, picked],
   )
 
   const handleSpeechError = useCallback((message: string) => toast.error(message), [])
@@ -133,8 +137,7 @@ export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncom
       })
     }
     setMention(null)
-    if (option.kind === 'mode') setMode(option.mode)
-    else setPicked((prev) => (prev.some((c) => c.id === option.id) ? prev : [...prev, { id: option.id, name: option.label }]))
+    setPicked((prev) => (prev.length >= 3 || prev.some((c) => c.id === option.id) ? prev : [...prev, option]))
   }
 
   const handleSubmit = (event: FormEvent) => {
@@ -195,22 +198,13 @@ export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncom
             ))}
           </div>
         )}
-        {(mode === 'think' || mode === 'research' || picked.length > 0 || draft.length > MAX_MESSAGE_CHARS - 200) && (
+        {(picked.length > 0 || draft.length > MAX_MESSAGE_CHARS - 200) && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {(mode === 'think' || mode === 'research') && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/15 py-1 pr-1.5 pl-2.5 text-xs text-primary">
-                {mode === 'think' ? <Brain className="size-3.5" /> : <Globe className="size-3.5" />}
-                {mode === 'think' ? 'Nghĩ kỹ' : 'Tìm sâu'}
-                <button type="button" aria-label={`Bỏ ${mode === 'think' ? 'Nghĩ kỹ' : 'Tìm sâu'}`} onClick={() => setMode('chat')} className="rounded-full p-0.5">
-                  <X className="size-3" />
-                </button>
-              </span>
-            )}
             {picked.map((c) => (
-              <span key={c.id} className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/15 py-1 pr-1.5 pl-2.5 text-xs text-primary">
-                <Plug className="size-3.5" />
-                {c.name}
-                <button type="button" aria-label={`Bỏ ${c.name}`} onClick={() => setPicked((prev) => prev.filter((p) => p.id !== c.id))} className="rounded-full p-0.5">
+              <span key={c.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary bg-primary/15 py-1 pr-1.5 pl-2.5 text-xs text-primary">
+                <MessageSquare className="size-3.5 shrink-0" />
+                <span className="truncate">{c.label}</span>
+                <button type="button" aria-label={`Bỏ ${c.label}`} onClick={() => setPicked((prev) => prev.filter((p) => p.id !== c.id))} className="rounded-full p-0.5">
                   <X className="size-3" />
                 </button>
               </span>
@@ -223,9 +217,9 @@ export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncom
           </div>
         )}
         {options.length > 0 && (
-          <ul role="listbox" aria-label="Gọi thêm" className="flex flex-col overflow-hidden rounded-2xl border bg-card shadow-md">
+          <ul role="listbox" aria-label="Gọi đoạn chat" className="flex flex-col overflow-hidden rounded-2xl border bg-card shadow-md">
             {options.map((o) => (
-              <li key={o.kind === 'connector' ? `c${o.id}` : o.mode}>
+              <li key={o.id}>
                 <button
                   type="button"
                   role="option"
@@ -235,10 +229,10 @@ export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncom
                   onClick={() => choose(o)}
                   className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left active:bg-muted"
                 >
-                  {o.kind === 'connector' ? <Plug className="size-4 shrink-0 text-primary" /> : o.mode === 'think' ? <Brain className="size-4 shrink-0 text-primary" /> : <Globe className="size-4 shrink-0 text-primary" />}
+                  <MessageSquare className="size-4 shrink-0 text-primary" />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium">{o.label}</span>
-                    <span className="block text-xs text-muted-foreground">{o.hint}</span>
+                    <span className="block truncate text-sm font-medium">{o.label}</span>
+                    {o.hint && <span className="block truncate text-xs text-muted-foreground">{o.hint}</span>}
                   </span>
                 </button>
               </li>
@@ -256,7 +250,7 @@ export function Composer({ busy, draft, onDraftChange, onSend, incoming, onIncom
             value={speech.listening ? speech.interim : draft}
             onChange={(e) => changeDraft(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={handleKeyDown}
-            placeholder={speech.listening ? 'Đang nghe...' : 'Nhắn cho trợ lý, gõ @ để gọi thêm'}
+            placeholder={speech.listening ? 'Đang nghe...' : 'Nhắn cho trợ lý, gõ @ gọi đoạn chat khác'}
             disabled={speech.listening}
             aria-label="Tin nhắn"
             className="min-h-11 min-w-0 flex-1 resize-none rounded-3xl bg-secondary px-4 py-2.5 text-base outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"

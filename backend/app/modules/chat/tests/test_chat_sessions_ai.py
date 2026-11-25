@@ -145,3 +145,18 @@ def test_connectors_stick_to_session_for_two_hours(db, user):
     assert service.sticky_connector_ids(db, user.user_id, work.id, at + timedelta(hours=3)) == []
     run(work, None, at + timedelta(minutes=40))  # lượt sau không dùng nữa (người dùng tắt): thôi giữ
     assert service.sticky_connector_ids(db, user.user_id, work.id, at + timedelta(minutes=50)) == []
+
+
+def test_referenced_sessions_give_summary_and_recent_messages(db, user):
+    """Gõ @ một đoạn chat khác (QĐ-58): lượt này đọc thêm tóm tắt và tin gần đây của đoạn đó."""
+    at = datetime(2026, 11, 25, 7, tzinfo=UTC)
+    work = _conversation(db, user, "Công việc DEGO", [("user", "việc tuần này"), ("assistant", "Có 3 việc: duyệt PO 12.")], at)
+    work.summary = "Đang theo dõi PO 12 và hợp đồng thép."
+    here = _conversation(db, user, "Chi tiêu", [("user", "cơm 45k"), ("assistant", "Đã ghi.")], at)
+    db.flush()
+    text = service.referenced_context(db, user.user_id, [work.id, here.id, 999999], here.id)
+    assert "Công việc DEGO" in text and "PO 12 và hợp đồng thép" in text and "duyệt PO 12" in text
+    assert "cơm 45k" not in text  # không tự gọi chính đoạn đang mở
+    assert service.referenced_context(db, user.user_id, [999999], here.id) is None
+    long = _conversation(db, user, "Dài", [("user", "x" * 4000), ("assistant", "y" * 4000)] * 5, at)
+    assert len(service.referenced_context(db, user.user_id, [long.id], here.id)) <= service.REF_CONTEXT_CHARS + 300

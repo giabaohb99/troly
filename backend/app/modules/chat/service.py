@@ -334,6 +334,7 @@ def prepare_turn(
     attachment_file_ids: list[int],
     conversation_id: int | None = None,
     use_connectors: bool | list[int] | None = None,
+    ref_conversation_ids: list[int] | None = None,
 ) -> PreparedTurn:
     limiter.hit(f"chat:{user.user_id}", get_settings().rate_chat_per_min, 60)
     limiter.hit(f"chat-hour:{user.user_id}", get_settings().ai_user_hourly_turns, 3600)
@@ -376,6 +377,7 @@ def prepare_turn(
             now,
             conversation_id,
             use_connectors,
+            ref_conversation_ids,
         )
     except BaseException:
         _release(user.user_id)
@@ -383,6 +385,37 @@ def prepare_turn(
 
 
 STICKY_CONNECTOR_HOURS = 2
+REF_CONTEXT_CHARS = 3000  # mỗi đoạn chat gọi bằng @
+REF_RECENT_MESSAGES = 12
+
+
+def referenced_context(
+    session: Session, user_id: int, conversation_ids: list[int], current_id: int | None
+) -> str | None:
+    """Ngữ cảnh các đoạn chat gọi bằng @ (QĐ-58): tóm tắt và vài tin gần nhất của mỗi đoạn, cắt gọn. Bỏ đoạn đang
+    mở và đoạn không thuộc người dùng. Ghép vào tin của người dùng nên các lượt sau trong phiên vẫn thấy."""
+    parts = []
+    for cid in dict.fromkeys(conversation_ids or []):
+        if cid == current_id:
+            continue
+        conv = repo.get_conversation(session, user_id, cid)
+        if conv is None:
+            continue
+        lines = []
+        for m in reversed(repo.list_visible(session, user_id, cid, None, REF_RECENT_MESSAGES)):
+            if m.role in ("user", "assistant") and (m.text or "").strip():
+                who = "Người dùng" if m.role == "user" else "Trợ lý"
+                lines.append(f"{who}: {m.text.strip()[:600]}")
+        recent = "\n".join(lines)
+        summary = (conv.summary or "").strip()
+        body = (f"Tóm tắt: {summary}\n" if summary else "") + (f"Tin gần đây:\n{recent}" if recent else "")
+        if len(body) > REF_CONTEXT_CHARS:
+            body = body[: REF_CONTEXT_CHARS // 3] + "\n...\n" + body[-(REF_CONTEXT_CHARS * 2 // 3) :]
+        title = conv.title or f"Phiên {conv.local_date:%d/%m}"
+        parts.append(f"[Đoạn chat {title} (người dùng gọi vào bằng @)]\n{body or '(chưa có tin)'}")
+    if not parts:
+        return None
+    return "Ngữ cảnh từ đoạn chat khác, chỉ để tham khảo cho câu dưới:\n\n" + "\n\n".join(parts)
 
 
 def sticky_connector_ids(session: Session, user_id: int, conversation_id: int, now: datetime) -> list[int]:
@@ -455,6 +488,7 @@ def _prepare_new_turn(
     now: datetime,
     conversation_id: int | None = None,
     use_connectors: bool | list[int] | None = None,
+    ref_conversation_ids: list[int] | None = None,
 ) -> PreparedTurn:
     from app.ai.mcp import active_connectors
     from app.ai.prompt import build_turn_system_message
@@ -484,6 +518,9 @@ def _prepare_new_turn(
     # QĐ-46: khóa API dán vào chat không được lưu DB, không gửi Claude.
     text, secret_masked = mask_secrets(text)
     blocks: list[dict] = file_service.build_claude_blocks(session, user.user_id, attachment_file_ids)
+    refs = referenced_context(session, user.user_id, ref_conversation_ids or [], conversation.id)
+    if refs:
+        blocks.insert(0, {"type": "text", "text": refs})
     if text.strip():
         blocks.append({"type": "text", "text": text})
     message = repo.add_message(

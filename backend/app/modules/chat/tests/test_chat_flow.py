@@ -556,12 +556,18 @@ def test_cleanup_deletes_empty_sessions_older_than_a_day(db, user):
         db, user.user_id, clock.chat_day(clock.now(), user.timezone), clock.now()
     )
     kept = _old_conversation(db, user, vn(2026, 11, 20, 9))
+    # Đoạn chat người dùng đặt tên sẵn theo nhu cầu (QĐ-58): trống vẫn giữ, vẫn hiện trong danh sách.
+    named = repo.create_conversation(db, user.user_id, clock.chat_day(vn(2026, 11, 21, 9), user.timezone),
+                                     vn(2026, 11, 21, 9), "Công việc DEGO")  # fmt: skip
+    named.title_source = "user"
     db.execute(
-        sql("UPDATE tab_conversation SET created_at = now() - interval '2 days' WHERE id IN (:a, :b)"),
-        {"a": old_empty.id, "b": kept.id},
+        sql("UPDATE tab_conversation SET created_at = now() - interval '2 days' WHERE id IN (:a, :b, :c)"),
+        {"a": old_empty.id, "b": kept.id, "c": named.id},
     )
     db.commit()
     cleanup.cleanup_old_data()
     db.expire_all()
     left = {c.id for c in db.query(Conversation).filter_by(user_id=user.user_id)}
-    assert left == {new_empty.id, kept.id}
+    assert left == {new_empty.id, kept.id, named.id}
+    listed = {c["id"] for c in service.list_conversations(db, user, None, 50)["items"]}
+    assert named.id in listed and len(listed) == 3

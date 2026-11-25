@@ -110,7 +110,7 @@ def cleanup_old_data() -> tuple[int, dict]:
         # Phiên chat không có tin nào quá 1 ngày (luật cũ tự tạo phiên mỗi ngày; phản hồi 1.1.1).
         (
             "tab_conversation",
-            "created_at < now() - interval '1 day' "
+            "created_at < now() - interval '1 day' AND title_source IS DISTINCT FROM 'user' AND NOT pinned "
             "AND NOT EXISTS (SELECT 1 FROM tab_message m WHERE m.conversation_id = tab_conversation.id)",
             {},
         ),

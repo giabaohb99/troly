@@ -237,11 +237,11 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi lượt chuyển sang xong
   }, [turn?.status])
 
-  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean; connectors?: number[] }) => {
+  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean; refs?: number[] }) => {
     setDraft('')
     stopSpeaking()
     voiceTurnRef.current = !!input.voice
-    void send({ text: input.text, mode: input.mode, fileIds: input.fileIds, connectors: input.connectors })
+    void send({ text: input.text, mode: input.mode, fileIds: input.fileIds, refs: input.refs })
   }
 
   return (
@@ -315,7 +315,7 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
         {today.isSuccess && messages.length === 0 && !turn && (
           <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-8 text-center">
             <AppMark className="size-14" />
-            <p className="text-sm text-muted-foreground">Nhắn một câu là em ghi, tra, nhắc. Gõ @ để gọi thêm Tìm sâu, Nghĩ kỹ hoặc hệ thống đã kết nối.</p>
+            <p className="text-sm text-muted-foreground">Nhắn một câu là em ghi, tra, nhắc. Gõ @ để gọi thêm một đoạn chat khác vào.</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((text) => (
                 <Button
@@ -394,7 +394,7 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
         </div>
       </div>
 
-      <Composer busy={busy} draft={draft} onDraftChange={setDraft} onSend={handleSend} incoming={incoming} onIncomingDone={clearIncoming} />
+      <Composer busy={busy} draft={draft} onDraftChange={setDraft} onSend={handleSend} incoming={incoming} onIncomingDone={clearIncoming} sessionId={session?.id ?? null} />
     </div>
   )
 }

@@ -29,8 +29,10 @@ export interface SendInput {
   text: string
   mode: ChatMode
   fileIds: number[]
-  // Kết nối gọi bằng @ cho lượt này (QĐ-56); không có thì máy chủ tự chọn.
+  // Kết nối ép cho lượt này (QĐ-56); không có thì máy chủ tự chọn.
   connectors?: number[]
+  // Đoạn chat khác gọi vào bằng @ (QĐ-58).
+  refs?: number[]
 }
 
 // Một lượt chat qua SSE: hiện chữ chạy dần, nhãn công cụ, hành động; xong thì ghép vào phiên đang mở.
@@ -71,6 +73,7 @@ export function useChatTurn(viewKey: readonly unknown[] = queryKeys.chat.today, 
             mode: input.mode,
             ...(conversationRef.current ? { conversation_id: conversationRef.current } : {}),
             ...(input.connectors?.length ? { use_connectors: input.connectors } : {}),
+            ...(input.refs?.length ? { ref_conversation_ids: input.refs } : {}),
           },
           (event) => {
             if (event.event === 'tool.started') usedTool = true

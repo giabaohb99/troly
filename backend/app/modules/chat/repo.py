@@ -64,8 +64,16 @@ def list_conversations(
     at = func.coalesce(Conversation.last_message_at, Conversation.started_at)
     stmt = select(Conversation).where(Conversation.user_id == user_id)
     if empty_since is not None:
-        # Phiên chưa có tin nào chỉ hiện khi vừa tạo bằng nút Phiên mới (phản hồi 1.1.1).
-        stmt = stmt.where(or_(Conversation.message_count > 0, Conversation.created_at >= empty_since))
+        # Phiên chưa có tin nào chỉ hiện khi vừa tạo bằng nút Phiên mới (phản hồi 1.1.1), trừ phiên người dùng đặt
+        # tên hoặc ghim (đoạn chat theo nhu cầu, QĐ-58).
+        stmt = stmt.where(
+            or_(
+                Conversation.message_count > 0,
+                Conversation.created_at >= empty_since,
+                Conversation.title_source == "user",
+                Conversation.pinned.is_(True),
+            )
+        )
     if q:
         matches = (
             select(Message.conversation_id)

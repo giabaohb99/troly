@@ -24,6 +24,8 @@ class SendMessageIn(BaseModel):
     conversation_id: int | None = Field(default=None, ge=1)
     # QĐ-56: kết nối gọi bằng @; true là mọi kết nối đang hoạt động, danh sách là các connector_id đó (chỉ đọc).
     use_connectors: bool | list[int] | None = None
+    # QĐ-58: đoạn chat khác gọi vào bằng @ (tối đa 3); lượt này đọc thêm tóm tắt và tin gần đây của chúng.
+    ref_conversation_ids: list[int] = Field(default_factory=list, max_length=3)
 
 
 class ConversationIn(BaseModel):
@@ -53,6 +55,7 @@ def post_message(
         body.attachment_file_ids,
         body.conversation_id,
         use_connectors=body.use_connectors,
+        ref_conversation_ids=body.ref_conversation_ids,
     )
     if "text/event-stream" in request.headers.get("accept", ""):
         return StreamingResponse(
