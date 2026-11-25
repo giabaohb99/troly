@@ -211,6 +211,10 @@ Không xin: vị trí, danh bạ máy, SMS, `QUERY_ALL_PACKAGES`, dịch vụ ti
 
 Luôn `resolveActivity` trước; không có Maps thì mở `https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>&travelmode=two-wheeler&dir_action=navigate` bằng trình duyệt [N24][N25]. App gửi `max_waypoints = 9` nếu có Maps, `3` nếu không (URL chỉ đường cho tối đa 3 điểm dừng trên trình duyệt di động, 9 ở nơi khác) [N25]. Chế độ `two-wheeler` chỉ có ở quốc gia được hỗ trợ [N25]: thử trên máy thật.
 
+### 3.12c Chia sẻ vào Trợ lý (QĐ-51 bước 2)
+
+`MainActivity` có intent-filter `ACTION_SEND` (chữ, ảnh, PDF, DOCX) và `ACTION_SEND_MULTIPLE` (ảnh, PDF). Plugin `ShareIn` (`plugin/ShareInPlugin.kt`) đọc intent lúc mở app và lúc `onNewIntent`, chép tối đa 4 tệp (mỗi tệp tới 25 MB, loại như ô đính kèm của chat; luật ở `share/SharePlan`, có JUnit) vào `cacheDir/shared/`, rồi phát sự kiện `shared` `{text, files: [{path, name, mime, size}], skipped}` giữ tới khi giao diện nghe. Giao diện mở `/chia-se`; tải xong thì `cleanup()` xóa tệp đệm.
+
 ### 3.13 Khóa ký và build
 
 - Khóa ký: sinh một lần bằng `keytool` trong container JDK, RSA 4096, `-validity 10950` (30 năm; Android khuyên từ 25 năm) [N26]. Mất khóa thì không cập nhật đè được [N26]. Cất theo `60` mục 3.6; không lên git.

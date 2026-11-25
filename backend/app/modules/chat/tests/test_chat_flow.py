@@ -84,51 +84,129 @@ def test_missing_key_returns_ai_unavailable(auth_client, monkeypatch):
     assert resp.json()["data"]["code"] == "AI_UNAVAILABLE"
 
 
-def _yesterday_with_message(db, user, last_at):
-    conv = repo.get_or_create_conversation(db, user.user_id, clock.chat_day(last_at, user.timezone), last_at)
+def _old_conversation(db, user, last_at, title=None):
+    conv = repo.create_conversation(db, user.user_id, clock.chat_day(last_at, user.timezone), last_at, title)
+    turn = uuid.uuid4()
     for role, text in (("user", "đi Trà Vinh không"), ("assistant", "Đi được đại ca")):
         db.add(
             Message(
                 user_id=user.user_id,
                 conversation_id=conv.id,
-                turn_id=uuid.uuid4(),
+                turn_id=turn,
                 role=role,
                 content=[{"type": "text", "text": text}],
                 text=text,
             )
         )
-    conv.last_message_at = last_at
+    conv.last_message_at, conv.message_count = last_at, 2
     db.flush()
+    return conv
 
 
-def test_prev_tail_joined_when_under_three_hours(db, user, monkeypatch):
-    _yesterday_with_message(db, user, vn(2026, 11, 19, 2, 30))  # phiên ngày 18 (trước 04:00)
-    monkeypatch.setattr(clock, "now", lambda: vn(2026, 11, 19, 4, 30))  # đã sang phiên ngày 19
+def test_no_split_at_4am_next_message_joins_latest_conversation(db, user, monkeypatch):
+    """QĐ-51: không tách phiên lúc 04:00; tin không chỉ phiên vào phiên hoạt động gần nhất."""
+    conv = _old_conversation(db, user, vn(2026, 11, 19, 1, 0))
+    monkeypatch.setattr(clock, "now", lambda: vn(2026, 11, 20, 9, 0))
 
     prepared = service.prepare_turn(db, user, "tiếp nha", None, uuid.uuid4(), [])
     service._release(user.user_id)
 
-    assert [p.text for p in prepared.prev_tail] == ["đi Trà Vinh không", "Đi được đại ca"]
+    assert prepared.conversation_id == conv.id and prepared.prev_tail == []
+    texts = [m["content"][0]["text"] for m in prepared.history if m["role"] == "user"]
+    assert texts[:1] == ["đi Trà Vinh không"]  # phiên mở lại nạp lịch sử của chính nó
 
 
-def test_prev_tail_empty_when_over_three_hours(db, user, monkeypatch):
-    _yesterday_with_message(db, user, vn(2026, 11, 19, 1, 0))
-    monkeypatch.setattr(clock, "now", lambda: vn(2026, 11, 19, 4, 30))
+def test_send_to_chosen_old_conversation_and_unknown_is_404(auth_client, db, user, fake_claude):
+    old = _old_conversation(db, user, vn(2026, 11, 10, 9), title="Chuyến Trà Vinh")
+    newer = _old_conversation(db, user, vn(2026, 11, 18, 9))
+    fake_claude.script.append(text_reply("Dạ, tiếp chuyện Trà Vinh."))
+    body = {"client_message_id": str(uuid.uuid4()), "text": "nhắc lại giúp em", "conversation_id": old.id}
+    resp = auth_client.post("/api/v1/chat/messages", json=body)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["user_message"]["conversation_id"] == old.id
+    listed = auth_client.get("/api/v1/chat/conversations").json()["data"]["items"]
+    assert [c["id"] for c in listed][:2] == [old.id, newer.id]  # phiên vừa chat lên đầu
+    assert listed[0]["title"] == "Chuyến Trà Vinh"
+    missing = {"client_message_id": str(uuid.uuid4()), "text": "x", "conversation_id": 999999}
+    assert auth_client.post("/api/v1/chat/messages", json=missing).status_code == 404
 
-    prepared = service.prepare_turn(db, user, "chào", None, uuid.uuid4(), [])
-    service._release(user.user_id)
 
-    assert prepared.prev_tail == []
+def test_conversation_list_pin_rename_search_and_paging(auth_client, db, user):
+    a = _old_conversation(db, user, vn(2026, 11, 1, 9), title="Hợp đồng nhà")
+    b = _old_conversation(db, user, vn(2026, 11, 5, 9))
+    c = _old_conversation(db, user, vn(2026, 11, 9, 9))  # chưa tên: máy đặt được
+    assert auth_client.patch(f"/api/v1/chat/conversations/{a.id}", json={"pinned": True}).json()["data"][
+        "pinned"
+    ]
+    page1 = auth_client.get("/api/v1/chat/conversations", params={"limit": 2}).json()["data"]
+    assert [x["id"] for x in page1["items"]] == [a.id, c.id] and page1["next_cursor"]
+    page2 = auth_client.get(
+        "/api/v1/chat/conversations", params={"limit": 2, "cursor": page1["next_cursor"]}
+    ).json()["data"]
+    assert [x["id"] for x in page2["items"]] == [b.id] and page2["next_cursor"] is None
+    # Tìm theo tiêu đề (không dấu) và theo nội dung tin.
+    by_title = auth_client.get("/api/v1/chat/conversations", params={"q": "hop dong"}).json()["data"]["items"]
+    assert [x["id"] for x in by_title] == [a.id]
+    by_text = auth_client.get("/api/v1/chat/conversations", params={"q": "Trà Vinh"}).json()["data"]["items"]
+    assert {x["id"] for x in by_text} == {a.id, b.id, c.id}
+    renamed = auth_client.patch(f"/api/v1/chat/conversations/{b.id}", json={"title": "  Đi   Cần Thơ "})
+    assert (
+        renamed.json()["data"]["title"] == "Đi Cần Thơ" and renamed.json()["data"]["title_source"] == "user"
+    )
+    assert service.set_auto_title(db, user.user_id, b.id, "Tên máy đặt") is False  # không đè tên người đặt
+    assert service.set_auto_title(db, user.user_id, c.id, "Mua xe máy mới") is True
+    assert auth_client.patch(f"/api/v1/chat/conversations/{b.id}", json={"title": ""}).status_code == 400
+    assert auth_client.patch("/api/v1/chat/conversations/999999", json={"pinned": True}).status_code == 404
 
 
-def test_message_before_4am_stays_in_previous_day(db, user, monkeypatch):
-    monkeypatch.setattr(clock, "now", lambda: vn(2026, 11, 19, 1, 0))
+def test_new_conversation_reuses_empty_one_and_today_returns_latest(auth_client, db, user):
+    old = _old_conversation(db, user, vn(2026, 11, 1, 9))
+    first = auth_client.post("/api/v1/chat/conversations", json={})
+    assert first.status_code == 201
+    again = auth_client.post("/api/v1/chat/conversations").json()["data"]
+    assert again["id"] == first.json()["data"]["id"] != old.id  # phiên trống chưa tên: dùng lại
+    named = auth_client.post("/api/v1/chat/conversations", json={"title": "Kế hoạch Tết"}).json()["data"]
+    assert named["id"] == again["id"] and named["title"] == "Kế hoạch Tết"
+    # Bản app cũ: /chat/today trả phiên hoạt động gần nhất, đúng dạng cũ.
+    today = auth_client.get("/api/v1/chat/today").json()["data"]
+    assert today["conversation"]["id"] == named["id"] and today["messages"] == []
+    assert {"id", "local_date", "summary", "message_count"} <= set(today["conversation"])
 
-    prepared = service.prepare_turn(db, user, "khuya rồi", None, uuid.uuid4(), [])
-    service._release(user.user_id)
 
-    conv = repo.get_conversation(db, user.user_id, prepared.conversation_id)
-    assert conv.local_date.isoformat() == "2026-11-18"
+def test_old_app_without_conversation_id_keeps_chatting_in_latest(auth_client, db, user, fake_claude):
+    fake_claude.script += [text_reply("Một."), text_reply("Hai.")]
+    first = send(auth_client, "câu một").json()["data"]
+    second = send(auth_client, "câu hai").json()["data"]
+    assert first["user_message"]["conversation_id"] == second["user_message"]["conversation_id"]
+    today = auth_client.get("/api/v1/chat/today").json()["data"]
+    assert [m["text"] for m in today["messages"] if m["role"] == "user"] == ["câu một", "câu hai"]
+
+
+def test_idle_conversation_summarized_keeping_tail(db, user, monkeypatch):
+    from app.ai import compaction
+    from app.modules.chat import jobs
+
+    conv = repo.create_conversation(db, user.user_id, clock.chat_day(vn(2026, 11, 1, 9), user.timezone),
+                                    vn(2026, 11, 1, 9))  # fmt: skip
+    for i in range(6):
+        turn = uuid.uuid4()
+        for role in ("user", "assistant"):
+            db.add(Message(user_id=user.user_id, conversation_id=conv.id, turn_id=turn, role=role,
+                           content=[{"type": "text", "text": f"{role} {i}"}], text=f"{role} {i}"))  # fmt: skip
+    conv.last_message_at, conv.message_count = vn(2026, 11, 1, 10), 12
+    fresh = _old_conversation(db, user, clock.now())  # còn thức: không tóm
+    db.commit()
+    seen = []
+    monkeypatch.setattr(compaction, "summarize", lambda msgs, prev, ctx: seen.append(len(msgs)) or "Tóm tắt")
+
+    assert jobs.summarize_idle_conversations() == 1
+    db.expire_all()
+    conv = repo.get_conversation(db, user.user_id, conv.id)
+    assert conv.summary == "Tóm tắt" and conv.day_summary_done
+    kept = repo.list_history(db, user.user_id, conv.id, conv.summary_upto_id)
+    assert seen == [12 - len(kept)] and len(kept) >= compaction.KEEP_MESSAGES  # đuôi còn nguyên
+    assert jobs.summarize_idle_conversations() == 0  # đã tóm cho lần ngủ này
+    assert repo.get_conversation(db, user.user_id, fresh.id).summary is None
 
 
 def test_failed_turn_left_out_of_next_history(auth_client, fake_claude, monkeypatch):
@@ -360,3 +438,78 @@ def test_pasted_api_key_never_stored_or_sent(auth_client, db, fake_claude):
     assert all(key not in (m.text or "") and key not in str(m.content) for m in rows)
     sent = str(fake_claude.requests[0])
     assert key not in sent and KEY_MASK in sent and SECRET_RULES in sent
+
+
+# ---------- QĐ-51: đặt tên tự động, mở phiên, tìm trong phiên cũ ----------
+
+
+@pytest.fixture
+def titles(monkeypatch):
+    """Hàm đặt tên giả (agent AI giữ app.ai.session_title); việc nền chạy thẳng trong bài."""
+    import sys
+    import types
+
+    import app.ai as ai_pkg
+
+    calls = []
+
+    def suggest_title(user_id, question, answer, *, client=None):
+        calls.append((question, answer))
+        return "Đi Trà Vinh cuối tuần."
+
+    try:
+        from app.ai import session_title as real
+
+        monkeypatch.setattr(real, "suggest_title", suggest_title)
+    except ImportError:
+        fake = types.ModuleType("app.ai.session_title")
+        fake.suggest_title = suggest_title
+        monkeypatch.setitem(sys.modules, "app.ai.session_title", fake)
+        monkeypatch.setattr(ai_pkg, "session_title", fake, raising=False)
+    monkeypatch.setattr(service, "AUTO_TITLE_IN_TESTS", True)
+    monkeypatch.setattr(service, "AUTO_TITLE_BACKGROUND", False)  # chạy thẳng trong bài
+    return calls
+
+
+def test_first_answer_names_untitled_conversation_once(auth_client, db, user, fake_claude, titles):
+    fake_claude.script += [text_reply("Dạ đi Trà Vinh được, đường 2 tiếng."), text_reply("Dạ.")]
+    first = send(auth_client, "cuối tuần đi Trà Vinh được không").json()["data"]
+    cid = first["user_message"]["conversation_id"]
+    conv = auth_client.get(f"/api/v1/chat/conversations/{cid}").json()["data"]["conversation"]
+    assert conv["title"] == "Đi Trà Vinh cuối tuần." and conv["title_source"] == "auto"
+    assert titles == [("cuối tuần đi Trà Vinh được không", "Dạ đi Trà Vinh được, đường 2 tiếng.")]
+    send(auth_client, "cảm ơn")
+    assert len(titles) == 1  # đã có tên: không gọi lại
+
+
+def test_user_title_never_overwritten_by_auto_name(auth_client, db, user, fake_claude, titles):
+    conv = auth_client.post("/api/v1/chat/conversations", json={"title": "Việc nhà"}).json()["data"]
+    fake_claude.script.append(text_reply("Dạ."))
+    body = {
+        "client_message_id": str(uuid.uuid4()),
+        "text": "nhắc em đóng tiền điện",
+        "conversation_id": conv["id"],
+    }
+    assert auth_client.post("/api/v1/chat/messages", json=body).status_code == 200
+    assert titles == []
+    page = auth_client.get(f"/api/v1/chat/conversations/{conv['id']}").json()["data"]
+    assert page["conversation"]["title"] == "Việc nhà" and page["conversation"]["last_preview"] == "Dạ."
+    assert [m["text"] for m in page["messages"]] == ["nhắc em đóng tiền điện", "Dạ."]
+    assert auth_client.get("/api/v1/chat/conversations/999999").status_code == 404
+
+
+def test_search_history_finds_old_messages_newest_first(db, user):
+    old = _old_conversation(db, user, vn(2026, 11, 2, 9), title="Chuyến miền Tây")
+    newer = _old_conversation(db, user, vn(2026, 11, 8, 9))
+    hits = service.search_history(db, user, "Trà Vinh")
+    assert [h["conversation_id"] for h in hits] == [newer.id, old.id]
+    assert hits[-1]["conversation_title"] == "Chuyến miền Tây" and "Trà Vinh" in hits[-1]["snippet"]
+    assert {h["role"] for h in hits} == {"user"}
+    answers = service.search_history(db, user, "đại ca")
+    assert [(h["conversation_id"], h["role"]) for h in answers] == [
+        (newer.id, "assistant"),
+        (old.id, "assistant"),
+    ]
+    only_old = service.search_history(db, user, "Trà Vinh", exclude_conversation_id=newer.id)
+    assert {h["conversation_id"] for h in only_old} == {old.id}
+    assert service.search_history(db, user, "  ") == []

@@ -6,6 +6,8 @@ import { ApiError } from '@/core/api/api-error'
 import { AppLayout } from '@/app/app-layout'
 import { ErrorBoundary } from '@/app/error-boundary'
 import { lazyPage } from '@/app/lazy-page'
+import { ShareIn } from '@/core/native/share-in'
+import { FeatureGate } from '@/shared/components/feature-gate'
 import { useAndroidBack } from '@/app/use-android-back'
 import { RequireAuth } from '@/modules/auth/components/require-auth'
 import { LoginPage } from '@/modules/auth/pages/login-page'
@@ -18,6 +20,12 @@ const ExpensePage = lazyPage(() => import('@/modules/expense/pages/expense-page'
 const SearchPage = lazyPage(() => import('@/modules/search/pages/search-page').then((m) => m.SearchPage))
 const SettingsPage = lazyPage(() => import('@/modules/setting/pages/settings-page').then((m) => m.SettingsPage))
 const InboxPage = lazyPage(() => import('@/modules/inbox/pages/inbox-page').then((m) => m.InboxPage))
+const ZaloSettingsPage = lazyPage(() => import('@/modules/setting/pages/zalo-settings-page').then((m) => m.ZaloSettingsPage))
+const ZaloChatPage = lazyPage(() => import('@/modules/inbox/pages/zalo-chat-page').then((m) => m.ZaloChatPage))
+const ZaloNewPage = lazyPage(() => import('@/modules/inbox/pages/zalo-new-page').then((m) => m.ZaloNewPage))
+const ConnectorsPage = lazyPage(() => import('@/modules/setting/pages/connectors-page').then((m) => m.ConnectorsPage))
+const ConnectorPage = lazyPage(() => import('@/modules/setting/pages/connector-page').then((m) => m.ConnectorPage))
+const SharePage = lazyPage(() => import('@/modules/chat/pages/share-page').then((m) => m.SharePage))
 const MarkdownPage = lazyPage(() => import('@/modules/file/pages/markdown-page').then((m) => m.MarkdownPage))
 const EmailThreadPage = lazyPage(() => import('@/modules/inbox/pages/email-thread-page').then((m) => m.EmailThreadPage))
 const EmailComposePage = lazyPage(() => import('@/modules/inbox/pages/email-compose-page').then((m) => m.EmailComposePage))
@@ -59,6 +67,13 @@ const queryClient: QueryClient = new QueryClient({
 function DeepLinks() {
   const navigate = useNavigate()
   useAndroidBack()
+  // Chia sẻ từ app khác vào Trợ lý (QĐ-51 bước 2): mở màn chọn phiên với chữ và tệp đã nhận.
+  useEffect(() => {
+    const handle = ShareIn.addListener('shared', (payload) => navigate('/chia-se', { state: payload }))
+    return () => {
+      void handle.then((h) => h.remove())
+    }
+  }, [navigate])
   useEffect(() => {
     const handle = CapApp.addListener('appUrlOpen', ({ url }) => {
       const match = url.match(/^troly:\/\/(.*)$/)
@@ -87,6 +102,7 @@ export function App() {
                 <Route path="cai-dat" element={<SettingsPage />} />
                 <Route path="hop-tin" element={<InboxPage />} />
                 <Route path="xem-tep/:fileId" element={<MarkdownPage />} />
+                <Route path="chia-se" element={<SharePage />} />
                 <Route path="hop-tin/email/soan" element={<EmailComposePage />} />
                 <Route path="hop-tin/email/:threadId" element={<EmailThreadPage />} />
                 <Route path="hop-tin/:conversationKey" element={<ConversationPage />} />
@@ -99,6 +115,13 @@ export function App() {
                 <Route path="cai-dat/hop-tin" element={<InboxSettingsPage />} />
                 <Route path="cai-dat/thong-bao" element={<NotifySettingsPage />} />
                 <Route path="cai-dat/lich-trinh" element={<TripSettingsPage />} />
+                {/* Zalo đầy đủ qua bridge (QĐ-52) chỉ khi cờ zalo_bridge bật. */}
+                <Route path="cai-dat/zalo" element={<FeatureGate flag="zalo_bridge"><ZaloSettingsPage /></FeatureGate>} />
+                <Route path="zalo/moi" element={<FeatureGate flag="zalo_bridge" fallback="/hop-tin"><ZaloNewPage /></FeatureGate>} />
+                <Route path="zalo/:conversationKey" element={<FeatureGate flag="zalo_bridge" fallback="/hop-tin"><ZaloChatPage /></FeatureGate>} />
+                {/* Kết nối (QĐ-56) chỉ mở khi máy chủ bật cờ connectors. */}
+                <Route path="cai-dat/ket-noi" element={<FeatureGate flag="connectors"><ConnectorsPage /></FeatureGate>} />
+                <Route path="cai-dat/ket-noi/:connectorId" element={<FeatureGate flag="connectors"><ConnectorPage /></FeatureGate>} />
                 <Route path="lich-trinh" element={<TripListPage />} />
                 <Route path="lich-trinh/:tripId" element={<TripPage />} />
                 <Route path="bao-cao" element={<ReportPage />} />

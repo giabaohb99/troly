@@ -10,6 +10,8 @@ import { AppTag } from '@/modules/inbox/components/app-tag'
 import { APP_LABELS, type Conversation, type InboxApp } from '@/modules/inbox/types/inbox'
 import { accountChoices, accountColor, accountShort, filterByAccount, getSavedAccount, saveAccount, sortByLatest } from '@/modules/inbox/utils/inbox-list'
 import { useGoogleAccounts } from '@/shared/api/google-accounts-api'
+import { useFeatures } from '@/shared/hooks/use-features'
+import { isZaloFullKey } from '@/modules/inbox/utils/zalo'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { EmptyState } from '@/shared/components/empty-state'
 import { ErrorState } from '@/shared/components/error-state'
@@ -88,6 +90,7 @@ export function InboxPage() {
     saveAccount(email)
   }
   const google = useGoogleAccounts(filter === 'gmail')
+  const features = useFeatures()
   const connected = useMemo(() => (google.data ?? []).filter((a) => a.status !== 'revoked').map((a) => a.email), [google.data])
   const activeAccount = filter === 'gmail' && account ? account : null
   const filters = { ...toFilters(filter), account: activeAccount }
@@ -180,7 +183,14 @@ export function InboxPage() {
               item={item}
               accounts={accounts}
               onOpen={() =>
-                navigate(item.app === 'gmail' ? `/hop-tin/email/${encodeURIComponent(threadIdFromKey(item.conversation_key))}` : `/hop-tin/${encodeURIComponent(item.conversation_key)}`)
+                navigate(
+                  item.app === 'gmail'
+                    ? `/hop-tin/email/${encodeURIComponent(threadIdFromKey(item.conversation_key))}`
+                    : // Zalo qua bridge (QĐ-52): khung chat kiểu Zalo; tin cũ đọc từ thông báo vẫn mở màn cũ.
+                      features.zalo_bridge && isZaloFullKey(item.conversation_key)
+                      ? `/zalo/${encodeURIComponent(item.conversation_key)}`
+                      : `/hop-tin/${encodeURIComponent(item.conversation_key)}`,
+                )
               }
             />
           ))}
@@ -194,6 +204,16 @@ export function InboxPage() {
         </Button>
       )}
       {items.length > 0 && <p className="text-center text-xs text-muted-foreground">Tin giữ 180 ngày rồi tự xóa.</p>}
+      {filter === 'zalo' && features.zalo_bridge && (
+        <Button
+          size="icon"
+          aria-label="Tin Zalo mới"
+          className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 size-14 rounded-full shadow-lg"
+          onClick={() => navigate('/zalo/moi')}
+        >
+          <PenSquare className="size-6" />
+        </Button>
+      )}
       {filter === 'gmail' && (
         <Button
           size="icon"

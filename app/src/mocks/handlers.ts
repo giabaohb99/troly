@@ -138,6 +138,13 @@ const mockInbox: InboxMessage[] = [
   inboxRow(4, 'zalo', 'zalo:hung', 'Anh Hùng', null, 300),
   inboxRow(5, 'sms', 'sms:me', 'Mẹ', 'Tối về ăn cơm nhé con', 2000, { status: 'seen' }),
   inboxRow(6, 'gmail', 'gmail:t-hopdong', 'Anh Minh', 'Em gửi trước thứ Năm giúp anh nhé, chị Lan cần chốt.', 90, { source: 'gmail', subject: 'Hợp đồng thuê văn phòng 2027', conversation_title: 'Hợp đồng thuê văn phòng 2027', account_email: 'giabao@gmail.com' }),
+  inboxRow(20, 'zalo', 'zalo:u:84901', 'Anh Minh', 'Chiều nay 3h họp ở văn phòng mới nhé', 30, { source: 'zalo_bridge', conversation_title: 'Anh Minh', status: 'seen' }),
+  inboxRow(21, 'zalo', 'zalo:u:84901', 'Gia Bảo', 'Dạ em tới đúng giờ', 28, { source: 'zalo_bridge', conversation_title: 'Anh Minh', status: 'seen', is_self: true, quote: { msg_id: 'm20', text: 'Chiều nay 3h họp ở văn phòng mới nhé' } }),
+  inboxRow(22, 'zalo', 'zalo:u:84901', 'Anh Minh', null, 26, { source: 'zalo_bridge', conversation_title: 'Anh Minh', hidden_content: false, text: null, media: [{ type: 'image', name: 'so-do-van-phong.jpg', size: 120_000, mime: 'image/jpeg', status: 'done', file_id: 9101 }] }),
+  inboxRow(23, 'zalo', 'zalo:u:84901', 'Anh Minh', 'Gửi nhầm', 25, { source: 'zalo_bridge', conversation_title: 'Anh Minh', recalled_at: new Date(Date.now() - 24 * 60_000).toISOString() }),
+  inboxRow(24, 'zalo', 'zalo:u:84901', 'Anh Minh', 'Xem hợp đồng ở https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing, có gì gọi 0909 123 456', 20, { source: 'zalo_bridge', conversation_title: 'Anh Minh' }),
+  inboxRow(25, 'zalo', 'zalo:g:5521', 'Tuấn', 'Mai đi Bến Tre mấy giờ mọi người?', 60, { source: 'zalo_bridge', conversation_title: 'Nhóm đi Bến Tre', is_group: true, status: 'seen' }),
+  inboxRow(26, 'zalo', 'zalo:g:5521', 'Chị Lan', '6h sáng nha, tập trung cổng chợ', 55, { source: 'zalo_bridge', conversation_title: 'Nhóm đi Bến Tre', is_group: true, status: 'seen' }),
   inboxRow(10, 'gmail', 'gmail:t-hoadon', 'VNPT', 'Hóa đơn cước tháng 11 của quý khách là 220.000 đ, hạn thanh toán 30/11.', 120, { source: 'gmail', subject: 'Hóa đơn điện tử tháng 11', conversation_title: 'Hóa đơn điện tử tháng 11', account_email: 'bao.congviec@gmail.com', status: 'seen' }),
 ]
 function mockConversations() {
@@ -168,8 +175,92 @@ const mockListened = [
   { id: 7, package_name: 'sms_default', label: 'SMS', purpose: 'inbox', parser: 'sms', enabled: true, is_default: true },
 ]
 
+// Phiên chat giả (QĐ-51): 52 là phiên chính dùng mockDb.messages.
+const MAIN_SESSION = 52
+interface MockSession { id: number; title: string | null; pinned: boolean; created_at: string; messages: ChatMessage[] }
+const daysAgo = (d: number, h = 9) => new Date(Date.now() - d * 86_400_000 + (h - 9) * 3_600_000).toISOString()
+const chatSessions = new Map<number, MockSession>([
+  [MAIN_SESSION, { id: MAIN_SESSION, title: null, pinned: false, created_at: daysAgo(0), messages: [] }],
+  [41, { id: 41, title: 'Lịch trình Bến Tre', pinned: true, created_at: daysAgo(6), messages: [
+    { ...message('user', 'Lập lịch trình đi Bến Tre cuối tuần bằng xe máy'), id: 4101, created_at: daysAgo(6) },
+    { ...message('assistant', 'Em đã lập chuyến Bến Tre 2 ngày, ghé Cồn Phụng và chợ nổi.'), id: 4102, created_at: daysAgo(6) },
+  ] }],
+  [47, { id: 47, title: 'Chi tiêu tháng 11', pinned: false, created_at: daysAgo(3), messages: [
+    { ...message('user', 'Tháng này tiêu bao nhiêu rồi?'), id: 4701, created_at: daysAgo(3) },
+    { ...message('assistant', 'Tháng 11 đã chi 8,4 triệu, ăn uống nhiều nhất.'), id: 4702, created_at: daysAgo(3) },
+  ] }],
+])
+const messagesOf = (id: number): ChatMessage[] => (id === MAIN_SESSION ? mockDb.messages : (chatSessions.get(id)?.messages ?? []))
+function sessionMeta(s: MockSession) {
+  const msgs = messagesOf(s.id)
+  const last = msgs[msgs.length - 1]
+  return { id: s.id, title: s.title, title_source: s.title ? 'user' : null, pinned: s.pinned, started_at: s.created_at, last_message_at: last?.created_at ?? null, last_preview: last?.text.slice(0, 120) ?? null, summary: null, message_count: msgs.length, created_at: s.created_at, local_date: s.created_at.slice(0, 10) }
+}
+function sessionView(id: number) {
+  const msgs = messagesOf(id)
+  const latest = msgs.slice(-50)
+  return { conversation: sessionMeta(chatSessions.get(id)!), messages: latest, next_cursor: msgs.length > 50 ? String(latest[0].id) : null, pending_actions: mockDb.pending }
+}
+
+// Zalo giả (QĐ-52): bắt đầu đã đăng nhập; localStorage troly.mock.zalo_out = 1 thì bắt đầu chưa đăng nhập.
+const zalo = {
+  state: (typeof localStorage !== 'undefined' && localStorage.getItem('troly.mock.zalo_out') ? 'logged_out' : 'logged_in') as string,
+  account: { uid: '84900', name: 'Gia Bảo' } as { uid: string; name: string } | null,
+  loginAt: 0,
+}
+// Ô vuông 1x1 điểm ảnh làm mã QR giả.
+const ZALO_QR = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+// Ảnh trong tin Zalo giả (file 9101): ảnh PNG thật để màn hiện được.
+mockFiles.set(9101, { id: 9101, name: 'so-do-van-phong.png', mime: 'image/png', size_bytes: 120_000 })
+mockBlobs.set(9101, new Blob([Uint8Array.from(atob(ZALO_QR), (c) => c.charCodeAt(0))], { type: 'image/png' }))
+
 export const handlers = [
   ...calendarHandlers,
+  // Zalo qua bridge (QĐ-52): đăng nhập QR giả (quét sau 4 giây, đồng ý sau 7 giây), danh bạ, lấy tin cũ, gửi tin.
+  http.get(`${API}/zalo/status`, () => {
+    if (zalo.state === 'waiting_scan' && Date.now() - zalo.loginAt > 4_000) zalo.state = 'scanned'
+    if (zalo.state === 'scanned' && Date.now() - zalo.loginAt > 7_000) Object.assign(zalo, { state: 'logged_in', account: { uid: '84900', name: 'Gia Bảo' } })
+    const qr = zalo.state === 'waiting_scan' ? { qr_png_base64: ZALO_QR, qr_expires_at: new Date(zalo.loginAt + 60_000).toISOString() } : {}
+    return ok({ state: zalo.state, account: zalo.account, last_event_at: new Date().toISOString(), ...qr })
+  }),
+  http.post(`${API}/zalo/login`, () => {
+    if (zalo.state === 'logged_in') return fail(409, 'CONFLICT', 'Zalo đã đăng nhập.')
+    Object.assign(zalo, { state: 'waiting_scan', loginAt: Date.now(), account: null })
+    return ok({ state: 'waiting_scan', account: null, qr_png_base64: ZALO_QR, qr_expires_at: new Date(Date.now() + 60_000).toISOString() })
+  }),
+  http.post(`${API}/zalo/logout`, () => {
+    Object.assign(zalo, { state: 'logged_out', account: null })
+    return ok({ state: 'logged_out', account: null })
+  }),
+  http.get(`${API}/zalo/contacts`, () => {
+    if (zalo.state !== 'logged_in') return fail(409, 'NOT_LOGGED_IN', 'Zalo chưa đăng nhập.')
+    return ok({ items: [
+      { thread_id: '84901', thread_type: 'user', name: 'Anh Minh', avatar: null, conversation_key: 'zalo:u:84901' },
+      { thread_id: '84902', thread_type: 'user', name: 'Chị Lan', avatar: null, conversation_key: 'zalo:u:84902' },
+      { thread_id: '5521', thread_type: 'group', name: 'Nhóm đi Bến Tre', avatar: null, conversation_key: 'zalo:g:5521' },
+    ] })
+  }),
+  http.post(`${API}/zalo/conversations/:key/sync`, ({ params }) => {
+    const key = String(params.key)
+    if (!key.startsWith('zalo:g:')) return ok({ mode: 'requested' })
+    mockInbox.push(inboxRow(nextId(), 'zalo', key, 'Tuấn', 'Tin cũ từ Zalo: nhớ mang áo mưa', 300, { source: 'zalo_bridge', conversation_title: 'Nhóm đi Bến Tre', is_group: true, status: 'seen' }))
+    return ok({ mode: 'group_history', saved: 1 })
+  }),
+  http.post(`${API}/zalo/messages`, async ({ request }) => {
+    const body = (await request.json()) as { conversation_key: string; text?: string; file_ids?: number[]; client_ref?: string }
+    if (zalo.state !== 'logged_in') return fail(409, 'NOT_LOGGED_IN', 'Zalo chưa đăng nhập.')
+    if (!/^zalo:[ug]:/.test(body.conversation_key)) return fail(400, 'VALIDATION_ERROR', 'Không phải hội thoại Zalo.')
+    if (body.text?.includes('nhanh quá')) return HttpResponse.json({ success: false, message: 'Gửi quá nhanh.', data: { code: 'RATE_LIMITED', retry_after: 20 } }, { status: 429 })
+    // Bridge báo lại tin của mình sau 2 giây.
+    setTimeout(() => {
+      const title = mockInbox.find((m) => m.conversation_key === body.conversation_key)?.conversation_title ?? null
+      mockInbox.push(inboxRow(nextId(), 'zalo', body.conversation_key, 'Gia Bảo', body.text ?? null, 0, {
+        source: 'zalo_bridge', conversation_title: title, status: 'seen', is_self: true, is_group: body.conversation_key.startsWith('zalo:g:'), hidden_content: false, text: body.text ?? null,
+        media: body.file_ids?.map((id) => ({ type: 'image', name: mockFiles.get(id)?.name ?? 'anh.jpg', size: 1000, mime: 'image/jpeg', status: 'done', file_id: id })) ?? null,
+      }))
+    }, 2_000)
+    return ok({ msg_ids: [`z${Date.now()}`], client_ref: body.client_ref ?? null, conversation_key: body.conversation_key })
+  }),
   ...phase4Handlers,
   http.post(`${API}/auth/login`, async ({ request }) => {
     const body = (await request.json()) as { email: string; password: string }
@@ -193,33 +284,66 @@ export const handlers = [
     return ok({ accepted: body.items.length })
   }),
 
+  // Phiên chat đặt tên (QĐ-51 bước 1): /chat/today là phiên hoạt động gần nhất.
   http.get(`${API}/chat/today`, () => {
-    const latest = mockDb.messages.slice(-50)
-    return ok({ conversation: { id: 52, local_date: new Date().toISOString().slice(0, 10) }, messages: latest, next_cursor: mockDb.messages.length > 50 ? String(latest[0].id) : null, pending_actions: mockDb.pending })
+    const latest = [...chatSessions.values()].sort((a, b) => Date.parse(sessionMeta(b).last_message_at ?? b.created_at) - Date.parse(sessionMeta(a).last_message_at ?? a.created_at))[0]
+    return ok(latest ? sessionView(latest.id) : { conversation: null, messages: [], next_cursor: null, pending_actions: mockDb.pending })
   }),
-  http.get(`${API}/chat/conversations/:id/messages`, ({ request }) => {
+  http.get(`${API}/chat/conversations`, ({ request }) => {
+    const q = (new URL(request.url).searchParams.get('q') ?? '').toLowerCase()
+    const items = [...chatSessions.values()]
+      .map((s) => sessionMeta(s))
+      .filter((m) => !q || `${m.title ?? ''} ${messagesOf(m.id).map((x) => x.text).join(' ')}`.toLowerCase().includes(q))
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || Date.parse(b.last_message_at ?? b.started_at) - Date.parse(a.last_message_at ?? a.started_at))
+    return ok({ items, next_cursor: null })
+  }),
+  http.post(`${API}/chat/conversations`, async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { title?: string }
+    const id = nextId()
+    chatSessions.set(id, { id, title: body.title?.trim() || null, pinned: false, created_at: new Date().toISOString(), messages: [] })
+    return ok(sessionMeta(chatSessions.get(id)!), 201)
+  }),
+  http.get(`${API}/chat/conversations/:id`, ({ params }) => {
+    const id = Number(params.id)
+    return chatSessions.has(id) ? ok(sessionView(id)) : fail(404, 'NOT_FOUND', 'Không tìm thấy phiên.')
+  }),
+  http.patch(`${API}/chat/conversations/:id`, async ({ params, request }) => {
+    const s = chatSessions.get(Number(params.id))
+    if (!s) return fail(404, 'NOT_FOUND', 'Không tìm thấy phiên.')
+    const body = (await request.json()) as { title?: string; pinned?: boolean }
+    if (body.title !== undefined) s.title = body.title.trim().slice(0, 120) || null
+    if (body.pinned !== undefined) s.pinned = body.pinned
+    return ok(sessionMeta(s))
+  }),
+  http.get(`${API}/chat/conversations/:id/messages`, ({ params, request }) => {
     const url = new URL(request.url)
     const cursor = Number(url.searchParams.get('cursor')) || Infinity
     const limit = Number(url.searchParams.get('limit')) || 50
-    const before = mockDb.messages.filter((m) => m.id < cursor)
+    const before = messagesOf(Number(params.id)).filter((m) => m.id < cursor)
     const items = before.slice(-limit)
     return ok({ items, next_cursor: before.length > limit && items.length ? String(items[0].id) : null })
   }),
   http.get(`${API}/chat/status`, () => ok({ models: null, today_usd: 0.04, month_usd: 1.84, monthly_warn_usd: 200, over_monthly_warning: false, cache_read_ratio_7d: 0.8 })),
-  http.delete(`${API}/chat/conversations/:id`, () => {
-    mockDb.messages = []
+  http.delete(`${API}/chat/conversations/:id`, ({ params }) => {
+    const id = Number(params.id)
+    if (id === MAIN_SESSION) mockDb.messages = []
+    chatSessions.delete(id)
     return ok(null)
   }),
   http.post(`${API}/chat/messages`, async ({ request }) => {
-    const body = (await request.json()) as { text: string; mode?: string; attachment_file_ids?: number[] }
+    const body = (await request.json()) as { text: string; mode?: string; attachment_file_ids?: number[]; conversation_id?: number }
+    // Không chỉ phiên: phiên hoạt động gần nhất; phiên chưa có tên thì đặt theo câu đầu (như máy chủ).
+    const target = chatSessions.get(body.conversation_id ?? -1) ?? [...chatSessions.values()].sort((a, b) => Date.parse(sessionMeta(b).last_message_at ?? b.created_at) - Date.parse(sessionMeta(a).last_message_at ?? a.created_at))[0]
     if (body.text.toLowerCase().includes('lỗi mạng')) return fail(502, 'AI_UNAVAILABLE', 'Trợ lý đang lỗi, thử lại sau.')
     const userMessage = message('user', body.text, { attachments: body.attachment_file_ids?.length ? body.attachment_file_ids.map((id) => ({ file_id: id })) : null })
     const plan = planReply(body.text, body.mode ?? 'chat')
     const attachments = 'attachments' in plan ? (plan.attachments as ChatMessage['attachments']) : null
     const assistant = message('assistant', plan.reply, { model: plan.model, citations: plan.citations, actions: plan.actions, attachments })
-    mockDb.messages.push(userMessage, assistant)
+    const sessionId = target?.id ?? MAIN_SESSION
+    if (target && !target.title) target.title = body.text.trim().slice(0, 40) || null
+    messagesOf(sessionId).push(userMessage, assistant)
     return sse([
-      { event: 'message.created', data: { user_message: userMessage, conversation_id: 52 } },
+      { event: 'message.created', data: { user_message: userMessage, conversation_id: sessionId } },
       ...(plan.tool ? [{ event: 'tool.started', data: plan.tool, wait: 200 }, { event: 'tool.finished', data: { name: plan.tool.name, ok: true }, wait: 700 }] : []),
       ...words(plan.reply),
       ...plan.actions.map((action) => ({ event: 'action', data: action })),

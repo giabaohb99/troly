@@ -272,6 +272,64 @@ api phục vụ hai trang HTML ngắn, công khai, ngoài `/api`:
 
 Để tới V3. Hướng đã chọn: container `troly-dev` trên VPS, không có quyền Docker, không vào mạng `troly_core`, đăng nhập bằng `CLAUDE_CODE_OAUTH_TOKEN` để ở tệp riêng ngoài `/opt/troly/.env`; chỉ chạy ban đêm; deploy sau khi người dùng bấm duyệt. Danh tính máy chạy và các đường `/dev/*` thiết kế lại lúc đó.
 
+### 3.15 Dịch vụ `zalo-bridge` (QĐ-52)
+
+Dịch vụ Node 24 riêng (thư mục `zalo-bridge/`), dùng `zca-js` **ghim bản 2.4.0** (thư viện không chính thức, mô phỏng Zalo Web trên tài khoản chính; người dùng chấp nhận rủi ro khóa tài khoản). Trong compose troly, **sau profile `zalo`** (deploy không dựng, không chạy; bật tay bằng `docker compose --profile zalo up -d --build zalo-bridge`, kèm `FEATURE_ZALO_BRIDGE=true` để api nhận `/internal/zalo/events`): nối `troly_core` (api gọi `http://zalo-bridge:3000`) và `troly_edge` (ra Zalo); **không mở cổng**; volume `troly-zalo-data:/data` giữ phiên đã mã hóa và hàng đợi sự kiện; trần 256 MB, 0,25 vCPU (lúc chờ dùng khoảng 28 MB). Compose chỉ đưa vào bridge các biến `ZALO_*` và `R2_ENDPOINT`, không đưa cả `.env`. Bài kiểm: `npm test` trong `zalo-bridge/` (zca-js giả), workflow `zalo-bridge-test.yml`. Mỗi tài khoản Zalo chỉ một listener chạy được: mở Zalo Web ở trình duyệt thì listener bị đá ra (bridge báo `kicked`, thử nối lại sau 10 phút).
+
+**Biến** (trong `/opt/troly/.env`; lần deploy đầu sau QĐ-52 `scripts/vps-deploy.sh` tự sinh hai khóa): `ZALO_SESSION_KEY` (32 byte base64, mã hóa AES-256-GCM tệp phiên `/data/session.enc`), `ZALO_BRIDGE_TOKEN` (khóa nội bộ hai chiều), `ZALO_BRIDGE_URL` (api dùng, mặc định `http://zalo-bridge:3000`), `ZALO_EVENTS_URL` (mặc định `http://api:8000/api/v1/internal/zalo/events`), `ZALO_SEND_PER_MINUTE` (mặc định 20), `ZALO_ATTACHMENT_HOSTS` (máy chủ được tải tệp đính kèm khi gửi, mặc định endpoint R2).
+
+**Hợp đồng HTTP** (mọi đường, trừ `/health`, cần `Authorization: Bearer <ZALO_BRIDGE_TOKEN>`; trả phong bì `{success, message, data}`, lỗi có `data.code`):
+
+| Đường | Việc |
+|---|---|
+| `GET /health` | `{status, login_state, listener}`; không cần khóa, chỉ trong mạng nội bộ |
+| `GET /login/status` | `{state, qr_png_base64?, qr_expires_at?, account?: {uid, name}}`; `state`: `logged_out`, `waiting_scan`, `scanned`, `logged_in`, `expired`, `kicked`, `error` |
+| `POST /login/qr` | Bắt đầu đăng nhập QR, chờ có mã rồi trả `{state: waiting_scan, qr_png_base64, qr_expires_at}`; đã đăng nhập thì 409 `ALREADY_LOGGED_IN`. app hiện QR, người dùng quét bằng Zalo trên điện thoại, app hỏi `/login/status` mỗi 2 giây |
+| `POST /logout` | Dừng listener, xóa phiên đã lưu; `state` về `logged_out` |
+| `GET /conversations` | Bạn bè và nhóm: `items: [{thread_id, thread_type: user|group, name, avatar}]`. Zalo không có API hội thoại gần đây; danh sách gần đây do api tự dựng từ sự kiện |
+| `GET /conversations/{thread_id}/messages?thread_type=group&count=50` | Lịch sử nhóm từ máy chủ Zalo (chỉ nhóm). Hội thoại một-một không có API lịch sử: api giữ lịch sử từ sự kiện; `POST /sync/old-messages {thread_type}` xin Zalo gửi lại tin cũ, tin về qua đường sự kiện như tin mới |
+| `POST /messages` | `{thread_id, thread_type, text?, files?: [{url, name}], sticker?: {id, cate_id, type}, client_ref}` → `{msg_ids, cli_msg_ids, client_ref}`. zca-js không trả `cliMsgId` của tin gửi đi nên `cli_msg_ids` rỗng; api ghép bằng `msg_ids`, và sự kiện `message` có `is_self = true` của chính tin đó mang lại `client_ref` (tin mình gửi từ máy khác thì không có). `files[].url` phải là URL ký sẵn của R2; ảnh, video, tệp gửi dạng tệp đính kèm, tối đa 5 tệp. Trả lời có trích dẫn chưa làm. Giới hạn: `ZALO_SEND_PER_MINUTE` tin mỗi phút, giãn ngẫu nhiên 2 tới 5 giây, hàng chờ gửi tối đa 5; không gửi hàng loạt, không kết bạn, không vào nhóm |
+| `POST /media/fetch` | `{url, name?}` của ảnh, video, tệp trong tin Zalo → nguyên byte, kèm `Content-Type`, `X-File-Name` và `Content-Disposition` (tên mã URL). Chỉ nhận máy chủ của Zalo (`*.zdn.vn`, `*.zadn.vn`, `*.zalo.me`, `*.zaloapp.com`), tối đa 50 MB. Link CDN của Zalo hết hạn sau một thời gian Zalo không công bố (thường vài giờ), nên api tải ngay khi nhận sự kiện |
+| `GET /users/{uid}`, `GET /groups/{group_id}` | `{uid, name, avatar}`; `{group_id, name, avatar, member_count}` |
+
+**Sự kiện bridge đẩy sang api**: `POST ZALO_EVENTS_URL` cùng khóa, thân `{events: [...]}`, mỗi lô tối đa 100 sự kiện và dưới 1 MB, trong lô xếp theo `ts` tăng dần. api trả lời như `/device/events`:
+
+| api trả | bridge làm |
+|---|---|
+| 200 `{accepted, rejected: [{event_id, reason}]}` | Xong cả lô; sự kiện bị từ chối thì bỏ, ghi lý do vào nhật ký, không thử lại |
+| 5xx, 429, mất kết nối | Thử lại cả lô, giãn từ 5 giây tới 5 phút; hàng đợi giữ trên `/data`, tối đa 5.000 sự kiện |
+| 401 | Sai khóa: dừng gửi tới khi khởi động lại, ghi lỗi, giữ hàng đợi |
+| 4xx khác | Lô hỏng: bỏ lô, ghi lỗi |
+
+api bỏ trùng theo `event_id`, nên giữa các lần thử lại không cần thứ tự tuyệt đối. Sự kiện `message`:
+
+```json
+{"event_id": "msg:<msgId>", "kind": "message", "ts": "2026-11-25T03:00:00Z",
+ "thread_id": "...", "thread_type": "user|group", "msg_id": "...", "cli_msg_id": "...",
+ "thread_name": "Tên bạn hoặc tên nhóm|null", "from_uid": "...", "from_name": "...", "is_self": false,
+ "client_ref": "chỉ có khi là tin api gửi qua bridge",
+ "content": {"type": "text|image|video|sticker|file|link|voice|location|other", "text": "...",
+             "media": {"url": "...", "thumb": "...", "name": "...", "size": 0},
+             "link": {"url": "...", "title": "..."}, "sticker": {"id": 0, "cate_id": 0}},
+ "quote": {"msg_id": "...", "text": "..."}, "mentions": [{"uid": "...", "pos": 0, "len": 0}]}
+```
+
+`kind` khác, đều mang `thread_id`, `thread_type`: `undo` (`msg_id`, `undo_msg_id`), `seen` (`msg_ids`, `seen_uids` với nhóm), `delivered` (`msg_ids`), `reaction` (`msg_id`, `icon`), `session` (`state`: `logged_in`, `kicked`, `logged_out`, `error`; không có hội thoại). `event_id` ổn định khi gửi lại: `msg:<msgId>`, `undo:<msgId>`, `seen:<thread>:<msgId>:<uids>`, `delivered:<thread>:<msgId>`, `reaction:<msgId>`, `session:<state>:<ts>`. `thread_name` lấy từ tên người gửi (tin một-một đến) hoặc tra Zalo rồi đệm 6 giờ; tra không được thì `null`. Nhật ký của bridge không ghi nội dung tin, chỉ loại sự kiện, mã hội thoại băm, độ dài.
+
+**Mã lỗi** (`data.code`) api cần xử lý:
+
+| HTTP | `code` | Khi nào |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Sai `ZALO_BRIDGE_TOKEN` |
+| 409 | `NOT_LOGGED_IN` | Chưa đăng nhập hoặc đang bị đá ra (`kicked`) |
+| 409 | `ALREADY_LOGGED_IN` | Gọi `/login/qr` khi đã đăng nhập |
+| 429 | `RATE_LIMITED` | Quá hàng chờ gửi; kèm `data.retry_after` (giây) và đầu `Retry-After` |
+| 404 | `THREAD_NOT_FOUND` | Không thấy người hoặc nhóm |
+| 400 | `ATTACHMENT_HOST_NOT_ALLOWED` | URL tệp đính kèm hoặc media ngoài máy chủ được phép |
+| 400 | `VALIDATION_ERROR`, `NOT_SUPPORTED` | Thân sai; xin lịch sử hội thoại một-một |
+| 413 | `TOO_LARGE` | Tệp quá 50 MB |
+| 502 | `ZALO_ERROR`, `DOWNLOAD_FAILED` | Zalo trả lỗi; không tải được tệp |
+
 ## 4. Dữ liệu cần
 
 | Bảng | Việc |

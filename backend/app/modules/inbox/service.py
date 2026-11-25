@@ -148,6 +148,13 @@ def private_keys(session: Session, user_id: int) -> set[str]:
 # ---------- Nhận thông báo (worker/jobs/device_events.py gọi) ----------
 
 
+def _bridge_has(session: Session, user_id: int, body: str, raw_at, posted_at: datetime) -> bool:
+    from app.modules.inbox import zalo
+
+    at, _ = _message_time(raw_at, posted_at)
+    return zalo.is_bridge_duplicate(session, user_id, body, at)
+
+
 def ingest_notification(
     session: Session,
     user: UserContext,
@@ -189,6 +196,8 @@ def ingest_notification(
         body = body or (HIDDEN_TEXT if hidden else "")
         if not body:
             continue
+        if app == "zalo" and _bridge_has(session, user.user_id, body, item.get("at"), posted_at):
+            continue  # QĐ-52: tin đã về qua zalo-bridge, thông báo máy chỉ là dự phòng
         sender_key = f"{app}:{fold(sender) or '?'}"
         key = conversation_key(app, sender_key, conv_title, is_group)
         at, exact = _message_time(item.get("at"), posted_at)
@@ -261,6 +270,15 @@ def serialize_message(m: InboxMessage) -> dict:
         "status": m.status,
         "importance": m.importance,
         "importance_reason": m.importance_reason,
+        # QĐ-52 (tin Zalo qua zalo-bridge): tin mình gửi, tệp đã tải về (mở bằng GET /files/{file_id}),
+        # thu hồi, trích dẫn. Không trả link CDN của Zalo.
+        "is_self": bool(m.is_self),
+        "media": [
+            {k: x.get(k) for k in ("type", "name", "size", "mime", "status", "file_id")}
+            for x in (m.media or [])
+        ],
+        "recalled_at": m.recalled_at,
+        "quote": m.quote,
     }
 
 

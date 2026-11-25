@@ -153,11 +153,14 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | POST | `/memory/profile/revisions/{version}/restore` | U | `version` hiện tại | Hồ sơ sau khôi phục (Hoàn tác của `memory_changed`) | V1.0 |
 | GET, POST | `/memory/notes` | U | `q`, `tag`, `cursor` / `title`, `body`, `tags` | `items: Note[]` / `Note` | V1.0 |
 | GET, PATCH, DELETE | `/memory/notes/{id}` | U | | `Note` / `null` (R) | V1.0 |
-| GET | `/chat/today` | U | | `{conversation, messages (50 tin), next_cursor, pending_actions}` | V1.0 |
-| GET | `/chat/conversations` | U | `cursor` | `items: [{id, local_date, summary, message_count}]` | V1.0 |
+| GET | `/chat/today` | U | | `{conversation, messages (50 tin), next_cursor, pending_actions}`; từ QĐ-51 là phiên hoạt động gần nhất (chưa có thì tạo), giữ cho bản app cũ | V1.0 |
+| GET | `/chat/conversations` | U | `q`, `cursor`, `limit` | `{items: Conversation[], next_cursor}`; ghim trước, rồi `last_message_at` giảm dần; `q` tìm theo tiêu đề (không dấu) và nội dung tin hiện (tìm toàn văn); con trỏ `<0|1>|<giờ>|<id>` | QĐ-51 |
+| GET | `/chat/conversations/{id}` | U | | cùng dạng `/chat/today` cho một phiên: `{conversation, messages (50 tin), next_cursor, pending_actions}`; không có thì 404 | QĐ-51 |
+| POST | `/chat/conversations` | U | `title` (tùy chọn) | `Conversation` (201); phiên gần nhất còn trống, chưa tên thì dùng lại | QĐ-51 |
+| PATCH | `/chat/conversations/{id}` | U | `title`, `pinned` | `Conversation`; đổi tên thì `title_source = user` | QĐ-51 |
 | GET | `/chat/conversations/{id}/messages` | U | `cursor` | `items: Message[]` | V1.0 |
 | DELETE | `/chat/conversations/{id}` | U | | `null` (xóa phiên, không hoàn tác) | V1.0 |
-| POST | `/chat/messages` | U | `client_message_id`, `text`, `attachment_file_ids`, `mode` (`chat`, `think`, `research`, `summary`; mặc định `chat`) | **SSE** hoặc JSON (mục 5.2) | V1.0 |
+| POST | `/chat/messages` | U | `client_message_id`, `text`, `attachment_file_ids`, `mode` (`chat`, `think`, `research`, `summary`; mặc định `chat`), `conversation_id` (QĐ-51; bỏ trống thì phiên hoạt động gần nhất, chưa có thì tạo; phiên không có thì 404) | **SSE** hoặc JSON (mục 5.2) | V1.0 |
 | GET | `/chat/status` | U | | `{models, today_usd, month_usd, monthly_warn_usd, over_monthly_warning, cache_read_ratio_7d}` | V1.0 |
 | GET | `/chat/actions` | U | `status` | `items: PendingAction[]` | V1.0 |
 | POST | `/chat/actions/{id}/approve`, `/chat/actions/{id}/reject` | U | | `{action, result_text}` | V1.0 |
@@ -225,6 +228,13 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | POST | `/trips/{id}/to-calendar` | U | | `{event_ids}` | V1.6 |
 | GET | `/reports/dashboard` | U | `date` | `{date, cards: {expense, calendar, tasks, inbox, ai, devices, health}}`; mỗi thẻ `{status, data, message}` lỗi riêng được | V1.7 |
 | GET | `/reports/ai-cost` | U | `month` | `{total_usd, today_usd, monthly_warn_usd, by_day[], by_model[], by_purpose[], cache_read_ratio}` | V1.7 |
+| GET | `/reports/gym` | U | `period` (`week` 7 ngày, `month` 30 ngày tới hôm nay; mặc định `week`) hoặc `from`, `to` (tối đa 92 ngày) | thẻ `{status (ok, disabled, error), message, data}`, luôn 200: `data = {period, from, to, sessions_done (ngày có tập), sessions_complete (buổi đủ hiệp), sessions_planned, lift_highlights[{exercise, from_kg, to_kg, delta_kg}] (tối đa 3 bài tăng tạ), weight {first_kg, last_kg, first_date, last_date} hoặc null, protein {avg_g, target_g, days_logged} hoặc null, today {date, title, rest, exercises, done}, tomorrow {date, title, rest, exercises}, app_url}`; chỉ đọc app gym, không ghi | QĐ-54 |
+| POST | `/internal/zalo/events` | `Bearer ZALO_BRIDGE_TOKEN` | `{events: [...]}` tối đa 100 (50 mục 3.15) | `{accepted, rejected: [{event_id, reason}]}`; sai khóa 401 | QĐ-52 |
+| GET | `/zalo/status` | U | | `{state (logged_out, waiting_scan, scanned, logged_in, expired, kicked, error, unavailable), account {uid, name}, qr_png_base64, qr_expires_at, last_event_at}`; app hỏi mỗi 2 giây khi đang chờ quét | QĐ-52 |
+| POST | `/zalo/login`, `/zalo/logout` | U | | `{state, qr_png_base64, qr_expires_at}` / `{state}`; đã đăng nhập thì 409 | QĐ-52 |
+| GET | `/zalo/contacts` | U | | `items: [{thread_id, thread_type, name, avatar, conversation_key}]` (bạn bè, nhóm để mở hội thoại mới) | QĐ-52 |
+| POST | `/zalo/conversations/{conversation_key}/sync` | U | | nhóm: lấy 50 tin cũ từ Zalo `{mode: group_history, saved}`; một-một: xin Zalo gửi lại tin cũ `{mode: requested}` (tin về qua sự kiện) | QĐ-52 |
+| POST | `/zalo/messages` | U | `conversation_key` (hoặc `thread_id`, `thread_type`), `text`, `file_ids` (tối đa 5), `client_ref` | `{msg_ids, client_ref, conversation_key}`; người dùng tự gõ nên gửi thẳng; tin hiện trong hộp tin khi bridge báo lại; lỗi `NOT_LOGGED_IN` 409, `RATE_LIMITED` 429, `THREAD_NOT_FOUND` 404, `ZALO_BRIDGE_UNAVAILABLE` 503 | QĐ-52 |
 | GET, POST | `/reports/exports` | U | `kind` (`expense_sheet`, `expense_docx`, `report_docx`), `month` hoặc `from`, `to` | `Export` (202 khi tạo) | V1.8 |
 | GET | `/reports/exports/{id}` | U | | `Export` | V1.8 |
 | POST | `/files/upload-url` | U | `original_name`, `mime`, `size_bytes`, `purpose`, `sha256` | `{file_id, upload_url, upload_headers, expires_at}` | V1.0 |
@@ -273,9 +283,10 @@ event: message.completed
 data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input_tokens":3120,"output_tokens":24,"cache_read_tokens":2900,"cost_usd":0.0003}}
 ```
 
-- `Message`: `{id, role, text, model, citations, attachments, actions, status, created_at}`; chỉ trả tin `hidden = false`. `citations` là `[{title, url}]`, tối đa 5, chỉ có khi tìm web.
-- Ping `: ping` mỗi 15 giây; tiêu đề `Cache-Control: no-cache`, `X-Accel-Buffering: no`. Mất kết nối thì máy chủ vẫn chạy hết lượt và lưu; app gọi lại `/chat/today`.
-- **Nối phiên**: tin mới cách tin cuối dưới 3 giờ thì lịch sử gửi Claude mang thêm 10 tin cuối của phiên trước, dù đã qua 04:00 (QĐ-27 mục 12, `11-co-so-du-lieu.md` mục 3.7).
+- `Conversation` (QĐ-51): `{id, title, title_source (auto, user), pinned, started_at, last_message_at, message_count, last_preview (120 ký tự đầu tin hiện cuối), created_at, local_date, summary}`. Phiên chưa tên thì sau lượt trả lời đầu (thử tới lượt thứ 3) máy chủ gọi `app.ai.session_title.suggest_title` ở luồng nền, chỉ ghi khi phiên vẫn chưa tên và người dùng chưa đặt.
+- `Message`: `{id, conversation_id, role, text, model, citations, attachments, actions, status, created_at}`; chỉ trả tin `hidden = false`. `citations` là `[{title, url}]`, tối đa 5, chỉ có khi tìm web.
+- Ping `: ping` mỗi 15 giây; tiêu đề `Cache-Control: no-cache`, `X-Accel-Buffering: no`. Mất kết nối thì máy chủ vẫn chạy hết lượt và lưu; app gọi lại `/chat/conversations/{id}/messages` (bản cũ gọi `/chat/today`).
+- **Phiên** (QĐ-51): không tách 04:00, không nối phiên 3 giờ; mở lại phiên cũ thì lịch sử gửi Claude là tóm tắt cộng tin chưa tóm của chính phiên đó (`11-co-so-du-lieu.md` mục 3.7).
 - **Tóm tắt hộp tin** không có endpoint riêng: nút *Tóm tắt* gửi câu chat dựng sẵn với `mode = summary`; model gọi công cụ `summarize_inbox`.
 
 **Duyệt** chỉ cho gửi ra ngoài và xóa hàng loạt hoặc xóa cả chuyến (QĐ-27 mục 2). `PendingAction`: `{id, tool_name, title, summary, details, danger, status, expires_at, created_at}`. `approve` kiểm hạn, trạng thái, `payload_hash`, chạy hàm `execute` của công cụ (không qua Claude), nối tin `system` ẩn báo kết quả. Câu chat *ok* không duyệt được.
@@ -296,6 +307,7 @@ data: {"assistant_message":{"id":884,"model":"claude-haiku-5-5"},"usage":{"input
 
 - `Expense`: `{id, amount_vnd, kind, account, account_last4, to_account, to_account_last4, category, merchant, place, note, spent_at, source, parser, parse_confidence, needs_review}`. Không có số dư (QĐ-22). `total_expense_vnd` không tính `transfer`.
 - `Conversation`: `{conversation_key, app, title, is_group, last_sender, last_text, last_posted_at, unread_count, importance, is_private, account_email}`; `InboxMessage` cũng có `account_email` (Gmail, QĐ-50).
+- `InboxMessage` có thêm (QĐ-52) `is_self`, `media: [{type, name, size, mime, status, file_id}]` (mở bằng `GET /files/{file_id}`), `recalled_at`, `quote`. Bot gửi Zalo thay chỉ qua thẻ `send_zalo_message` (`zalo.service.request_send`). Route `/zalo/*` và `/internal/zalo/events` chỉ có khi `FEATURE_ZALO_BRIDGE`; `GET /system/status` có `features: {gym, connectors, zalo_bridge}`.
 - Riêng tư: `POST /inbox/rules` với `kind = private_conversation`, `value = <conversation_key>`. Tin riêng tư hiện trong app và `GET /search`, không bao giờ ra công cụ AI (`search_everything`, công cụ hộp tin).
 - Danh sách hộp tin, tin trong cuộc trò chuyện phân trang bằng `cursor`, trả `next_cursor`.
 - Gửi Gmail chỉ qua thẻ duyệt (`tool_name = send_gmail_draft`); trước khi gửi so nội dung với `body_hash`, khác thì `ACTION_PAYLOAD_CHANGED`.

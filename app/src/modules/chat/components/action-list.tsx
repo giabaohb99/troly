@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Brain, ChevronRight, CircleCheck, ExternalLink, FileText, Mail, Map, MapPin, Navigation, Sheet, Undo2 } from 'lucide-react'
+import { Brain, ChevronRight, CircleCheck, Plug, ExternalLink, FileText, Mail, Map, MapPin, Navigation, Sheet, Undo2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
@@ -14,6 +14,8 @@ import { screenToRoute } from '@/shared/utils/screen-route'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { Button } from '@/shared/ui/button'
 import { FileCard } from '@/modules/chat/components/file-card'
+import { useConnectFlow } from '@/shared/hooks/use-connect-flow'
+import { useFeatures } from '@/shared/hooks/use-features'
 
 interface ActionListProps {
   actions: ChatAction[]
@@ -38,6 +40,26 @@ async function openMap(open: () => Promise<unknown>) {
   } catch {
     toast.error('Không mở được bản đồ.')
   }
+}
+
+// Nút Kết nối trợ lý gửi (QĐ-56): chạy đúng luồng của Cài đặt → Kết nối.
+function ConnectButton({ action }: { action: Extract<ChatAction, { type: 'connect' }> }) {
+  const navigate = useNavigate()
+  const connect = useConnectFlow()
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={connect.isPending}
+      onClick={() => {
+        if (action.connector_id) connect.mutate(action.connector_id)
+        else navigate('/cai-dat/ket-noi', { state: { add: { name: action.name ?? undefined, url: action.url ?? undefined } } })
+      }}
+    >
+      <Plug className="size-4" />
+      {action.label || 'Kết nối'}
+    </Button>
+  )
 }
 
 function UndoLine({ action }: { action: Extract<ChatAction, { type: 'undo' }> }) {
@@ -115,6 +137,7 @@ function MemoryLine({ action }: { action: Extract<ChatAction, { type: 'memory_ch
 
 // Hiện hành động trợ lý trả về (31 mục 3.3). Kiểu lạ bỏ qua, không làm vỡ màn.
 export function ActionList({ actions, pendingActions, onChoice, disabled, hiddenFileIds }: ActionListProps) {
+  const features = useFeatures()
   const navigate = useNavigate()
   const visible = actions.filter((action) => KNOWN_ACTION_TYPES.has(action.type) && !(action.type === 'file' && hiddenFileIds?.includes(action.file_id)))
   if (visible.length === 0) return null
@@ -136,6 +159,8 @@ export function ActionList({ actions, pendingActions, onChoice, disabled, hidden
                 <ChevronRight className="size-4" />
               </button>
             )
+          case 'connect':
+            return features.connectors ? <ConnectButton key={action.id} action={action} /> : null
           case 'open_link': {
             const Icon = LINK_ICONS[action.kind] ?? ExternalLink
             return (

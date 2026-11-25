@@ -15,13 +15,39 @@ ENABLED_MODULES = [
     "task",
     "trip",
     "booking",
+    "gym",
+    "zalo",
     "search",
     "report",
     "notice",
     "system",
 ]
 # Tích hợp ngoài ở app/integrations/<tên>/; không import modules, module cài store cho nó (10 mục 3.4).
-ENABLED_INTEGRATIONS = ["google"]
+ENABLED_INTEGRATIONS = ["google", "connectors"]
+
+# Tính năng dở sau cờ (luật điều phối 25/11): cờ tắt thì phần `router`, `tools`, `approvals`, `jobs` không nạp;
+# `models` luôn nạp để khớp migration.
+FEATURE_FLAGS = {
+    "gym": "feature_gym",
+    "connectors": "feature_connectors",
+    "zalo": "feature_zalo_bridge",
+}
+
+
+def feature_enabled(name: str) -> bool:
+    """Module hoặc tích hợp `name` có bật không (không có cờ thì luôn bật)."""
+    from app.core.config import get_settings
+
+    flag = FEATURE_FLAGS.get(name)
+    return flag is None or bool(getattr(get_settings(), flag, False))
+
+
+def features() -> dict[str, bool]:
+    """Cờ cho app (`GET /system/status`): gym, connectors, zalo_bridge."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    return {"gym": s.feature_gym, "connectors": s.feature_connectors, "zalo_bridge": s.feature_zalo_bridge}
 
 
 def _import_if_exists(name: str):
@@ -43,8 +69,10 @@ def import_all_models() -> None:
 
 
 def iter_module_parts(part: str):
-    """Trả (tên module, đối tượng) của `router`, `tools`, `jobs` cho các module có tệp đó."""
+    """Trả (tên module, đối tượng) của `router`, `tools`, `jobs` cho các module có tệp đó (bỏ module tắt cờ)."""
     for module in ENABLED_MODULES:
+        if part != "models" and not feature_enabled(module):
+            continue
         loaded = _import_if_exists(f"app.modules.{module}.{part}")
         if loaded is not None:
             yield module, loaded
@@ -52,6 +80,8 @@ def iter_module_parts(part: str):
 
 def iter_integration_parts(part: str):
     for integration in ENABLED_INTEGRATIONS:
+        if part != "models" and not feature_enabled(integration):
+            continue
         loaded = _import_if_exists(f"app.integrations.{integration}.{part}")
         if loaded is not None:
             yield integration, loaded

@@ -1,0 +1,31 @@
+# Bài kiểm của zalo-bridge với zca-js giả (QĐ-52). Không cần secret.
+name: zalo-bridge-test
+
+on:
+  push:
+    paths:
+      - "zalo-bridge/**"
+      - ".github/workflows/zalo-bridge-test.yml"
+  pull_request:
+    paths:
+      - "zalo-bridge/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: zalo-bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: zalo-bridge/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Dựng ảnh
+        run: docker build -t troly-zalo-bridge:ci .

@@ -12,6 +12,9 @@ os.environ["DATABASE_URL"] = url
 os.environ.setdefault("JWT_SECRET", "test-secret-test-secret-test-secret-0123456789")
 os.environ.setdefault("TOKEN_ENCRYPTION_KEYS", "v1:" + "A" * 43 + "=")
 os.environ.setdefault("ENV", "test")
+# Bài kiểm chạy cả tính năng dở (cờ mặc định tắt trên máy thật, luật điều phối 25/11).
+for _flag in ("FEATURE_GYM", "FEATURE_CONNECTORS", "FEATURE_ZALO_BRIDGE"):
+    os.environ.setdefault(_flag, "true")
 
 
 @pytest.fixture(scope="session")

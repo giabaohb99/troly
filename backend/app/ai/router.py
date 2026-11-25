@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+from dataclasses import replace
 
 from app.ai.schemas import TurnInput, TurnPlan
 from app.ai.settings import AiSettings, get_ai_settings
@@ -16,6 +17,46 @@ _TRIP_PLAN = re.compile(
     r"(?<![a-z])(tao|lap|len|xep|soan|dung|goi y|thiet ke|plan)(?![a-z]).{0,40}"
     r"(lich trinh|ke hoach (di|du lich|chuyen)|chuyen di)(?![a-z])"
 )
+
+# Câu hỏi việc ở công ty (QĐ-53): gắn mọi kết nối đang hoạt động. Viết không dấu vì so trên chữ đã normalize.
+_WORK = re.compile(
+    r"(?<![a-z])("
+    r"cong viec|o cong ty|tren cong ty|du an|phieu|mua hang|de nghi mua|don mua|nghi phep|ngay phep|"
+    r"cong no|nhan vien|nha cung cap|hop dong|phe duyet|cho duyet|ca lam|lich lam|nang luc nhom"
+    r")(?![a-z])"
+)
+# Từ chung trong tên kết nối, không dùng để nhận ra kết nối.
+_NAME_STOP = {
+    "the", "and", "cua", "toi", "test", "thu", "nghiem", "dev", "mcp", "server", "app", "cong", "cty", "company",
+}  # fmt: skip
+
+
+def is_work_question(text: str) -> bool:
+    """Câu hỏi việc ở công ty: *việc của anh ở công ty*, *phiếu mua hàng chờ duyệt*, *ngày phép còn mấy*."""
+    return bool(_WORK.search(normalize(text)))
+
+
+def _name_words(name: str) -> set[str]:
+    return {w for w in re.split(r"[^a-z0-9]+", normalize(name)) if len(w) >= 3 and w not in _NAME_STOP}
+
+
+def pick_connectors(
+    text: str, connectors: list[tuple[int, str]], use_connectors: bool | list[int] | None
+) -> tuple[tuple[int, str], ...]:
+    """Kết nối gắn vào lượt (QĐ-56): nút Kết nối bật (True là tất cả, danh sách là các id đó); không bật thì
+    kết nối có tên nhắc trong câu (*ERP*, *DEGO*), hoặc tất cả khi câu hỏi việc ở công ty."""
+    if not connectors:
+        return ()
+    if isinstance(use_connectors, list):
+        wanted = set(use_connectors)
+        return tuple(c for c in connectors if c[0] in wanted)
+    if use_connectors:
+        return tuple(connectors)
+    words = set(re.split(r"[^a-z0-9]+", normalize(text)))
+    named = tuple(c for c in connectors if _name_words(c[1]) & words)
+    if named:
+        return named
+    return tuple(connectors) if is_work_question(text) else ()
 
 
 def normalize(text: str) -> str:
@@ -55,7 +96,21 @@ def detect_mode(turn: TurnInput) -> str:
     return "chat"
 
 
-def plan_turn(turn: TurnInput, settings: AiSettings, previous_task: str | None = None) -> TurnPlan:
+def plan_turn(
+    turn: TurnInput,
+    settings: AiSettings,
+    previous_task: str | None = None,
+    connectors: tuple[tuple[int, str], ...] = (),
+) -> TurnPlan:
+    plan = _plan_turn(turn, settings, previous_task)
+    if not connectors:
+        return plan
+    # Tra hệ thống ngoài nhiều bước (tìm công cụ, gọi vài công cụ): Haiku chat nâng lên effort medium.
+    effort = "medium" if plan.effort == "low" else plan.effort
+    return replace(plan, connectors=tuple(connectors), effort=effort)
+
+
+def _plan_turn(turn: TurnInput, settings: AiSettings, previous_task: str | None = None) -> TurnPlan:
     mode = detect_mode(turn)
     use_opus = _has(normalize(turn.text), _OPUS)
     trip_plan = mode == "chat" and (
@@ -104,7 +159,12 @@ def choose_turn(
     has_attachments: bool = False,
     settings: AiSettings | None = None,
     previous_task: str | None = None,
+    use_connectors: bool | list[int] | None = None,
+    connectors: list[tuple[int, str]] | None = None,
 ) -> TurnPlan:
     """Điểm vào cho chat.service. `previous_task` là việc của lượt ngay trước (prompt.turn_task_of).
+    `connectors`: (id, tên) kết nối MCP đang hoạt động (`ai.mcp.active_connectors`, rỗng khi cờ
+    FEATURE_CONNECTORS tắt); `use_connectors`: nút Kết nối trên app (QĐ-56), xem `pick_connectors`.
     `has_attachments` để dành cho luật tóm tắt tệp dài (hiện chưa đổi model)."""
-    return plan_turn(TurnInput(text, mode), settings or get_ai_settings(), previous_task)
+    picked = pick_connectors(text, list(connectors or []), use_connectors)
+    return plan_turn(TurnInput(text, mode), settings or get_ai_settings(), previous_task, picked)

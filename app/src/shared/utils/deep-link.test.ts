@@ -10,6 +10,9 @@ describe('deepLinkToRoute', () => {
     ['lich/su-kien/9', '/lich/su-kien/9'],
     ['cai-dat/google?ket-qua=ok', '/cai-dat/google?ket-qua=ok'],
     ['chi-tieu?sua=5', '/chi-tieu?sua=5'],
+    ['settings/connectors?ok=1&id=3', '/cai-dat/ket-noi?ok=1&id=3'],
+    ['settings/connectors', '/cai-dat/ket-noi'],
+    ['settings/dego?ok=1', '/cai-dat/ket-noi?ok=1'],
   ])('%s', (path, route) => {
     expect(deepLinkToRoute(path)).toBe(route)
   })

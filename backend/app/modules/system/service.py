@@ -12,6 +12,7 @@ from app.core import clock, scheduler
 from app.core.config import get_settings
 from app.core.context import UserContext
 from app.core.errors import NotFoundError
+from app.registry import features
 
 
 def ai_cost(session: Session, user: UserContext) -> dict:
@@ -122,6 +123,8 @@ def system_status(session: Session, user: UserContext) -> dict:
         ),
         "silent_devices": silent,
         "client_errors_24h": client_errors,
+        # Cờ tính năng dở: app ẩn mục khi tắt (gym, connectors, zalo_bridge).
+        "features": features(),
     }
 
 

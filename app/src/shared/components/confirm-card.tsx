@@ -53,6 +53,7 @@ export function ConfirmCard({ action, serverStatus, lookupStatus, className, onD
     setOutcome(next)
     onDecided?.(next.status)
     void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'session'] })
     void queryClient.invalidateQueries({ queryKey: ['pending-action', action.pending_action_id] })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expense.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Brain, FileText, Globe, Loader2, Mic, Paperclip, Send, Square, X } from 'lucide-react'
+import { Brain, FileText, Globe, Loader2, Mic, Paperclip, Plug, Send, Square, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
 import { ACCEPTED_FILES, uploadFile, type UploadedFile } from '@/modules/chat/api/upload-api'
 import type { ChatMode } from '@/modules/chat/types/chat'
 import { Voice } from '@/core/native/voice'
 import { useSpeechRecognition } from '@/shared/voice/use-speech-recognition'
+import { anyConnected, useConnectors } from '@/shared/api/connectors-api'
+import { useFeatures } from '@/shared/hooks/use-features'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/utils/cn'
 import { fileKindLabel, formatFileSize, isImageFile, truncateMiddle } from '@/shared/utils/open-file'
@@ -18,7 +20,7 @@ interface ComposerProps {
   draft: string
   onDraftChange: (text: string) => void
   // voice: tin nói bằng micro (màn chat đọc to câu trả lời nếu bật).
-  onSend: (input: { text: string; mode: ChatMode; fileIds: number[]; voice?: boolean }) => void
+  onSend: (input: { text: string; mode: ChatMode; fileIds: number[]; voice?: boolean; connectors?: boolean }) => void
 }
 
 interface PendingFile {
@@ -35,6 +37,26 @@ interface PendingFile {
 // Hai nút chế độ tự tắt sau khi gửi.
 export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) {
   const [mode, setMode] = useState<ChatMode>('chat')
+  // Kết nối (QĐ-56): nút chỉ hiện khi đã nối ít nhất một hệ thống; bật thì giữ tới khi tắt (lưu trên máy).
+  const features = useFeatures()
+  const connectorList = useConnectors(features.connectors)
+  const connectorsAvailable = features.connectors && anyConnected(connectorList.data)
+  const [connectorsOn, setConnectorsOn] = useState(() => {
+    try {
+      return localStorage.getItem('troly.chat.connectors') === 'on'
+    } catch {
+      return false
+    }
+  })
+  const toggleConnectors = () => {
+    const next = !connectorsOn
+    setConnectorsOn(next)
+    try {
+      localStorage.setItem('troly.chat.connectors', next ? 'on' : 'off')
+    } catch {
+      // Không lưu được thì chỉ giữ trong phiên.
+    }
+  }
   const [files, setFiles] = useState<PendingFile[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -45,11 +67,11 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
     (text: string, voice = false) => {
       const content = text.trim()
       if ((!content && files.length === 0) || busy || uploading || content.length > MAX_MESSAGE_CHARS) return
-      onSend({ text: content, mode, fileIds: files.flatMap((f) => (f.uploaded ? [f.uploaded.id] : [])), voice })
+      onSend({ text: content, mode, fileIds: files.flatMap((f) => (f.uploaded ? [f.uploaded.id] : [])), voice, connectors: connectorsAvailable && connectorsOn })
       setMode('chat')
       setFiles([])
     },
-    [busy, files, mode, onSend, uploading],
+    [busy, files, mode, onSend, uploading, connectorsAvailable, connectorsOn],
   )
 
   const handleSpeechError = useCallback((message: string) => toast.error(message), [])
@@ -164,6 +186,17 @@ export function Composer({ busy, draft, onDraftChange, onSend }: ComposerProps) 
             <Globe className="size-3.5" />
             Tìm web
           </button>
+          {connectorsAvailable && (
+            <button
+              type="button"
+              aria-pressed={connectorsOn}
+              onClick={toggleConnectors}
+              className={cn('inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs', connectorsOn && 'border-primary bg-primary/15 text-primary')}
+            >
+              <Plug className="size-3.5" />
+              Kết nối
+            </button>
+          )}
           {draft.length > MAX_MESSAGE_CHARS - 200 && (
             <span className={cn('ml-auto text-xs', tooLong ? 'text-destructive' : 'text-muted-foreground')}>
               {draft.length}/{MAX_MESSAGE_CHARS}

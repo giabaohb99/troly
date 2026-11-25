@@ -1,0 +1,16 @@
+{
+  "name": "troly-zalo-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cầu nối Zalo cho troly qua zca-js (QĐ-52). Hợp đồng HTTP: docs/50-ha-tang/50-ha-tang-trien-khai.md mục 3.15.",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "image-size": "2.1.0",
+    "zca-js": "2.4.0"
+  }
+}

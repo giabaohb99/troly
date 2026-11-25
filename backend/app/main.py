@@ -82,6 +82,12 @@ def _register_tools() -> None:
         if tools:
             register_tools(tools)
             log.info("Đã đăng ký công cụ AI", extra={"tool_module": name, "count": len(tools)})
+    # Tích hợp cũng có công cụ AI (connectors, QĐ-56); iter_integration_parts đã lọc theo cờ.
+    for name, integration in iter_integration_parts("tools"):
+        tools = getattr(integration, "TOOLS", None)
+        if tools:
+            register_tools(tools)
+            log.info("Đã đăng ký công cụ AI", extra={"tool_module": name, "count": len(tools)})
 
 
 _register_tools()

@@ -20,6 +20,19 @@ class SendMessageIn(BaseModel):
     text: str = Field(default="", max_length=4000)
     attachment_file_ids: list[int] = Field(default_factory=list, max_length=4)
     mode: Literal["chat", "think", "research", "summary"] | None = None
+    # QĐ-51: phiên nhận tin; bỏ trống thì phiên hoạt động gần nhất (chưa có thì tạo).
+    conversation_id: int | None = Field(default=None, ge=1)
+    # QĐ-56: nút Kết nối; true là mọi kết nối đang hoạt động, danh sách là các connector_id đó (chỉ đọc).
+    use_connectors: bool | list[int] | None = None
+
+
+class ConversationIn(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ConversationPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    pinned: bool | None = None
 
 
 @router.post("/chat/messages")
@@ -32,7 +45,14 @@ def post_message(
     if not body.text.strip() and not body.attachment_file_ids:
         raise ValidationError(fields={"text": "Nhập nội dung hoặc đính kèm tệp."})
     prepared = service.prepare_turn(
-        session, user, body.text, body.mode, body.client_message_id, body.attachment_file_ids
+        session,
+        user,
+        body.text,
+        body.mode,
+        body.client_message_id,
+        body.attachment_file_ids,
+        body.conversation_id,
+        use_connectors=body.use_connectors,
     )
     if "text/event-stream" in request.headers.get("accept", ""):
         return StreamingResponse(
@@ -50,12 +70,43 @@ def get_today(user: UserContext = Depends(get_current_user), session: Session = 
 
 @router.get("/chat/conversations")
 def get_conversations(
-    cursor: str | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    cursor: str | None = Query(default=None, max_length=100),
     limit: int = Query(30, ge=1, le=200),
     user: UserContext = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    return ok(service.list_conversations(session, user, cursor, limit))
+    return ok(service.list_conversations(session, user, cursor, limit, q))
+
+
+@router.get("/chat/conversations/{conversation_id}")
+def get_conversation(
+    conversation_id: int,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(service.get_conversation_detail(session, user, conversation_id))
+
+
+@router.post("/chat/conversations", status_code=201)
+def create_conversation(
+    body: ConversationIn | None = None,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(service.create_conversation(session, user, body.title if body else None))
+
+
+@router.patch("/chat/conversations/{conversation_id}")
+def update_conversation(
+    conversation_id: int,
+    body: ConversationPatch,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return ok(
+        service.update_conversation(session, user, conversation_id, body.model_dump(exclude_unset=True))
+    )
 
 
 @router.get("/chat/conversations/{conversation_id}/messages")

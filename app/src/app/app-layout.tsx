@@ -30,7 +30,8 @@ export function AppLayout() {
   const moreActive = MORE_ITEMS.some((item) => pathname.startsWith(item.to))
 
   // Màn chat tự chia khung: tiêu đề và ô nhập đứng yên, chỉ danh sách tin cuộn.
-  const isChat = pathname === '/'
+  // Khung chat Zalo (QĐ-52) cũng tự chia khung như chat.
+  const isChat = pathname === '/' || /^\/zalo\/(?!moi$)[^/]+$/.test(pathname)
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">

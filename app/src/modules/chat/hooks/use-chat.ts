@@ -4,14 +4,21 @@ import { ApiError } from '@/core/api/api-error'
 import { postEventStream } from '@/core/api/sse'
 import { Alarm } from '@/core/native/alarm'
 import { isAppActive, onAppActiveChange } from '@/core/native/app-state'
-import { getChatStatus, getChatToday } from '@/modules/chat/api/chat-api'
+import { getChatStatus, getChatToday, getSession } from '@/modules/chat/api/chat-api'
 import type { ChatMessage, ChatMode, ChatToday } from '@/modules/chat/types/chat'
 import { applyTurnEvent, finishTurnWithoutCompletion, startTurn, type ChatTurn } from '@/modules/chat/utils/turn-reducer'
 import { queryKeys } from '@/shared/constants/query-keys'
 
+// Khóa cache của phiên đang mở: không chọn phiên là /chat/today (phiên hoạt động gần nhất), có thì phiên đó (QĐ-51).
+export const chatViewKey = (sessionId: number | null) => (sessionId ? queryKeys.chat.session(sessionId) : queryKeys.chat.today)
+
 // Chuyển tab rồi quay lại: dùng ngay dữ liệu đã có, không tải lại nếu vừa tải trong 1 phút (sau lượt chat vẫn tải).
+export function useChatView(sessionId: number | null) {
+  return useQuery({ queryKey: chatViewKey(sessionId), queryFn: () => (sessionId ? getSession(sessionId) : getChatToday()), staleTime: 60_000 })
+}
+
 export function useChatToday() {
-  return useQuery({ queryKey: queryKeys.chat.today, queryFn: getChatToday, staleTime: 60_000 })
+  return useChatView(null)
 }
 
 export function useChatStatus() {
@@ -22,11 +29,16 @@ export interface SendInput {
   text: string
   mode: ChatMode
   fileIds: number[]
+  // Lượt này dùng công cụ của các kết nối đã nối (QĐ-56).
+  connectors?: boolean
 }
 
-// Một lượt chat qua SSE: hiện chữ chạy dần, nhãn công cụ, hành động; xong thì ghép vào danh sách tin hôm nay.
-export function useChatTurn() {
+// Một lượt chat qua SSE: hiện chữ chạy dần, nhãn công cụ, hành động; xong thì ghép vào phiên đang mở.
+// conversationId: phiên nhận tin (QĐ-51); null là phiên hoạt động gần nhất như trước.
+export function useChatTurn(viewKey: readonly unknown[] = queryKeys.chat.today, conversationId: number | null = null) {
   const queryClient = useQueryClient()
+  const conversationRef = useRef(conversationId)
+  conversationRef.current = conversationId
   const [turn, setTurn] = useState<ChatTurn | null>(null)
   const busyRef = useRef(false)
   const lastInputRef = useRef<SendInput | null>(null)
@@ -52,7 +64,14 @@ export function useChatTurn() {
       try {
         await postEventStream(
           '/chat/messages',
-          { client_message_id: clientMessageId, text: input.text, attachment_file_ids: input.fileIds, mode: input.mode },
+          {
+            client_message_id: clientMessageId,
+            text: input.text,
+            attachment_file_ids: input.fileIds,
+            mode: input.mode,
+            ...(conversationRef.current ? { conversation_id: conversationRef.current } : {}),
+            ...(input.connectors ? { use_connectors: true } : {}),
+          },
           (event) => {
             if (event.event === 'tool.started') usedTool = true
             current = applyTurnEvent(current, event)
@@ -101,21 +120,31 @@ export function useChatTurn() {
           status: 'done',
           created_at: new Date().toISOString(),
         }
-        queryClient.setQueryData<ChatToday>(queryKeys.chat.today, (old) =>
+        queryClient.setQueryData<ChatToday>(viewKey, (old) =>
           old ? { ...old, messages: [...old.messages, userMessage, done.assistant as ChatMessage] } : old,
         )
         setTurn(null)
+        void queryClient.invalidateQueries({ queryKey: viewKey })
         void queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.chat.sessionsAll })
         void queryClient.invalidateQueries({ queryKey: queryKeys.chat.status })
+        // Máy chủ đặt tên phiên ở luồng nền sau câu trả lời đầu: hỏi lại một lần sau 5 giây để hiện tên mới.
+        if (!queryClient.getQueryData<ChatToday>(viewKey)?.conversation?.title) {
+          window.setTimeout(() => {
+            void queryClient.invalidateQueries({ queryKey: viewKey })
+            void queryClient.invalidateQueries({ queryKey: queryKeys.chat.sessionsAll })
+          }, 5_000)
+        }
         return
       }
       setTurn(current)
       // Máy chủ vẫn chạy hết lượt khi mất kết nối giữa chừng: tải lại tin hôm nay để lấy câu trả lời.
       if (current.error?.code === 'STREAM_INTERRUPTED') {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
+        await queryClient.invalidateQueries({ queryKey: viewKey })
         setTurn(null)
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- viewKey đổi theo phiên; màn chat dựng lại khi đổi phiên
     [queryClient],
   )
 

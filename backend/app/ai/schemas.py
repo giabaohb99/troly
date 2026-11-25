@@ -45,6 +45,8 @@ class TurnPlan:
     prefix_ttl: str  # "1h" | "5m"
     use_opus: bool = False
     task: str | None = None  # trip_plan: dựng chuyến từ câu mô tả, có tìm web
+    # Kết nối MCP gắn vào lượt (QĐ-56): (id, tên); rỗng là không gắn. Chọn ở router theo nút Kết nối hoặc câu hỏi.
+    connectors: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,7 @@ class TurnStore(Protocol):
         text: str | None,
         citations: list[dict] | None,
         hidden: bool,
+        contains_third_party: bool = False,  # có khối mcp_tool_result (QĐ-53)
     ) -> int: ...
 
     def save_tool_results(self, content: list[dict], contains_third_party: bool) -> int: ...

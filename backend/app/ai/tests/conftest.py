@@ -49,7 +49,9 @@ class FakeStore:
         self.pending: list[dict] = []
         self.order: list[str] = []
 
-    def save_assistant_message(self, content, ai_run_id, model, text, citations, hidden) -> int:
+    def save_assistant_message(
+        self, content, ai_run_id, model, text, citations, hidden, contains_third_party=False
+    ) -> int:
         self.assistant.append(
             {
                 "content": content,
@@ -58,6 +60,7 @@ class FakeStore:
                 "text": text,
                 "citations": citations,
                 "hidden": hidden,
+                "contains_third_party": contains_third_party,
             }
         )
         self.order.append("assistant")

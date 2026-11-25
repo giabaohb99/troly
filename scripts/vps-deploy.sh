@@ -14,6 +14,16 @@ if [ ! -f .env ]; then
   fi
 fi
 
+# .env tạo trước QĐ-52 chưa có khóa của zalo-bridge: sinh thêm, không in ra.
+add_secret() {
+  grep -qE "^$1=.+" .env && return 0
+  sed -i "/^$1=$/d" .env
+  printf '%s=%s\n' "$1" "$2" >> .env
+  echo "Đã thêm $1 vào .env"
+}
+add_secret ZALO_SESSION_KEY "$(head -c 32 /dev/urandom | base64)"
+add_secret ZALO_BRIDGE_TOKEN "$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 48)"
+
 set_tag() {
   if grep -q '^TROLY_IMAGE_TAG=' .env; then
     sed -i "s/^TROLY_IMAGE_TAG=.*/TROLY_IMAGE_TAG=$1/" .env
@@ -36,6 +46,7 @@ PREV_TAG=$(grep '^TROLY_IMAGE_TAG=' .env | cut -d= -f2 || true)
 nice -n 10 docker build --target prod \
   --build-arg GIT_SHA="$SHA" --build-arg APP_VERSION="$VERSION" \
   --label com.troly.image=1 -t "troly-backend:$SHA" backend
+# zalo-bridge nằm sau profile `zalo`, không dựng và không chạy khi deploy (bật tay: docker compose --profile zalo up -d --build zalo-bridge).
 
 # Bước 4 và 5: sao lưu trước migration, rồi migrate (chỉ khi đã có Alembic).
 if [ -f backend/alembic.ini ]; then
@@ -66,8 +77,10 @@ fi
 
 # Bước 7: ghi nhật ký, dọn ảnh cũ (giữ 3 thẻ), dọn bộ đệm build cũ hơn 3 ngày.
 echo "$(date -u +%FT%TZ) $SHA $VERSION ok" >> releases.log
-docker images troly-backend --format '{{.Tag}}' | grep -v -e latest -e dev -e "^$SHA$" \
-  | tail -n +3 | xargs -r -I{} docker rmi "troly-backend:{}" || true
+for IMG in troly-backend; do
+  docker images "$IMG" --format '{{.Tag}}' | grep -v -e latest -e dev -e "^$SHA$" \
+    | tail -n +3 | xargs -r -I{} docker rmi "$IMG:{}" || true
+done
 docker builder prune -f --filter until=72h >/dev/null || true
 df -h / | tail -1
 echo "Xong: troly-backend:$SHA"

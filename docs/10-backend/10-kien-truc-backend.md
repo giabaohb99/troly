@@ -78,6 +78,8 @@ Job một module nằm ở `modules/<x>/jobs.py`; job điều phối nhiều mod
 | `search` | `memory`, `chat`, `inbox`, `trip`, `file` (chỉ đọc) |
 | `report` | `expense`, `task`, `calendar`, `inbox`, `file`, `setting`; gọi `ai.cost` |
 | `notice` | `setting`; đọc `tab_expense`, `tab_inbox_message`, `tab_message`, `tab_file` bằng SQL cho `/device/notices` |
+| `gym` | không module nào; gọi `integrations/gym/client.py` (cửa chỉ đọc của app gym, QĐ-54), thẻ `GET /reports/gym` |
+| `zalo` | `inbox` (lưu tin qua `inbox/zalo.py`), `file`, `chat` (thẻ duyệt `send_zalo_message`); gọi `integrations/zalo_bridge/client.py` (QĐ-52, sau cờ `FEATURE_ZALO_BRIDGE`) |
 
 Việc đã duyệt: module có `approvals.py` khai `EXECUTORS = {tool_name: hàm(session, user, input)}`; `chat.decide_action` tìm qua `app.registry.approval_executor` trước, không có mới dùng `execute` của công cụ AI, nên thẻ tạo từ API và từ chat chạy cùng một hàm. Đồng bộ Google ở `integrations/google/` không import modules: `calendar`, `task` cài `CalendarStore`, `TaskStore` (khai ở `integrations/google/stores.py`) trong `google_store.py` của mình, `app.registry.register_integrations()` đăng ký lúc api và worker khởi động; module ghi sang Google qua `google.outbox.enqueue` cùng giao dịch. Sự kiện thiết bị điều phối ở `worker/jobs/device_events.py`: theo `kind` và `app_package` gọi `expense`, `inbox`, `task`, `calendar`; `device` không phụ thuộc module nào.
 
@@ -127,6 +129,9 @@ Cấu hình chỉ đọc từ biến môi trường của container (compose `en
 | | `GOOGLE_REDIRECT_URI` | từ V1.4 | `https://assistant.baohuynh.io.vn/api/v1/google/oauth/callback` |
 | | `GOOGLE_MAPS_API_KEY` | từ V1.6 | |
 | | `GOOGLE_SYNC_MIN_SECONDS` | `300` | |
+| App gym (QĐ-54) | `GYM_BASE_URL`, `GYM_API_KEY`, `GYM_USERNAME` | khi nối app gym | Khóa gửi ở header `X-Integration-Key`; thiếu một biến thì thẻ Tập luyện `disabled` (*Chưa nối app gym*). Đệm 5 phút, timeout 10 giây |
+| Cờ tính năng (luật điều phối 25/11) | `FEATURE_GYM`, `FEATURE_CONNECTORS`, `FEATURE_ZALO_BRIDGE` | `false` | Tắt thì `router`, `tools`, `approvals`, job của module hoặc tích hợp đó không đăng ký (`registry.FEATURE_FLAGS`); `models` và migration luôn nạp. App đọc `features` ở `GET /system/status`. Bài kiểm bật cả ba (`conftest.py`) |
+| Zalo (QĐ-52) | `ZALO_BRIDGE_URL` (mặc định `http://zalo-bridge:3000`), `ZALO_BRIDGE_TOKEN` | khi bật Zalo | Khóa nội bộ hai chiều với `zalo-bridge` (50 mục 3.15); trống thì api từ chối sự kiện và báo dịch vụ Zalo tắt |
 | Worker | `WORKER_POLL_SECONDS` | `30` | |
 | | `WORKER_BATCH_SIZE` | `200` | |
 | Thời hạn | `INBOX_RETENTION_DAYS`, `DEVICE_EVENT_RETENTION_DAYS`, `THIRD_PARTY_CHAT_RETENTION_DAYS` | `180` | QĐ-17 |
@@ -167,8 +172,9 @@ Vòng chạy: chờ `troly_wake` hoặc `WORKER_POLL_SECONDS`; chạy job hàng 
 | `renew_google_watch` | 03:00 hằng ngày | Gia hạn kênh còn dưới 48 giờ | `integrations/google/jobs.py` | V1.4 |
 | `pull_google_tasks_status` | mỗi vòng xét `next_sync_at` (15 phút ±25%) | Đọc ngược xong, đã xóa (QĐ-21) | `integrations/google/jobs.py` | V1.4 |
 | `sync_gmail` | 5 phút | `history.list` vào hộp tin | `integrations/google/jobs.py` (khóa 7006) | V1.8 |
+| `fetch_zalo_media` | mỗi vòng, lô 10 (khóa 7009, chỉ khi `FEATURE_ZALO_BRIDGE`) | Ảnh, video, tệp của tin Zalo về R2 qua `POST /media/fetch` của bridge (link CDN Zalo hết hạn sau vài giờ); lỗi thử 3 lần rồi `failed` | `modules/zalo/jobs.py` | QĐ-52 |
 | `sync_google_contacts` | 04:00 hằng ngày | Danh bạ | `modules/inbox/jobs.py` | V1.8 |
-| `summarize_previous_day` | 04:05 hằng ngày | Tóm tắt phiên hôm trước | `modules/chat/jobs.py` | V1.0 |
+| `summarize_idle_conversations` | mỗi giờ (khóa 7101) | Phiên ngủ quá 6 giờ hoặc có quá 80 tin chưa tóm thì tóm phần đầu, giữ nguyên đuôi (`compaction.choose_cut`) (QĐ-51, thay `summarize_previous_day`) | `modules/chat/jobs.py` | V1.0 |
 | `expire_pending_actions` | 5 phút | `pending` quá hạn thành `expired` | `modules/chat/jobs.py` | V1.0 |
 | `check_silent_devices` | mỗi giờ | Thiết bị `listener_connected` mà 24 giờ không có sự kiện: cảnh báo ở `/system/status` | `modules/device/jobs.py` | V1.2 |
 | `backup_database` | chủ nhật 02:00 | `pg_dump` lên `backups/weekly/`; giữ 5 bản cả bản `premigrate`, xóa bản không phải weekly trước, luôn còn 1 bản weekly; ghi `tab_job_run.detail` | `worker/jobs/backup.py` | V1.0 |
@@ -188,7 +194,7 @@ JSON một dòng ra stdout (`ts`, `level`, `msg`, `request_id`, `user_id`, `devi
 
 ### 3.11 Thời gian và tiền
 
-- `timestamptz` UTC; mỗi người có `timezone`. Ngày của chi tiêu, lịch, báo cáo tính từ 00:00 giờ người dùng; **phiên chat tách 04:00** (QĐ-20) qua `core.clock.chat_day`; luật nối phiên dưới 3 giờ ở `chat/service.py` (`11-co-so-du-lieu.md` mục 3.7). Giờ hiện tại qua `core.clock.now()`.
+- `timestamptz` UTC; mỗi người có `timezone`. Ngày của chi tiêu, lịch, báo cáo tính từ 00:00 giờ người dùng; phiên chat không còn tách theo ngày (QĐ-51, `11-co-so-du-lieu.md` mục 3.7); `core.clock.chat_day` chỉ còn để ghi ngày mở phiên. Giờ hiện tại qua `core.clock.now()`.
 - Tiền là số nguyên VND `bigint`; không `float`. Không lưu số dư, chỉ 4 số cuối tài khoản (QĐ-22).
 
 ### 3.12 Một người dùng

@@ -15,6 +15,7 @@ from decimal import Decimal
 from pydantic import ValidationError
 
 from app.ai import actions as act
+from app.ai import mcp
 from app.ai.client import ClaudeClient, ClaudeResult, get_client
 from app.ai.prompt import (
     build_system,
@@ -252,10 +253,15 @@ def run_turn(
     client = client or get_client()
     tz = ctx.user.timezone or "Asia/Ho_Chi_Minh"
 
+    # Lượt có kết nối MCP (QĐ-53, QĐ-56): gắn máy chủ còn dùng được; không còn cái nào thì lượt chạy như thường.
+    connector_ids = tuple(cid for cid, _ in getattr(plan, "connectors", ()) or ())
+    servers = mcp.connected_servers(ctx.session, ctx.user.user_id, connector_ids)
+    mcp_servers = mcp.build_mcp_servers(servers)
     # Bỏ khối thinking của các lượt trước: không bao giờ gửi lại khối có prefix đã đổi (lỗi 400).
     messages = strip_thinking_before_turn(normalize_history(list(history)))
+    messages = mcp.strip_mcp_blocks(messages, {s.name for s in servers})
     system = build_system(system_parts, plan.prefix_ttl, tz)
-    tools = build_tools(get_tool_definitions(), plan)
+    tools = build_tools(get_tool_definitions(), plan, mcp.build_toolsets(servers))
     totals = _Totals()
     actions: list[dict] = []
     sources: list[dict] = []
@@ -282,6 +288,8 @@ def run_turn(
         }
         if tools:
             params["tools"] = tools
+        if mcp_servers:
+            params["mcp_servers"] = mcp_servers
         try:
             res = yield from _call(client, params, plan, ctx)
         except AiRequestError as exc:
@@ -298,6 +306,10 @@ def run_turn(
         model_used = res.model
         content = res.content
         tool_uses = [b for b in content if b.get("type") == "tool_use"]
+        if mcp_servers:
+            mcp.inspect_response(content, servers)
+        # Kết quả MCP nằm ngay trong tin assistant: đánh dấu dữ liệu bên thứ ba như kết quả công cụ.
+        third_party_reply = mcp.has_mcp_results(content)
 
         if res.stop_reason == "refusal":
             # Bỏ phần chữ dở; lưu một câu cố định làm câu trả lời của lượt.
@@ -329,10 +341,18 @@ def run_turn(
                 content = [b for b in content if b.get("type") != "tool_use"]
                 content = content if _texts(content) else [*content, {"type": "text", "text": final_text}]
             final_id = store.save_assistant_message(
-                content, res.run_id, model_used, final_text, sources or None, False
+                content,
+                res.run_id,
+                model_used,
+                final_text,
+                sources or None,
+                False,
+                contains_third_party=third_party_reply,
             )
             break
-        store.save_assistant_message(content, res.run_id, model_used, round_text, None, True)
+        store.save_assistant_message(
+            content, res.run_id, model_used, round_text, None, True, contains_third_party=third_party_reply
+        )
         messages.append({"role": "assistant", "content": content})
         if pausing:
             pauses += 1

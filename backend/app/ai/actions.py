@@ -122,3 +122,18 @@ def file_card(file: dict) -> dict:
         "mime": file["mime"],
         "size_bytes": file["size_bytes"],
     }
+
+
+def connect(
+    label: str, connector_id: int | None = None, name: str | None = None, url: str | None = None
+) -> dict:
+    """Nút kết nối hệ thống ngoài (QĐ-56): có connector_id thì app mở luồng đăng nhập của kết nối đó; chỉ có
+    name, url thì app mở form thêm kết nối điền sẵn. Mật khẩu chỉ nhập trên trang của hệ thống, không qua chat."""
+    action: dict = {"type": "connect", "label": label}
+    if connector_id is not None:
+        action["connector_id"] = connector_id
+    if name:
+        action["name"] = name
+    if url:
+        action["url"] = _https(url)
+    return action

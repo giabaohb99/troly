@@ -8,6 +8,10 @@ export const queryKeys = {
     status: ['chat', 'status'] as const,
     conversations: ['chat', 'conversations'] as const,
     conversation: (id: number) => ['chat', 'conversation', id] as const,
+    // QĐ-51: một phiên mở trên màn chat; danh sách phiên theo chữ tìm.
+    session: (id: number) => ['chat', 'session', id] as const,
+    sessionsAll: ['chat', 'sessions'] as const,
+    sessions: (q: string) => ['chat', 'sessions', q] as const,
   },
   expense: {
     all: ['expense'] as const,

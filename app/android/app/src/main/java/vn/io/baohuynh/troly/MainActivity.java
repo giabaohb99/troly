@@ -9,6 +9,7 @@ import vn.io.baohuynh.troly.plugin.FilesPlugin;
 import vn.io.baohuynh.troly.plugin.MapsPlugin;
 import vn.io.baohuynh.troly.plugin.NotifyPlugin;
 import vn.io.baohuynh.troly.plugin.SecurePlugin;
+import vn.io.baohuynh.troly.plugin.ShareInPlugin;
 import vn.io.baohuynh.troly.plugin.SystemPlugin;
 import vn.io.baohuynh.troly.plugin.VoicePlugin;
 
@@ -23,6 +24,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MapsPlugin.class);
         registerPlugin(FilesPlugin.class);
         registerPlugin(VoicePlugin.class);
+        registerPlugin(ShareInPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -35,6 +35,20 @@ export interface InboxMessage {
   importance_reason: string | null
   // Thư Gmail: tài khoản nhận (QĐ-50).
   account_email?: string | null
+  // Zalo qua zalo-bridge (QĐ-52): tin mình gửi (vẽ bên phải), ảnh/video/tệp/ghi âm, thu hồi, trích dẫn.
+  is_self?: boolean
+  media?: ZaloMedia[] | null
+  recalled_at?: string | null
+  quote?: { msg_id: string; text: string | null } | null
+}
+
+export interface ZaloMedia {
+  type: 'image' | 'video' | 'file' | 'voice'
+  name: string | null
+  size: number | null
+  mime: string | null
+  status: 'pending' | 'done' | 'failed'
+  file_id: number | null
 }
 
 export const APP_LABELS: Record<InboxApp, string> = {

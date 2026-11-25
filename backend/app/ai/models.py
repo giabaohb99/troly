@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.ai.client import RunRecord
@@ -31,7 +32,7 @@ class AiRun(Base):
         Index("ix_tab_ai_run_created", "created_at"),
         CheckConstraint(
             "purpose IN ('chat','compaction','bank_extract','file_extract',"
-            "'trip_extract','trip_evaluate','eval')",
+            "'trip_extract','trip_evaluate','eval','session_title')",
             name="purpose",
         ),
         CheckConstraint("mode IN ('chat','think','research','summary')", name="mode"),
@@ -61,6 +62,8 @@ class AiRun(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     request_id: Mapped[str | None] = mapped_column(Text)
     error_code: Mapped[str | None] = mapped_column(Text)
+    # QĐ-56: máy chủ MCP gắn vào lượt gọi (`c<connector_id>`), migration 0020_ai_run_mcp.
+    mcp_servers_used: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -94,6 +97,7 @@ class DbRunRecorder:
                 latency_ms=rec.latency_ms,
                 request_id=rec.request_id,
                 error_code=rec.error_code,
+                mcp_servers_used=rec.mcp_servers_used,
             )
             session.add(row)
             session.commit()

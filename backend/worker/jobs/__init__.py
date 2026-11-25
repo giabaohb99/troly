@@ -10,7 +10,7 @@ def build_jobs() -> list[Job]:
     from app.integrations.google import jobs as google_jobs
     from app.modules.chat import jobs as chat_jobs
     from app.modules.file import jobs as file_jobs
-    from app.registry import _import_if_exists
+    from app.registry import _import_if_exists, feature_enabled
     from worker.jobs import backup, cleanup, device_events, disk, queue
 
     s = get_settings()
@@ -23,13 +23,17 @@ def build_jobs() -> list[Job]:
         queue.HANDLERS["trip_evaluate"] = trip_jobs.run_evaluate
         queue.HANDLERS["trip_geocode"] = trip_jobs.run_geocode
 
+    zalo_jobs = None
+    if feature_enabled("zalo"):  # QĐ-52 sau cờ FEATURE_ZALO_BRIDGE
+        from app.modules.zalo import jobs as zalo_jobs
+
     def extract_unless_disk_full() -> int:
         return 0 if disk.heavy_jobs_paused() else file_jobs.extract_file_text()
 
     def sync_gmail_unless_disk_full() -> int:
         return 0 if disk.heavy_jobs_paused() else google_jobs.sync_due_gmail()
 
-    return [
+    jobs = [
         Job("run_queued_jobs", 7001, None, queue.run_queued_jobs),
         Job("extract_file_text", 7002, None, extract_unless_disk_full),
         Job("process_device_events", 7003, None, device_events.process_device_events),
@@ -40,7 +44,13 @@ def build_jobs() -> list[Job]:
         # Gmail hộp Chính (QĐ-43): tự xét next_sync_at, quét 5 phút một lần.
         Job("sync_gmail", 7006, None, sync_gmail_unless_disk_full),
         Job("renew_google_watch", 7301, DailyAt(3, 0), google_jobs.renew_watches),
-        Job("summarize_previous_day", 7101, DailyAt(4, 5), chat_jobs.summarize_previous_day),
+        # QĐ-51: tóm phiên ngủ quá 6 giờ hoặc quá dài (không còn tóm theo ngày lúc 04:05); giữ khóa 7101.
+        Job(
+            "summarize_idle_conversations",
+            7101,
+            Every(timedelta(hours=1)),
+            chat_jobs.summarize_idle_conversations,
+        ),
         Job("expire_pending_actions", 7102, Every(timedelta(minutes=5)), chat_jobs.expire_pending_actions),
         Job(
             "backup_database",
@@ -52,3 +62,7 @@ def build_jobs() -> list[Job]:
         Job("disk_check", 7203, Every(timedelta(minutes=15)), disk.disk_check, run_on_start=True),
         Job("recover_stuck_items", 7204, Every(timedelta(minutes=5)), queue.recover_stuck_items),
     ]
+    if zalo_jobs is not None:
+        # Ảnh, video, tệp của tin Zalo về R2 ngay (link CDN Zalo hết hạn sau vài giờ).
+        jobs.append(Job("fetch_zalo_media", 7009, None, zalo_jobs.fetch_media_due))
+    return jobs

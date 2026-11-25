@@ -37,6 +37,13 @@ export function screenToRoute(screen: string, params: Record<string, string | nu
     case 'trip_detail':
       if (!p.trip_id) return '/lich-trinh'
       return p.day_no ? `/lich-trinh/${p.trip_id}?ngay=${p.day_no}` : `/lich-trinh/${p.trip_id}`
+    // Kết nối (QĐ-56): bot mở khi cần nối hệ thống ngoài; settings_dego là tên cũ.
+    case 'settings_connectors':
+    case 'settings_dego':
+      return '/cai-dat/ket-noi'
+    // Zalo (QĐ-52): bot nhắc quét mã khi chưa đăng nhập.
+    case 'settings_zalo':
+      return '/cai-dat/zalo'
     case 'settings_ai_cost':
       return '/cai-dat/chi-phi'
     case 'report':

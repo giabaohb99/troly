@@ -1,8 +1,10 @@
-"""Luật của chat: phiên theo ngày, nối phiên 3 giờ, lượt chat qua ai.loop.run_turn, duyệt (11 mục 3.7, 12 mục 5.2)."""
+"""Luật của chat: phiên đặt tên mở lại được (QĐ-51), lượt chat qua ai.loop.run_turn, duyệt (11 mục 3.7,
+12 mục 5.2). Không tách phiên lúc 04:00; tin không chỉ phiên thì vào phiên hoạt động gần nhất."""
 
 import hashlib
 import json
 import logging
+import os
 import queue
 import threading
 import uuid
@@ -27,7 +29,6 @@ from app.modules.memory import service as memory_service
 
 log = logging.getLogger("troly.chat")
 
-PREV_TAIL_MESSAGES = 10
 APPROVAL_HOURS = 24
 PING_SECONDS = 15
 # Lượt xong mà SSE chưa đọc qua sự kiện kết thúc sau ngần này giây: app đã ngắt, cần notice chat_done.
@@ -102,6 +103,7 @@ def _attachments(m: Message) -> list[dict]:
 def serialize_message(m: Message) -> dict:
     return {
         "id": m.id,
+        "conversation_id": m.conversation_id,
         "role": m.role,
         "text": m.text,
         "model": m.model,
@@ -217,6 +219,7 @@ class ChatTurnStore:
         text: str | None,
         citations: list[dict] | None,
         hidden: bool,
+        contains_third_party: bool = False,
     ) -> int:
         return self._add(
             role="assistant",
@@ -226,6 +229,7 @@ class ChatTurnStore:
             text=text,
             citations=citations,
             hidden=hidden,
+            contains_third_party=contains_third_party,
         )
 
     def save_tool_results(self, content: list[dict], contains_third_party: bool) -> int:
@@ -272,20 +276,24 @@ class PreparedTurn:
     replay: dict | None = None  # gửi lại cùng client_message_id khi lượt cũ đã xong
 
 
-def _prev_tail(session: Session, user: UserContext, conversation, now: datetime) -> list:
-    from app.ai.schemas import PrevMessage
+TITLE_MAX = 120
 
-    if conversation.last_message_at is not None:
-        return []  # phiên hôm nay đã có tin: lịch sử đã đủ, không cần nối
-    prev = repo.get_previous_conversation(session, user.user_id, conversation.local_date)
-    if prev is None or not clock.should_continue_previous(prev.last_message_at, now):
-        return []
-    tail = [
-        m
-        for m in repo.last_visible(session, user.user_id, prev.id, PREV_TAIL_MESSAGES * 2)
-        if m.role in ("user", "assistant") and m.text
-    ]
-    return [PrevMessage(role=m.role, text=m.text, at=m.created_at) for m in tail[-PREV_TAIL_MESSAGES:]]
+
+def _clean_title(value: str | None) -> str | None:
+    title = " ".join((value or "").split())[:TITLE_MAX]
+    return title or None
+
+
+def _target_conversation(session: Session, user: UserContext, conversation_id: int | None, now: datetime):
+    """Phiên nhận tin (QĐ-51): phiên chỉ định (không có thì 404), không thì phiên hoạt động gần nhất,
+    chưa có thì tạo. Khóa dòng phiên cho tới hết chuẩn bị lượt."""
+    if conversation_id is not None:
+        conv = repo.get_conversation(session, user.user_id, conversation_id, lock=True)
+        if conv is None:
+            raise NotFoundError("Không tìm thấy phiên chat.")
+        return conv
+    conv = repo.get_or_create_conversation(session, user.user_id, clock.chat_day(now, user.timezone), now)
+    return repo.get_conversation(session, user.user_id, conv.id, lock=True)
 
 
 def _maybe_compact(session: Session, user: UserContext, conversation) -> bool:
@@ -321,6 +329,8 @@ def prepare_turn(
     mode: str | None,
     client_message_id: UUID,
     attachment_file_ids: list[int],
+    conversation_id: int | None = None,
+    use_connectors: bool | list[int] | None = None,
 ) -> PreparedTurn:
     limiter.hit(f"chat:{user.user_id}", get_settings().rate_chat_per_min, 60)
     limiter.hit(f"chat-hour:{user.user_id}", get_settings().ai_user_hourly_turns, 3600)
@@ -353,7 +363,17 @@ def prepare_turn(
 
     _claim(user.user_id)
     try:
-        return _prepare_new_turn(session, user, text, mode, client_message_id, attachment_file_ids, now)
+        return _prepare_new_turn(
+            session,
+            user,
+            text,
+            mode,
+            client_message_id,
+            attachment_file_ids,
+            now,
+            conversation_id,
+            use_connectors,
+        )
     except BaseException:
         _release(user.user_id)
         raise
@@ -411,25 +431,28 @@ def _prepare_new_turn(
     client_message_id: UUID,
     attachment_file_ids: list[int],
     now: datetime,
+    conversation_id: int | None = None,
+    use_connectors: bool | list[int] | None = None,
 ) -> PreparedTurn:
+    from app.ai.mcp import active_connectors
     from app.ai.prompt import build_turn_system_message
     from app.ai.router import choose_turn
 
-    conversation = repo.get_or_create_conversation(
-        session, user.user_id, clock.chat_day(now, user.timezone), now
-    )
-    conversation = repo.get_conversation(session, user.user_id, conversation.id, lock=True)
+    conversation = _target_conversation(session, user, conversation_id, now)
     plan = choose_turn(
         text,
         mode,
         bool(attachment_file_ids),
         previous_task=_previous_task(session, user, conversation.id),
+        use_connectors=use_connectors,
+        connectors=active_connectors(session, user.user_id),
     )
     try:
         _maybe_compact(session, user, conversation)
     except Exception:  # nén là việc phụ: lỗi thì lượt vẫn chạy như không nén
         log.exception("Nén phiên lỗi")
-    prev_tail = _prev_tail(session, user, conversation, now)
+    # Không còn nối đuôi phiên hôm trước (QĐ-51): phiên mở lại tự có tóm tắt và tin chưa tóm.
+    prev_tail: list = []
     turn_id = uuid.uuid4()
 
     from app.ai.redact import mask_secrets
@@ -525,6 +548,7 @@ def _mark_failed(prepared: PreparedTurn) -> None:
 
 def iter_turn_events(prepared: PreparedTurn) -> Iterator[tuple[str, dict]]:
     """Chạy run_turn trong một session riêng của lượt, đổi sự kiện ai/ sang SSE của 12 mục 5.2."""
+    answer_text = None  # lượt xong thì đặt tên phiên sau khi đóng session của lượt
     try:
         from app.ai.loop import run_turn
         from app.ai.schemas import AiError, SystemParts, ToolContext
@@ -546,7 +570,9 @@ def iter_turn_events(prepared: PreparedTurn) -> Iterator[tuple[str, dict]]:
                 for event in run_turn(ctx, prepared.plan, parts, prepared.history, store):
                     if event.type == "turn.completed":
                         session.commit()
-                        yield "message.completed", _finish(prepared, event.data)
+                        done = _finish(prepared, event.data)
+                        answer_text = (done.get("assistant_message") or {}).get("text") or ""
+                        yield "message.completed", done
                     else:
                         yield event.type, event.data
             except AiError as exc:
@@ -557,6 +583,50 @@ def iter_turn_events(prepared: PreparedTurn) -> Iterator[tuple[str, dict]]:
         log.exception("Lượt chat hỏng")
         _mark_failed(prepared)
         yield "error", {"code": "AI_UNAVAILABLE", "message": "Trợ lý đang bận, thử lại sau."}
+        return
+    if answer_text is not None:
+        maybe_auto_title(prepared, answer_text)
+
+
+# ---------- Đặt tên phiên tự động (QĐ-51) ----------
+
+# Bài kiểm chạy chung FakeClaude: lời gọi đặt tên ở nền sẽ lấy mất câu trả lời trong kịch bản, nên khi ENV=test chỉ
+# chạy nếu bài kiểm bật AUTO_TITLE_IN_TESTS; AUTO_TITLE_BACKGROUND = False để chạy đồng bộ cho dễ kiểm.
+AUTO_TITLE_IN_TESTS = False
+AUTO_TITLE_BACKGROUND = True
+
+
+def _auto_title_on() -> bool:
+    return os.environ.get("ENV") != "test" or AUTO_TITLE_IN_TESTS
+
+
+def maybe_auto_title(prepared: PreparedTurn, answer: str) -> None:
+    """Sau lượt trả lời của phiên chưa có tên: Haiku đặt tên ngắn, ghi qua set_auto_title (không đè tên người dùng)."""
+    if not _auto_title_on():
+        return
+    user_id, conversation_id, question = prepared.user.user_id, prepared.conversation_id, prepared.text
+
+    def run() -> None:
+        try:
+            from app.ai.session_title import suggest_title
+
+            with SessionLocal() as session:
+                conv = repo.get_conversation(session, user_id, conversation_id)
+                if conv is None or conv.title is not None or conv.title_source == "user":
+                    return
+            title = suggest_title(user_id, question, answer)
+            if not title:
+                return
+            with SessionLocal() as session:
+                if set_auto_title(session, user_id, conversation_id, title):
+                    session.commit()
+        except Exception:
+            log.exception("Đặt tên phiên lỗi")
+
+    if AUTO_TITLE_BACKGROUND:
+        threading.Thread(target=run, name=f"chat-title-{conversation_id}", daemon=True).start()
+    else:
+        run()
 
 
 def _sse(name: str, data: dict | None = None) -> str:
@@ -647,36 +717,196 @@ def run_turn_json(prepared: PreparedTurn) -> dict:
 
 
 def get_today(session: Session, user: UserContext) -> dict:
+    """Giữ cho bản app cũ (trước QĐ-51): trả phiên hoạt động gần nhất, chưa có thì tạo."""
     now = clock.now()
     conversation = repo.get_or_create_conversation(
         session, user.user_id, clock.chat_day(now, user.timezone), now
     )
+    return get_conversation_page(session, user, conversation)
+
+
+def get_conversation_page(session: Session, user: UserContext, conversation) -> dict:
     rows = repo.list_visible(session, user.user_id, conversation.id, None, 51)
     has_more = len(rows) > 50
     rows = list(reversed(rows[:50]))
     pending = repo.list_pending_actions(session, user.user_id, ["pending"])
     return {
-        "conversation": serialize_conversation(conversation),
+        "conversation": serialize_conversation(
+            conversation, _previews(session, user.user_id, [conversation.id]).get(conversation.id)
+        ),
         "messages": enrich_messages(session, user.user_id, [serialize_message(m) for m in rows]),
         "next_cursor": str(rows[0].id) if has_more and rows else None,
         "pending_actions": [serialize_pending(a) for a in pending],
     }
 
 
-def serialize_conversation(c) -> dict:
-    return {"id": c.id, "local_date": c.local_date, "summary": c.summary, "message_count": c.message_count}
-
-
-def list_conversations(session: Session, user: UserContext, cursor: str | None, limit: int) -> dict:
-    from datetime import date
-
-    before = date.fromisoformat(cursor) if cursor else None
-    rows = repo.list_conversations(session, user.user_id, before, limit + 1)
-    items = rows[:limit]
+def serialize_conversation(c, preview: str | None = None) -> dict:
     return {
-        "items": [serialize_conversation(c) for c in items],
-        "next_cursor": items[-1].local_date.isoformat() if len(rows) > limit else None,
+        "id": c.id,
+        "title": c.title,
+        "title_source": c.title_source,
+        "pinned": c.pinned,
+        "started_at": c.started_at,
+        "last_message_at": c.last_message_at or c.started_at,
+        "message_count": c.message_count,
+        "last_preview": preview,
+        "created_at": c.created_at,
+        "local_date": c.local_date,  # bản app cũ
+        "summary": c.summary,
     }
+
+
+PREVIEW_MAX = 120
+
+
+def _previews(session: Session, user_id: int, ids: list[int]) -> dict[int, str]:
+    """Đoạn đầu tin hiện cuối cùng (người dùng hoặc trợ lý) của mỗi phiên, một câu SQL."""
+    if not ids:
+        return {}
+    from sqlalchemy import text as sql
+
+    rows = session.execute(
+        sql(
+            "SELECT DISTINCT ON (conversation_id) conversation_id, text FROM tab_message "
+            "WHERE user_id = :u AND conversation_id = ANY(:ids) AND hidden = false "
+            "AND role IN ('user','assistant') AND coalesce(text, '') <> '' "
+            "ORDER BY conversation_id, id DESC"
+        ),
+        {"u": user_id, "ids": ids},
+    ).all()
+    out = {}
+    for r in rows:
+        flat = " ".join(r.text.split())
+        out[r.conversation_id] = flat if len(flat) <= PREVIEW_MAX else flat[: PREVIEW_MAX - 1] + "…"
+    return out
+
+
+def _parse_cursor(cursor: str) -> tuple[bool, datetime, int]:
+    """Con trỏ `<0|1>|<giờ ISO>|<id>`."""
+    from app.core.errors import ValidationError
+
+    try:
+        pin, at, cid = cursor.split("|")
+        return pin == "1", datetime.fromisoformat(at), int(cid)
+    except ValueError as exc:
+        raise ValidationError(fields={"cursor": "Con trỏ trang không hợp lệ."}) from exc
+
+
+def list_conversations(
+    session: Session, user: UserContext, cursor: str | None, limit: int, q: str | None = None
+) -> dict:
+    """Danh sách phiên: ghim trước, rồi tin mới nhất giảm dần; `q` tìm theo tiêu đề và nội dung tin."""
+    after = _parse_cursor(cursor) if cursor else None
+    q = (q or "").strip() or None
+    rows = repo.list_conversations(session, user.user_id, after, limit + 1, q)
+    items = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit:
+        last = items[-1]
+        at = (last.last_message_at or last.started_at).isoformat()
+        next_cursor = f"{int(last.pinned)}|{at}|{last.id}"
+    previews = _previews(session, user.user_id, [c.id for c in items])
+    return {
+        "items": [serialize_conversation(c, previews.get(c.id)) for c in items],
+        "next_cursor": next_cursor,
+    }
+
+
+def get_conversation_detail(session: Session, user: UserContext, conversation_id: int) -> dict:
+    """Mở một phiên cũ để chat tiếp: cùng dạng /chat/today."""
+    conv = repo.get_conversation(session, user.user_id, conversation_id)
+    if conv is None:
+        raise NotFoundError("Không tìm thấy phiên chat.")
+    return get_conversation_page(session, user, conv)
+
+
+SNIPPET_MAX = 220
+
+
+def search_history(
+    session: Session,
+    user: UserContext,
+    query: str,
+    limit: int = 10,
+    exclude_conversation_id: int | None = None,
+) -> list[dict]:
+    """Tìm trong tin chat cũ (công cụ search_chat_history của agent AI): tin hiện của người dùng và trợ lý,
+    mới trước, kèm tên phiên và đoạn quanh chữ khớp."""
+    from sqlalchemy import text as sql
+
+    query = (query or "").strip()
+    if not query:
+        return []
+    rows = session.execute(
+        sql(
+            "SELECT m.id AS message_id, m.conversation_id, c.title AS conversation_title, c.started_at, "
+            "c.local_date, m.role, m.created_at, ts_headline('troly_vn', m.text, q, "
+            '\'StartSel="", StopSel="", MaxWords=35, MinWords=12, MaxFragments=1\') AS snippet '
+            "FROM tab_message m JOIN tab_conversation c ON c.id = m.conversation_id, "
+            "websearch_to_tsquery('troly_vn', :q) q "
+            "WHERE m.user_id = :u AND m.hidden = false AND m.role IN ('user','assistant') "
+            "AND m.search_vector @@ q AND (CAST(:ex AS bigint) IS NULL OR m.conversation_id <> :ex) "
+            "ORDER BY m.created_at DESC, m.id DESC LIMIT :l"
+        ),
+        {"u": user.user_id, "q": query, "ex": exclude_conversation_id, "l": max(1, min(limit, 50))},
+    ).all()
+    return [
+        {
+            "conversation_id": r.conversation_id,
+            "conversation_title": r.conversation_title,
+            "started_at": r.started_at,
+            "local_date": r.local_date,
+            "message_id": r.message_id,
+            "role": r.role,
+            "snippet": " ".join((r.snippet or "").split())[:SNIPPET_MAX],
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+def create_conversation(session: Session, user: UserContext, title: str | None = None) -> dict:
+    """Phiên mới (nút *Phiên mới*). Phiên gần nhất còn trống, chưa đặt tên thì dùng lại, khỏi đẻ phiên rỗng."""
+    now = clock.now()
+    title = _clean_title(title)
+    latest = repo.latest_conversation(session, user.user_id)
+    if latest is not None and latest.message_count == 0 and latest.title is None:
+        if title:
+            latest.title, latest.title_source = title, "user"
+        latest.last_message_at = now
+        session.flush()
+        return serialize_conversation(latest)
+    conv = repo.create_conversation(session, user.user_id, clock.chat_day(now, user.timezone), now, title)
+    return serialize_conversation(conv)
+
+
+def update_conversation(session: Session, user: UserContext, conversation_id: int, changes: dict) -> dict:
+    """Đổi tên (thành tên người đặt, máy không ghi đè nữa) hoặc ghim."""
+    from app.core.errors import ValidationError
+
+    conv = repo.get_conversation(session, user.user_id, conversation_id, lock=True)
+    if conv is None:
+        raise NotFoundError("Không tìm thấy phiên chat.")
+    if "title" in changes:
+        title = _clean_title(changes["title"])
+        if title is None:
+            raise ValidationError(fields={"title": "Nhập tên phiên."})
+        conv.title, conv.title_source = title, "user"
+    if changes.get("pinned") is not None:
+        conv.pinned = bool(changes["pinned"])
+    session.flush()
+    return serialize_conversation(conv)
+
+
+def set_auto_title(session: Session, user_id: int, conversation_id: int, title: str) -> bool:
+    """Cho agent AI đặt tên phiên tự động. Không ghi đè tên người dùng đặt. Trả True nếu đã đặt."""
+    conv = repo.get_conversation(session, user_id, conversation_id, lock=True)
+    title = _clean_title(title)
+    if conv is None or title is None or conv.title_source == "user":
+        return False
+    conv.title = title
+    session.flush()
+    return True
 
 
 def list_messages(

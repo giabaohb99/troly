@@ -160,6 +160,11 @@ const settings: SettingValues = {
   'trip.ferries': [{ name: 'Cát Lái', place_query: 'Bến phà Cát Lái', first_time: '04:00', last_time: '23:00', hotline: '028 3742 2222', note: null, updated_at: '2026-03-01' }],
 }
 
+const connectors = [
+  { id: 1, name: 'ERP DEGO', url: 'https://erp.degoholding.vn/api/mcp', auth: 'oauth', status: 'connected', account: 'bao.huynh@degoholding.vn' as string | null, last_error: null as string | null, write_tools_enabled: [] as string[], write_enabled: false, tools_count: 4 as number | null, created_at: new Date().toISOString() },
+]
+let nextConnector = 2
+
 const rules: InboxRule[] = [
   { id: 1, kind: 'vip_sender', value: 'Chị Lan', app: null, created_at: new Date().toISOString() },
   { id: 2, kind: 'urgent_keyword', value: 'gấp', app: null, created_at: new Date().toISOString() },
@@ -293,6 +298,86 @@ export const phase4Handlers = [
   http.get(`${API}/reports/ai-cost`, () => ok(aiCost())),
 
   http.get(`${API}/settings`, () => ok({ values: settings, defaults: settings })),
+  // Cờ tính năng (đợt 1.1.0): localStorage troly.mock.features = "gym,connectors,zalo_bridge" chọn cờ bật.
+  http.get(`${API}/system/status`, () => {
+    const on = (localStorage.getItem('troly.mock.features') ?? 'gym,connectors,zalo_bridge').split(',')
+    return ok({ jobs: [], features: { gym: on.includes('gym'), connectors: on.includes('connectors'), zalo_bridge: on.includes('zalo_bridge') } })
+  }),
+  // Kết nối (QĐ-56): ERP DEGO đã nối sẵn. Địa chỉ có "khoa" giả máy chủ không có OAuth (dán khóa).
+  http.get(`${API}/connectors`, () => ok({ items: connectors })),
+  http.get(`${API}/connectors/presets`, () => ok({ items: [{ name: 'ERP DEGO', url: 'https://erp.degoholding.vn/api/mcp' }] })),
+  http.post(`${API}/connectors`, async ({ request }) => {
+    const body = (await request.json()) as { name: string; url: string }
+    if (!/^https:\/\//.test(body.url)) return HttpResponse.json({ success: false, message: 'Địa chỉ phải bắt đầu bằng https://', data: { code: 'VALIDATION_ERROR' } }, { status: 400 })
+    const auth = body.url.includes('khoa') ? 'api_key' : 'oauth'
+    const c = { id: nextConnector++, name: body.name, url: body.url, auth, status: 'not_connected', account: null as string | null, last_error: null as string | null, write_tools_enabled: [] as string[], write_enabled: false, tools_count: null as number | null, created_at: new Date().toISOString() }
+    connectors.push(c)
+    return ok({ connector: c, next: auth }, 201)
+  }),
+  http.post(`${API}/connectors/:id/connect`, ({ params }) => {
+    const c = connectors.find((x) => x.id === Number(params.id))
+    if (!c) return HttpResponse.json({ success: false, message: 'Không có kết nối này.', data: { code: 'NOT_FOUND' } }, { status: 404 })
+    Object.assign(c, { status: 'connected', account: 'bao.huynh@degoholding.vn', tools_count: 4, last_error: null })
+    // Trên trình duyệt giả lập việc máy chủ đưa về troly://settings/connectors?ok=1&id=.
+    return ok({ auth_url: `/cai-dat/ket-noi?ok=1&id=${c.id}` })
+  }),
+  http.put(`${API}/connectors/:id/key`, async ({ params, request }) => {
+    const c = connectors.find((x) => x.id === Number(params.id))
+    if (!c) return HttpResponse.json({ success: false, message: 'Không có kết nối này.', data: { code: 'NOT_FOUND' } }, { status: 404 })
+    const { api_key } = (await request.json()) as { api_key: string }
+    if (api_key.includes('sai')) return HttpResponse.json({ success: false, message: 'Hệ thống từ chối khóa.', data: { code: 'VALIDATION_ERROR' } }, { status: 400 })
+    Object.assign(c, { status: 'connected', account: null, tools_count: 2 })
+    return ok(c)
+  }),
+  http.get(`${API}/connectors/:id/tools`, ({ params }) => {
+    const enabledWrite = connectors.find((x) => x.id === Number(params.id))?.write_tools_enabled ?? []
+    const tools = [
+      { name: 'list_projects', title: 'Danh sách dự án', description: 'Dự án đang chạy', write: false },
+      { name: 'get_timesheet', title: 'Bảng chấm công', description: 'Chấm công theo tuần', write: false },
+      { name: 'create_task', title: 'Tạo việc', description: 'Tạo việc trong dự án', write: true },
+      { name: 'update_leave', title: 'Sửa đơn nghỉ phép', description: null, write: true },
+    ]
+    return ok({ items: tools.map((t) => ({ ...t, enabled: !t.write || enabledWrite.includes(t.name) })) })
+  }),
+  http.patch(`${API}/connectors/:id`, async ({ params, request }) => {
+    const c = connectors.find((x) => x.id === Number(params.id))
+    if (!c) return HttpResponse.json({ success: false, message: 'Không có kết nối này.', data: { code: 'NOT_FOUND' } }, { status: 404 })
+    const patch = (await request.json()) as { name?: string; write_tools_enabled?: string[] }
+    if (patch.name !== undefined) c.name = patch.name
+    if (patch.write_tools_enabled !== undefined) Object.assign(c, { write_tools_enabled: patch.write_tools_enabled, write_enabled: patch.write_tools_enabled.length > 0 })
+    return ok(c)
+  }),
+  http.delete(`${API}/connectors/:id`, ({ params }) => {
+    const i = connectors.findIndex((x) => x.id === Number(params.id))
+    if (i >= 0) connectors.splice(i, 1)
+    return ok({})
+  }),
+  // Thẻ Tập luyện (QĐ-54): ?period=week|month; localStorage troly.mock.gym_off giả chưa nối app gym.
+  http.get(`${API}/reports/gym`, ({ request }) => {
+    if (localStorage.getItem('troly.mock.gym_off')) return ok({ status: 'disabled', data: null, message: 'Chưa nối app gym.' })
+    const month = new URL(request.url).searchParams.get('period') === 'month'
+    return ok({
+      status: 'ok',
+      message: null,
+      data: {
+        period: month ? 'month' : 'week',
+        from: month ? '2026-11-01' : '2026-11-23',
+        to: month ? '2026-11-30' : '2026-11-29',
+        sessions_done: month ? 11 : 2,
+        sessions_complete: month ? 10 : 2,
+        sessions_planned: month ? 16 : 4,
+        lift_highlights: [
+          { exercise: 'Đẩy ngực', from_kg: month ? 55 : 60, to_kg: 62.5, delta_kg: month ? 7.5 : 2.5 },
+          { exercise: 'Squat', from_kg: month ? 80 : 85, to_kg: 87.5, delta_kg: month ? 7.5 : 2.5 },
+        ],
+        weight: { first_kg: month ? 73.1 : 72.4, last_kg: 71.8, first_date: null, last_date: null },
+        protein: { avg_g: month ? 124 : 118, target_g: 140, days_logged: month ? 20 : 3 },
+        today: { date: null, title: 'Kéo: lưng, tay trước', rest: false, exercises: ['Kéo xà', 'Chèo tạ', 'Cuốn tạ', 'Face pull'], done: false },
+        tomorrow: { date: null, title: 'Ngày nghỉ', rest: true, exercises: [] },
+        app_url: 'https://gym.baohuynh.io.vn',
+      },
+    })
+  }),
   http.patch(`${API}/settings`, async ({ request }) => {
     const changes = (await request.json()) as Partial<SettingValues>
     if (typeof changes['trip.speed_factor'] === 'number' && (changes['trip.speed_factor'] < 0.5 || changes['trip.speed_factor'] > 3)) {

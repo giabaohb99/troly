@@ -7,6 +7,7 @@ che ngay; chuỗi dài ngẫu nhiên chỉ che khi đứng sau chữ key, khóa,
 import re
 
 KEY_MASK = "[khóa đã che]"
+PASSWORD_MASK = "[mật khẩu đã che]"
 GENERIC_MIN = 24
 
 _PREFIXED = re.compile(
@@ -21,6 +22,12 @@ _PREFIXED = re.compile(
 _GENERIC = re.compile(
     r"(?i)\b(api[\s_-]*key|key|khóa|khoá|khoa|token|secret|mật khẩu api)\b(\s*(?:là|:|=)?\s*[\"']?)"
     rf"([A-Za-z0-9_\-\.]{{{GENERIC_MIN},}})"
+)
+
+
+# Mật khẩu dán vào chat (QĐ-56): chỉ che khi có dấu nối rõ (là, :, =) để không che câu *quên mật khẩu rồi*.
+_PASSWORD = re.compile(
+    r"(?i)\b(mật khẩu|mat khau|mật mã|password|passwd|pass|mk|pw)(\s*(?:là|:|=)\s*[\"']?)([^\s\"']{4,})"
 )
 
 
@@ -49,4 +56,13 @@ def mask_secrets(text: str | None) -> tuple[str, bool]:
         return f"{m.group(1)}{m.group(2)}{KEY_MASK}"
 
     out = _GENERIC.sub(generic, out)
+
+    def password(m: re.Match) -> str:
+        nonlocal found
+        if KEY_MASK in m.group(3) or PASSWORD_MASK in m.group(3):
+            return m.group(0)
+        found = True
+        return f"{m.group(1)}{m.group(2)}{PASSWORD_MASK}"
+
+    out = _PASSWORD.sub(password, out)
     return out, found

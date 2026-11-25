@@ -53,10 +53,10 @@ echo "Deploy $SHA ($VERSION) lên $VPS_HOST"
 
 # Bước 2: chép tệp cần dựng ảnh; .env trên VPS giữ nguyên.
 if [ "$MODE" = dry ]; then
-  echo "[local] git archive HEAD docker-compose.yml .env.example backend infra scripts | ssh $VPS_HOST tar -xf - -C $REMOTE_DIR"
+  echo "[local] git archive HEAD docker-compose.yml .env.example backend zalo-bridge infra scripts | ssh $VPS_HOST tar -xf - -C $REMOTE_DIR"
 else
   remote "mkdir -p $REMOTE_DIR"
-  git archive --format=tar HEAD docker-compose.yml .env.example backend infra scripts \
+  git archive --format=tar HEAD docker-compose.yml .env.example backend zalo-bridge infra scripts \
     | ssh "${SSH_OPTS[@]}" "$VPS_HOST" "tar -xf - -C $REMOTE_DIR"
 fi
 

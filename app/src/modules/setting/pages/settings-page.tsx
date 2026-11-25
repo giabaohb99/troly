@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
-import { BellRing, ChevronRight, Palette, Cloud, Coins, Download, FileText, History, Inbox, Loader2, LogOut, RefreshCw, Route, ShieldCheck, Smartphone } from 'lucide-react'
+import { BellRing, ChevronRight, MessageSquareText, Plug, Palette, Cloud, Coins, Download, FileText, History, Inbox, Loader2, LogOut, RefreshCw, Route, ShieldCheck, Smartphone } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -15,6 +15,7 @@ import { queryKeys } from '@/shared/constants/query-keys'
 import { PageHeader } from '@/shared/components/page-header'
 import { needsReconnect, useGoogleStatus } from '@/shared/hooks/use-google-status'
 import { useRelease } from '@/shared/hooks/use-release'
+import { useFeatures } from '@/shared/hooks/use-features'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { formatUsd } from '@/shared/utils/format'
@@ -55,6 +56,7 @@ function LinkRow({ icon: Icon, title, text, warn, onClick }: { icon: typeof Coin
 // Cài đặt đầy đủ (31 mục 3.5): các màn con, hồ sơ lõi và bản cũ, nhắc mặc định, chi phí AI, phiên bản, thiết bị, đăng xuất.
 export function SettingsPage() {
   const navigate = useNavigate()
+  const features = useFeatures()
   const session = useSession()
   const logout = useLogout()
   const profile = useQuery({ queryKey: queryKeys.memory.profile, queryFn: getProfile })
@@ -92,6 +94,8 @@ export function SettingsPage() {
         <LinkRow icon={BellRing} title="Thông báo" text="Nhắc mặc định, âm thanh, giờ yên lặng, loại thông báo" onClick={() => navigate('/cai-dat/thong-bao')} />
         <LinkRow icon={Inbox} title="Hộp tin" text="Người quan trọng, từ khóa gấp, quyền đọc của trợ lý" onClick={() => navigate('/cai-dat/hop-tin')} />
         <LinkRow icon={Route} title="Lịch trình" text="Luật đánh giá chuyến, giờ phà quen" onClick={() => navigate('/cai-dat/lich-trinh')} />
+        {features.zalo_bridge && <LinkRow icon={MessageSquareText} title="Zalo" text="Đăng nhập bằng mã QR để đọc, gửi tin Zalo" onClick={() => navigate('/cai-dat/zalo')} />}
+        {features.connectors && <LinkRow icon={Plug} title="Kết nối" text="ERP DEGO và hệ thống khác qua MCP" onClick={() => navigate('/cai-dat/ket-noi')} />}
       </div>
 
       <Section

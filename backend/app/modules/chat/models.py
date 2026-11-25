@@ -12,7 +12,6 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
-    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
@@ -23,16 +22,32 @@ from app.core.db import Base, UserOwnedMixin
 
 
 class Conversation(UserOwnedMixin, Base):
+    """Phiên chat đặt tên (QĐ-51): mở lại được, không tách theo ngày. `local_date` là ngày mở phiên."""
+
     __tablename__ = "tab_conversation"
-    __table_args__ = (UniqueConstraint("user_id", "local_date"),)
+    __table_args__ = (
+        CheckConstraint("title_source IN ('auto','user')", name="title_source"),
+        Index(
+            "ix_tab_conversation_user_recent",
+            "user_id",
+            text("pinned DESC"),
+            text("last_message_at DESC"),
+            text("id DESC"),
+        ),
+    )
 
     local_date: Mapped[date] = mapped_column(Date)
+    title: Mapped[str | None] = mapped_column(Text)
+    # auto: máy đặt (agent AI đặt lại được); user: người dùng đổi tên, máy không ghi đè.
+    title_source: Mapped[str] = mapped_column(Text, server_default="auto")
+    pinned: Mapped[bool] = mapped_column(Boolean, server_default="false")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     summary: Mapped[str | None] = mapped_column(Text)
     summary_upto_id: Mapped[int | None] = mapped_column(BigInteger)
     last_prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     compacted_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Đã tóm cho lần phiên ngủ hiện tại (job summarize_idle_conversations); tin mới đặt lại false.
     day_summary_done: Mapped[bool] = mapped_column(Boolean, server_default="false")
     message_count: Mapped[int] = mapped_column(Integer, server_default="0")
 

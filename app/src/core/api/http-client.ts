@@ -58,9 +58,11 @@ export function buildHeaders(token: string | null, extra?: Record<string, string
 }
 
 export async function toApiError(res: Response, path: string): Promise<ApiError> {
-  const json = (await res.json().catch(() => null)) as Envelope<{ code?: string; fields?: Record<string, string> } | null> | null
+  const json = (await res.json().catch(() => null)) as Envelope<{ code?: string; fields?: Record<string, string>; retry_after?: number } | null> | null
   const code = json?.data?.code ?? (res.status >= 500 ? 'INTERNAL_ERROR' : 'UNKNOWN')
   const error = new ApiError(res.status, json?.message || `Lỗi máy chủ (${res.status})`, code, res.headers.get('X-Request-ID'), json?.data?.fields ?? null)
+  const retry = Number(json?.data?.retry_after ?? res.headers.get('Retry-After'))
+  if (Number.isFinite(retry) && retry > 0) error.retryAfter = retry
   if (res.status >= 500 || res.status === 426) {
     reportClientLog({ kind: 'api', message: error.message, apiPath: path, httpStatus: res.status, errorCode: code, requestId: error.requestId })
   }

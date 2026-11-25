@@ -4,6 +4,8 @@ export class ApiError extends Error {
   code: string
   requestId: string | null
   fields: Record<string, string> | null
+  // 429: số giây nên chờ (data.retry_after hoặc header Retry-After), null nếu máy chủ không nói.
+  retryAfter: number | null = null
 
   constructor(status: number, message: string, code = 'UNKNOWN', requestId: string | null = null, fields: Record<string, string> | null = null) {
     super(message)

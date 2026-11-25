@@ -19,6 +19,7 @@ from app.ai.settings import AiSettings, get_ai_settings
 log = logging.getLogger(__name__)
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+MCP_BETA = "mcp-client-2026-09-15"  # trùng ai.mcp.MCP_BETA; client không import mcp để khỏi vòng
 MSG_BUSY = "Claude đang quá tải, thử lại sau ít phút."
 MSG_DOWN = "Không gọi được Claude, thử lại sau ít phút."
 MSG_KEY = "Khóa Claude sai, đã bị thu hồi hoặc chưa đặt trong .env."
@@ -41,6 +42,7 @@ class RunRecord:
     request_id: str | None
     error_code: str | None
     fallback_used: bool
+    mcp_servers_used: list[str] | None = None  # máy chủ MCP gắn vào lần gọi (QĐ-53), để đo chi phí
 
 
 class RunRecorder(Protocol):
@@ -126,10 +128,17 @@ class ClaudeClient:
         return self._sdk
 
     def _api_and_params(self, params: dict, timeout: float | None = None) -> tuple[Any, dict]:
-        """Sonnet, Opus đi đường beta có dự phòng phía máy chủ; Haiku đi đường thường."""
+        """Sonnet, Opus đi đường beta có dự phòng phía máy chủ; lượt có MCP connector cũng đi beta; còn lại
+        (Haiku không MCP) đi đường thường."""
         sdk = self.sdk.with_options(timeout=timeout) if timeout else self.sdk
+        betas, extra = [], {}
+        if params.get("mcp_servers"):
+            betas.append(MCP_BETA)
         if supports_fallbacks(params["model"]):
-            return sdk.beta.messages, {**params, "betas": [FALLBACK_BETA], "fallbacks": "default"}
+            betas.append(FALLBACK_BETA)
+            extra["fallbacks"] = "default"
+        if betas:
+            return sdk.beta.messages, {**params, "betas": betas, **extra}
         return sdk.messages, params
 
     def _finish(self, message: Any, meta: dict, started: float, parsed: Any = None) -> ClaudeResult:
@@ -202,6 +211,7 @@ class ClaudeClient:
                     request_id=request_id,
                     error_code=error,
                     fallback_used=fallback,
+                    mcp_servers_used=meta.get("mcp_servers_used"),
                 )
             )
         except Exception:  # ghi sổ hỏng không được làm hỏng lượt chat
@@ -229,7 +239,8 @@ class ClaudeClient:
     @staticmethod
     def _meta(params: dict, purpose: str, **kw) -> dict:
         effort = (params.get("output_config") or {}).get("effort")
-        return {"purpose": purpose, "model": params["model"], "effort": effort, **kw}
+        mcp = sorted(s["name"] for s in params.get("mcp_servers") or []) or None
+        return {"purpose": purpose, "model": params["model"], "effort": effort, "mcp_servers_used": mcp, **kw}
 
     def stream_text(self, params: dict, *, purpose: str, **meta_kw) -> Generator[str, None, ClaudeResult]:
         """Sinh từng đoạn chữ; giá trị trả về (qua StopIteration) là ClaudeResult."""

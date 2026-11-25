@@ -99,11 +99,49 @@ def validate_request(kwargs: dict) -> str | None:
         return f"Schemas contains too many parameters with union types ({union} parameters)"
     if optional > MAX_OPTIONAL_PARAMS:
         return f"Schemas contains too many optional parameters ({optional} parameters)"
+    problem = _validate_mcp(kwargs, messages, tools)
+    if problem:
+        return problem
     web = any(
         str(t.get("type", "")).startswith(("web_search", "web_fetch")) for t in kwargs.get("tools") or []
     )
     if web and (kwargs.get("output_format") or (kwargs.get("output_config") or {}).get("format")):
         return "Citations are not supported when structured output is enabled"
+    return None
+
+
+def _validate_mcp(kwargs: dict, messages: list[dict], tools: list[dict]) -> str | None:
+    """Luật MCP connector theo tài liệu (25/11/2026): cần beta mcp-client, mỗi máy chủ đúng một mcp_toolset,
+    URL https, tên công cụ không trùng, tool search khi có công cụ hoãn và không hoãn hết. Khối mcp_tool_use của
+    máy chủ không gắn bị từ chối là giả định (chưa thử thật), để giữ lịch sử sạch."""
+    names = [t.get("name") for t in tools if t.get("name")]
+    if len(names) != len(set(names)):
+        return "tools: Tool names must be unique"
+    servers = kwargs.get("mcp_servers") or []
+    toolsets = [t for t in tools if t.get("type") == "mcp_toolset"]
+    if servers or toolsets:
+        if not any(str(b).startswith("mcp-client-") for b in kwargs.get("betas") or []):
+            return "mcp_servers: requires the anthropic-beta header mcp-client-2025-11-20"
+        server_names = [s.get("name") for s in servers]
+        for s in servers:
+            if s.get("type") != "url" or not str(s.get("url", "")).startswith("https://"):
+                return "mcp_servers: url must start with https://"
+        refs = [t.get("mcp_server_name") for t in toolsets]
+        if len(refs) != len(set(refs)) or set(refs) != set(server_names):
+            return "tools: each MCP server must be referenced by exactly one mcp_toolset"
+    deferred = any(t.get("defer_loading") for t in tools) or any(
+        (t.get("default_config") or {}).get("defer_loading") for t in toolsets
+    )
+    if deferred:
+        if not any(str(t.get("type", "")).startswith("tool_search_tool_") for t in tools):
+            return "tools: defer_loading requires a tool search tool"
+        if all(t.get("defer_loading") for t in tools if t.get("type") != "mcp_toolset"):
+            return "All tools have defer_loading set"
+    attached = {s.get("name") for s in servers}
+    for i, msg in enumerate(messages):
+        for block in _blocks(msg.get("content")):
+            if block.get("type") == "mcp_tool_use" and block.get("server_name") not in attached:
+                return f"messages.{i}: mcp_tool_use references unknown MCP server {block.get('server_name')}"
     return None
 
 

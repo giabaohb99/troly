@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     ai_user_hourly_turns: int = 60
     ai_monthly_usd: float = 200.0
     ai_inbox_max_items: int = 200
+    # Cờ tính năng dở (luật điều phối 25/11): mặc định tắt; tắt thì router, công cụ AI, duyệt, job của tính năng
+    # không đăng ký (model và migration vẫn nạp). App đọc cờ ở GET /system/status để ẩn mục.
+    feature_gym: bool = False
+    feature_connectors: bool = False
+    feature_zalo_bridge: bool = False
+    # zalo-bridge (QĐ-52, 50 mục 3.15): khóa nội bộ hai chiều; api gọi bridge và bridge đẩy sự kiện sang api.
+    zalo_bridge_url: str = "http://zalo-bridge:3000"
+    zalo_bridge_token: str = ""
+    # App gym (QĐ-54): cửa chỉ đọc /api/integration/summary; khóa chỉ ở .env VPS và troly-secrets/gym.env.
+    gym_base_url: str = ""
+    gym_api_key: str = ""
+    gym_username: str = ""
 
     r2_account_id: str = ""
     r2_access_key_id: str = ""

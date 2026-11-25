@@ -28,7 +28,7 @@ _QUERIES = {
         ORDER BY rank DESC, n.updated_at DESC LIMIT :limit
     """,
     "chat": """
-        SELECT 'chat' AS source, m.id, 'Chat ngày ' || to_char(c.local_date, 'DD/MM/YYYY') AS title,
+        SELECT 'chat' AS source, m.id, coalesce(c.title, 'Trò chuyện ' || to_char(c.local_date, 'DD/MM/YYYY')) AS title,
                m.created_at AS date, ts_rank(m.search_vector, q) AS rank,
                ts_headline('troly_vn', m.text, q, :hl) AS snippet, m.conversation_id
         FROM tab_message m JOIN tab_conversation c ON c.id = m.conversation_id,

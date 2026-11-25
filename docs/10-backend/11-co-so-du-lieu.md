@@ -184,21 +184,24 @@ Chỉ mục `(status, next_attempt_at) WHERE status = 'pending'`.
 
 ### 3.7 Chat và AI
 
-**`tab_conversation`**: mỗi người mỗi ngày một phiên.
+**`tab_conversation`**: phiên chat đặt tên, mở lại được, không tách theo ngày (QĐ-51, migration `0016_chat_sessions`). Phiên theo ngày có từ trước thành phiên thường, tiêu đề *Trò chuyện dd/mm/yyyy*.
 
 | Cột | Kiểu, ràng buộc | Ghi chú |
 |---|---|---|
-| (cột chung) | | UQ `(user_id, local_date)` |
-| local_date | date NN | Tách lúc 04:00 giờ người dùng (QĐ-20): `date(giờ địa phương - 4 giờ)` |
-| started_at, last_message_at | timestamptz | |
+| (cột chung) | | chỉ mục `(user_id, pinned DESC, last_message_at DESC, id DESC)` |
+| local_date | date NN | Ngày mở phiên (`core.clock.chat_day`), chỉ để bản app cũ đọc; không còn UQ |
+| title | text | Tên phiên; trống tới khi máy hoặc người dùng đặt |
+| title_source | text NN default `auto` | CK `auto` (máy đặt, agent AI đặt lại được qua `chat.service.set_auto_title`), `user` (người dùng đổi tên, máy không ghi đè) |
+| pinned | boolean NN default false | Ghim lên đầu danh sách |
+| started_at, last_message_at | timestamptz | `last_message_at` cũng là mốc xếp danh sách |
 | summary | text | Không chép nguyên văn tin của người khác |
 | summary_upto_id | bigint | |
 | last_prompt_tokens | int | |
 | compacted_count | int NN default 0 | |
-| day_summary_done | boolean NN default false | |
+| day_summary_done | boolean NN default false | Đã tóm cho lần phiên ngủ hiện tại (job `summarize_idle_conversations`); tin mới đặt lại false |
 | message_count | int NN default 0 | |
 
-**Nối phiên** (QĐ-27 mục 12): tin mới cách tin cuối của phiên trước dưới 3 giờ thì lịch sử gửi Claude của phiên mới (vẫn là dòng mới theo `local_date`) mang thêm 10 tin hiện cuối của phiên trước, dù đã qua 04:00. Luật nằm ở `chat/service.py`, không thêm cột.
+**Phiên nhận tin** (QĐ-51): `POST /chat/messages` có `conversation_id` thì vào phiên đó; không có thì phiên hoạt động gần nhất (tin mới nhất), chưa có thì tạo. Bỏ tách 04:00 và luật nối phiên 3 giờ (QĐ-27 mục 12): mở lại phiên cũ thì lịch sử gửi Claude là `summary` cộng các tin sau `summary_upto_id`. Tìm trong tin cũ cho công cụ AI: `chat.service.search_history(session, user, query, limit, exclude_conversation_id)` (tìm toàn văn, mới trước, kèm tên phiên và đoạn trích). `tab_ai_run.purpose` thêm `session_title` (migration `0017_ai_session_title`).
 
 **`tab_message`**: lưu nguyên khối nội dung Claude, chỉ nối thêm.
 
@@ -340,6 +343,7 @@ Chỉ mục `(user_id, spent_at DESC) WHERE deleted_at IS NULL`; `(user_id) WHER
 | conversation_title | text | |
 | is_group | boolean NN default false | |
 | account_email | citext | Thư Gmail của tài khoản nào (QĐ-50, nhiều tài khoản); tin thông báo máy để trống. Gỡ tài khoản kèm `delete_messages` thì xóa tin của email đó (migration `0015_inbox_account`) |
+| is_self, media, media_pending, recalled_at, quote | boolean NN false, jsonb, boolean NN false, timestamptz, jsonb | Tin Zalo qua zalo-bridge (QĐ-52, `source = zalo`, migration `0019_zalo`): tin mình gửi; `[{type, name, size, mime, status pending/done/failed, file_id, url (link CDN, không trả ra API)}]`; job còn phải tải; thu hồi (chữ thành *Tin đã thu hồi*); `{msg_id, text}`. `source` thêm `zalo`; khóa hội thoại `zalo:u:<thread_id>`, `zalo:g:<thread_id>`; khử trùng theo `msg_id` (`dedupe_hash`, `external_id`). Tin cùng chữ đọc từ thông báo lệch dưới 5 phút là một tin: tin bridge thay tin thông báo và kéo cả hội thoại cũ (kể cả luật riêng tư) sang khóa Zalo; thông báo về sau thì bỏ |
 | contact_id | bigint FK `tab_contact` SET NULL | |
 | subject | text | Thư Gmail |
 | text | text NN, tối đa 4.000 | Gmail: đoạn trích |
@@ -358,6 +362,8 @@ Nhóm Zalo không đặt `conversation_title`, `is_group_conversation`: tiêu đ
 **`tab_inbox_rule`**: (cột chung); `kind` CK `vip_sender`, `urgent_keyword`, `muted_sender`, `muted_keyword`, `muted_app`, `private_conversation`; `value text NN`; `app text`; `contact_id FK SET NULL`. UQ `(user_id, kind, lower(value), coalesce(app,''))`. `private_conversation`: tin vào hộp tin nhưng không gửi Claude.
 
 **`tab_contact`** (V1.8): (cột chung); `google_account_id NN FK CASCADE`; `resource_name NN`; `etag`; `display_name NN`; `phones text[]` (dạng `+84`); `emails citext[]`; `birthday_day`, `birthday_month`, `birthday_year smallint` (năm rỗng khi không rõ); `remind_birthday`, `is_important boolean NN default false`; `synced_at NN`; `deleted_at`. UQ `(user_id, resource_name)`; GIN `phones`, `emails`.
+
+**`tab_zalo_account`** (QĐ-52): (cột chung, UQ `user_id`); `state` (`logged_out`, `waiting_scan`, `logged_in`, `kicked`...); `zalo_uid`; `display_name`; `last_event_at`. Bridge chạy một tài khoản Zalo: sự kiện vào người bấm đăng nhập gần nhất, chưa ai bấm thì người dùng đầu tiên.
 
 **`tab_gmail_draft`** (V1.8): (cột chung); `google_account_id NN FK CASCADE` (tài khoản gửi, QĐ-50: trả lời theo tài khoản nhận luồng, thư mới theo `account_id` chọn hoặc tài khoản chính); `account_email citext`; `google_draft_id` (rỗng tới khi `drafts.create` xong); `thread_ref`; `to_addrs`, `cc_addrs citext[] NN`; `subject NN`; `body NN`; `body_hash NN`; `status` CK `draft`, `sending`, `sent`, `discarded`; `pending_action_id FK SET NULL`; `approved_at`, `sent_at`; `sent_message_id`. Gửi chỉ qua `tab_pending_action` (`tool_name = send_gmail_draft`, input `{draft_id}`, chạy ở `modules/inbox/approvals.py`); nháp trên Gmail lệch `body_hash` thì 409 `ACTION_PAYLOAD_CHANGED`, nháp giữ `draft`. `thread_ref` chỉ là luồng đang trả lời. Thư Gmail hộp Chính vào `tab_inbox_message` với `conversation_key = gmail:<thread_id>`, `conversation_title` là tiêu đề, `text` là đoạn trích; thư có OTP bỏ cả thư (QĐ-43). Cột `citext[]` đọc ra list nhờ `core/db` đăng ký kiểu `citext` với psycopg lúc mở kết nối.
 

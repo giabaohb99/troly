@@ -1,22 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Bot, Info, Loader2, RefreshCw, Search, Trash2, TriangleAlert } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Bot, Info, Loader2, Menu, MoreVertical, RefreshCw, Search, TriangleAlert } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/core/api/api-error'
-import { deleteConversation } from '@/modules/chat/api/chat-api'
+import { createSession } from '@/modules/chat/api/chat-api'
 import { ActionList } from '@/modules/chat/components/action-list'
 import { Composer } from '@/modules/chat/components/composer'
 import { MessageBubble } from '@/modules/chat/components/message-bubble'
-import { PastConversation } from '@/modules/chat/components/past-conversation'
-import { useChatStatus, useChatToday, useChatTurn } from '@/modules/chat/hooks/use-chat'
+import { RenameSessionDialog, SessionActionsDialog, useSessionMutations } from '@/modules/chat/components/session-actions'
+import { SessionsDrawer } from '@/modules/chat/components/sessions-drawer'
+import { sessionTitle } from '@/modules/chat/utils/sessions'
+import { chatViewKey, useChatStatus, useChatTurn, useChatView } from '@/modules/chat/hooks/use-chat'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { ErrorState } from '@/shared/components/error-state'
 import { OfflineBanner } from '@/shared/components/offline-banner'
 import { SkeletonList } from '@/shared/components/skeleton-list'
 import { UpdateBanner } from '@/shared/components/update-banner'
 import { Button } from '@/shared/ui/button'
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { formatUsd } from '@/shared/utils/format'
 import { useOpenFile } from '@/shared/hooks/use-open-file'
 import { useOlderMessages } from '@/modules/chat/hooks/use-older-messages'
@@ -31,14 +32,55 @@ const MAX_SEEK_PAGES = 20
 
 const SUGGESTIONS = ['cơm trưa 45k', 'Tháng này tiêu bao nhiêu rồi?', 'Tìm ghi chú về hợp đồng nhà', 'Giá vàng hôm nay']
 
-// Màn chính (31 mục 3.5): tin hôm nay, lượt đang chạy qua SSE, hành động, ô nhập cố định phía dưới.
+// Màn chính (31 mục 3.5, QĐ-51): một phiên chat đặt tên. Không có ?phien= là phiên hoạt động gần nhất (/chat/today);
+// có là phiên đó, chat tiếp được (mở từ Các phiên, Tìm, thông báo trợ lý trả lời). Đổi phiên thì dựng lại màn.
 export function ChatPage() {
+  const [params] = useSearchParams()
+  const sessionId = Number(params.get('phien')) || null
+  return <ChatView key={sessionId ?? 'gan-nhat'} sessionId={sessionId} />
+}
+
+function ChatView({ sessionId }: { sessionId: number | null }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const today = useChatToday()
+  const today = useChatView(sessionId)
   const status = useChatStatus()
-  const { turn, send, retry, dismiss, busy } = useChatTurn()
+  const { turn, send, retry, dismiss, busy } = useChatTurn(chatViewKey(sessionId), today.data?.conversation?.id ?? sessionId)
   const [params, setParams] = useSearchParams()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const session = today.data?.conversation ?? null
+  const openSession = (id: number | null) => {
+    setDrawerOpen(false)
+    if (id === (session?.id ?? null) && sessionId !== null) return
+    navigate(id ? `/?phien=${id}` : '/', { replace: true })
+  }
+  const newSession = useMutation({
+    mutationFn: () => createSession(),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.sessionsAll })
+      openSession(created.id)
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  // Xóa phiên đang mở: về phiên hoạt động gần nhất.
+  const afterDelete = (id: number) => {
+    if (id === session?.id) navigate('/', { replace: true })
+  }
+  const { update } = useSessionMutations(afterDelete)
+
+  // Từ màn chia sẻ (QĐ-51 bước 2): gửi ngay chữ và tệp đã tải lên vào phiên vừa chọn, một lần.
+  const location = useLocation()
+  const autoSentRef = useRef(false)
+  useEffect(() => {
+    const auto = (location.state as { autoSend?: { text: string; fileIds: number[] } } | null)?.autoSend
+    if (!auto || autoSentRef.current) return
+    autoSentRef.current = true
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+    void send({ text: auto.text, mode: 'chat', fileIds: auto.fileIds })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy một lần khi mở từ màn chia sẻ
+  }, [])
   const [draft, setDraft] = useState(() => params.get('hoi') ?? '')
   const bottomRef = useRef<HTMLDivElement>(null)
   const openFile = useOpenFile()
@@ -190,56 +232,54 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi lượt chuyển sang xong
   }, [turn?.status])
 
-  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean }) => {
+  const handleSend = (input: { text: string; mode: 'chat' | 'think' | 'research' | 'summary'; fileIds: number[]; voice?: boolean; connectors?: boolean }) => {
     setDraft('')
     stopSpeaking()
     voiceTurnRef.current = !!input.voice
-    void send({ text: input.text, mode: input.mode, fileIds: input.fileIds })
-  }
-
-  // Màn chat có conversation_id của phiên khác hôm nay: xem phiên cũ, chỉ đọc.
-  const pastId = Number(params.get('phien')) || null
-  if (pastId && today.data?.conversation?.id !== pastId) {
-    return <PastConversation conversationId={pastId} onBack={() => setParams({}, { replace: true })} />
-  }
-
-  async function clearToday() {
-    const id = today.data?.conversation?.id
-    if (!id) return
-    try {
-      await deleteConversation(id)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.chat.today })
-      toast.success('Đã xóa phiên hôm nay')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    void send({ text: input.text, mode: input.mode, fileIds: input.fileIds, connectors: input.connectors })
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" onPointerDown={stopSpeaking}>
-      <div className="flex shrink-0 items-start justify-between gap-2 pb-3">
-        <div>
-          <h1 className="text-2xl font-bold">Trợ lý</h1>
+      <div className="flex shrink-0 items-start gap-1 pb-3">
+        <Button variant="ghost" size="icon" className="-ml-2 shrink-0" aria-label="Các phiên" onClick={() => setDrawerOpen(true)}>
+          <Menu className="size-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          {/* Tên phiên; bấm để đổi tên (phiên chưa có thì chưa đổi được, gửi tin đầu máy chủ tự đặt tên). */}
+          <button type="button" className="block max-w-full truncate text-left text-xl font-bold" disabled={!session} onClick={() => setRenaming(true)} title="Bấm để đổi tên phiên">
+            {session ? sessionTitle(session) : 'Trợ lý'}
+          </button>
           <p className="text-sm text-muted-foreground">{status.data ? `Tháng này ${formatUsd(status.data.month_usd)}` : ' '}</p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex shrink-0 gap-1">
           <Button variant="ghost" size="icon" aria-label="Tìm" onClick={() => navigate('/tim')}>
             <Search className="size-5" />
           </Button>
-          {messages.length > 0 && (
-            <ConfirmDialog
-              title="Xóa phiên hôm nay?"
-              description="Toàn bộ tin nhắn hôm nay với trợ lý sẽ bị xóa. Chi tiêu, ghi chú đã ghi vẫn giữ nguyên."
-              onConfirm={() => void clearToday()}
-              trigger={
-                <Button variant="ghost" size="icon" aria-label="Xóa phiên hôm nay">
-                  <Trash2 className="size-5" />
-                </Button>
-              }
-            />
+          {session && (
+            <Button variant="ghost" size="icon" aria-label="Menu phiên" onClick={() => setMenuOpen(true)}>
+              <MoreVertical className="size-5" />
+            </Button>
           )}
         </div>
       </div>
+      <SessionsDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        currentId={session?.id ?? null}
+        onSelect={(id) => openSession(id)}
+        onNew={() => newSession.mutate()}
+        creating={newSession.isPending}
+        onDeleted={afterDelete}
+      />
+      <SessionActionsDialog session={menuOpen ? session : null} onClose={() => setMenuOpen(false)} onDeleted={afterDelete} />
+      <RenameSessionDialog
+        session={session}
+        open={renaming}
+        onOpenChange={setRenaming}
+        saving={update.isPending}
+        onSave={(title) => session && update.mutate({ id: session.id, patch: { title } }, { onSuccess: () => setRenaming(false) })}
+      />
 
       <div
         ref={listRef}

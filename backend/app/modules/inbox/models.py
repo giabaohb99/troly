@@ -11,7 +11,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UserOwnedMixin
@@ -30,7 +30,7 @@ RULE_KINDS = (
 class InboxMessage(UserOwnedMixin, Base):
     __tablename__ = "tab_inbox_message"
     __table_args__ = (
-        CheckConstraint("source IN ('notification','gmail')", name="source"),
+        CheckConstraint("source IN ('notification','gmail','zalo')", name="source"),
         CheckConstraint(f"app IN {APPS}", name="app"),
         CheckConstraint("status IN ('new','seen','done')", name="status"),
         CheckConstraint("importance IN ('normal','important')", name="importance"),
@@ -46,6 +46,13 @@ class InboxMessage(UserOwnedMixin, Base):
         Index("ix_tab_inbox_message_conversation", "user_id", "conversation_key", text("posted_at DESC")),
         Index("ix_tab_inbox_message_status", "user_id", "status", "importance", text("posted_at DESC")),
         Index("ix_tab_inbox_message_search", "search_vector", postgresql_using="gin"),
+        Index(
+            "ix_tab_inbox_message_zalo_external",
+            "user_id",
+            "external_id",
+            postgresql_where=text("source = 'zalo'"),
+        ),
+        Index("ix_tab_inbox_message_media_pending", "id", postgresql_where=text("media_pending")),
     )
 
     source: Mapped[str] = mapped_column(Text)
@@ -75,6 +82,12 @@ class InboxMessage(UserOwnedMixin, Base):
     thread_ref: Mapped[str | None] = mapped_column(Text)
     labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     dedupe_hash: Mapped[str] = mapped_column(Text)
+    # QĐ-52 (tin Zalo qua zalo-bridge, `source = zalo`):
+    is_self: Mapped[bool] = mapped_column(Boolean, server_default="false")  # tin mình gửi
+    media: Mapped[list | None] = mapped_column(JSONB)  # [{type, name, size, url, status, file_id, mime}]
+    media_pending: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    recalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quote: Mapped[dict | None] = mapped_column(JSONB)  # {msg_id, text}
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR,
         Computed(

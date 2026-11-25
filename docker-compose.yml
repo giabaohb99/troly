@@ -81,8 +81,42 @@ services:
       resources:
         limits: { cpus: "0.5", memory: 384M }
 
+  # Cầu nối Zalo qua zca-js (QĐ-52, docs/50-ha-tang mục 3.15). Không mở cổng; api gọi http://zalo-bridge:3000.
+  # Chỉ nhận các biến ZALO_* và R2_ENDPOINT, không đọc cả .env.
+  # Nằm sau profile `zalo`: không chạy mặc định khi deploy. Bật: docker compose --profile zalo up -d zalo-bridge
+  zalo-bridge:
+    profiles: ["zalo"]
+    build: ./zalo-bridge
+    image: troly-zalo-bridge:${TROLY_IMAGE_TAG:-latest}
+    container_name: troly-zalo-bridge
+    environment:
+      TZ: UTC
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ZALO_DATA_DIR: /data
+      # Không bắt buộc ở mức compose (profile tắt thì không cần); bridge tự kiểm khi khởi động.
+      ZALO_SESSION_KEY: ${ZALO_SESSION_KEY:-}
+      ZALO_BRIDGE_TOKEN: ${ZALO_BRIDGE_TOKEN:-}
+      ZALO_EVENTS_URL: ${ZALO_EVENTS_URL:-http://api:8000/api/v1/internal/zalo/events}
+      ZALO_SEND_PER_MINUTE: ${ZALO_SEND_PER_MINUTE:-20}
+      ZALO_ATTACHMENT_HOSTS: ${ZALO_ATTACHMENT_HOSTS:-}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+    volumes:
+      - troly-zalo-data:/data
+    networks: [troly_core, troly_edge]
+    restart: unless-stopped
+    stop_grace_period: 15s
+    labels:
+      com.troly.image: "1"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 256M }
+
 volumes:
   troly-pgdata:
+  troly-zalo-data:
 
 networks:
   troly_core:

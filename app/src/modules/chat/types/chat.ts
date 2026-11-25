@@ -26,8 +26,10 @@ export type ChatAction =
   | (ActionBase & { type: 'choices'; options: { label: string; value: string }[] })
   // Tệp bot xuất (QĐ-41, agent AI): label bằng name.
   | (ActionBase & { type: 'file'; file_id: number; name: string; mime: string; size_bytes: number | null })
+  // Trợ lý xin nối một hệ thống (QĐ-56).
+  | (ActionBase & { type: 'connect'; connector_id?: number | null; name?: string | null; url?: string | null })
 
-export const KNOWN_ACTION_TYPES = new Set(['open_map_navigation', 'open_map_directions', 'open_map_place', 'open_link', 'open_screen', 'confirm', 'undo', 'memory_changed', 'choices', 'file'])
+export const KNOWN_ACTION_TYPES = new Set(['open_map_navigation', 'open_map_directions', 'open_map_place', 'open_link', 'open_screen', 'confirm', 'undo', 'memory_changed', 'choices', 'file', 'connect'])
 
 // Tin người dùng: máy chủ có thể chỉ gửi file_id (app hỏi thêm GET /files/{id}); tin trợ lý có đủ trường.
 export interface Attachment {
@@ -52,8 +54,25 @@ export interface ChatMessage {
 
 export type { PendingAction, PendingStatus } from '@/shared/types/pending-action'
 
+// Phiên chat đặt tên (QĐ-51 bước 1), dạng đã chốt với agent kiến trúc (25/11). Tên tự đặt chạy nền sau câu trả lời
+// đầu (title_source auto); last_preview là 120 ký tự đầu tin cuối, chưa có thì app dùng summary.
+export interface ChatSession {
+  id: number
+  title?: string | null
+  title_source?: 'auto' | 'user' | null
+  pinned?: boolean
+  started_at?: string | null
+  last_message_at?: string | null
+  last_preview?: string | null
+  summary?: string | null
+  message_count?: number
+  created_at?: string | null
+  local_date?: string | null
+}
+
+// Một phiên mở trên màn chat: /chat/today (phiên hoạt động gần nhất) hoặc GET /chat/conversations/{id}.
 export interface ChatToday {
-  conversation: { id: number; local_date: string } | null
+  conversation: ChatSession | null
   messages: ChatMessage[]
   next_cursor: string | null
   pending_actions: PendingAction[]

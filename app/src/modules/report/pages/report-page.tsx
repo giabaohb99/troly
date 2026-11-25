@@ -3,6 +3,8 @@ import { Bot, CalendarDays, ChevronRight, Inbox, Smartphone, TriangleAlert, Wall
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { getDashboard, type Card } from '@/modules/report/api/report-api'
+import { GymCard } from '@/modules/report/components/gym-card'
+import { useFeatures } from '@/shared/hooks/use-features'
 import { getAiCost } from '@/shared/api/ai-cost-api'
 import { CostBars } from '@/shared/components/cost-bars'
 import { ErrorState } from '@/shared/components/error-state'
@@ -57,6 +59,7 @@ export function ReportPage() {
   const dashboard = useQuery({ queryKey: queryKeys.report.dashboard(today), queryFn: () => getDashboard(today) })
   const aiCost = useQuery({ queryKey: queryKeys.report.aiCost(today.slice(0, 7)), queryFn: () => getAiCost(today.slice(0, 7)) })
   const cards = dashboard.data?.cards
+  const features = useFeatures()
 
   return (
     <div className="flex flex-col gap-4 pb-8">
@@ -157,6 +160,8 @@ export function ReportPage() {
           </ReportCard>
         </>
       )}
+      {/* Thẻ Tập luyện (QĐ-54) tải riêng: dashboard lỗi vẫn hiện; chỉ khi máy chủ bật cờ gym. */}
+      {features.gym && <GymCard />}
     </div>
   )
 }

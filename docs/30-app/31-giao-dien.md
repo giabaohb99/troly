@@ -154,6 +154,10 @@ Email, mật khẩu, `[Đăng nhập]`. Địa chỉ api gắn sẵn. Sai mật 
 
 **Nói với trợ lý (1.0.6):** ô nhập trống thì nút gửi thành nút micro lớn (56 px); đang nghe thì nút đỏ có vòng nháy, chữ tạm hiện trong ô nhập; im lặng thì tự dừng và tự gửi. Lượt hỏi bằng giọng thì đọc to câu trả lời (bỏ Markdown, link, khối mã; tối đa khoảng 600 ký tự rồi nói *Chi tiết em để trên màn hình*); chạm màn hình hoặc bấm micro thì dừng đọc. Công tắc *Đọc trả lời khi hỏi bằng giọng* (mặc định bật, lưu trên máy) ở Cài đặt → Thông báo, mục *Giọng nói*, kèm dòng máy có giọng đọc tiếng Việt chưa và nút *Cài đặt giọng đọc*. Máy chưa có giọng tiếng Việt thì báo kèm nút mở cài đặt giọng đọc.
 
+**Phiên chat (QĐ-51 bước 1, bản 1.1.0):** nút góc trái tiêu đề mở ngăn kéo *Các phiên*: *Phiên mới*, ô tìm (máy chủ tìm cả nội dung qua `q`, app lọc tại chỗ không dấu), phiên ghim ở trên rồi theo lần nhắn cuối; mỗi dòng tên, đoạn tin cuối, giờ; giữ lâu hoặc nút ba chấm mở *Đổi tên*, *Ghim*/*Bỏ ghim*, *Xóa phiên* (hỏi lại). Tiêu đề màn chat là tên phiên (chưa đặt thì *Phiên dd/MM HH:mm*), bấm để đổi tên; nút ba chấm bên phải thay nút thùng rác cũ. Mở app vào phiên hoạt động gần nhất (`/chat/today`); chọn phiên thì đường dẫn `/?phien=<id>` (thông báo trợ lý trả lời mở đúng phiên), phiên cũ chat tiếp được (`POST /chat/messages` có `conversation_id`). Giọng nói, đính kèm, thẻ duyệt giữ nguyên. API của agent kiến trúc (25/11): mở một phiên ghép trang tin mới nhất, việc chờ duyệt và thông tin phiên (`GET /chat/conversations/{id}`, `last_preview` đã đề nghị thêm; chưa có thì tìm trong danh sách, dòng hai dùng `summary`).
+
+**Chia sẻ vào Trợ lý (QĐ-51 bước 2):** từ app khác bấm Chia sẻ, chọn Trợ lý thì mở màn `/chia-se`: xem trước ảnh, tệp, ô *Nhắn kèm* điền sẵn chữ hoặc link được chia sẻ, chọn phiên (mặc định phiên hoạt động gần nhất, hoặc *Phiên mới*), *Gửi* thì tải tệp lên, mở phiên đó và gửi ngay. Tệp không nhận được ghi *Bỏ qua N tệp*.
+
 #### Tìm (Phase 1)
 
 ```
@@ -240,6 +244,12 @@ Email, mật khẩu, `[Đăng nhập]`. Địa chỉ api gắn sẵn. Sai mật 
 - Thứ tự (phản hồi 1.0.7): mọi tab xếp theo tin mới nhất giảm dần; tin quan trọng chỉ có ngôi sao, không đẩy lên đầu (tab *Quan trọng* lọc riêng). Tab *Email* có hàng chip tài khoản dưới hàng tab (*Tất cả*, rồi từng tài khoản rút gọn phần trước @), nhớ lựa chọn cuối trên máy, gửi `account_email=` cho `GET /inbox/conversations` (máy chủ trả thêm `accounts` cho chip) và lọc cả ở app; mỗi dòng thư có huy hiệu màu theo tài khoản nhận.
 - Tệp `.md` ở mọi chỗ mở `/xem-tep/:fileId` (trình hiện Markdown trong app, không dùng HTML). Tải lên suy mime theo đuôi khi Android trả rỗng (`shared/utils/mime.ts`).
 
+#### Zalo đầy đủ qua zalo-bridge (QĐ-52, cờ `zalo_bridge`)
+
+- Cài đặt → *Zalo* (`/cai-dat/zalo`): trạng thái tài khoản; *Đăng nhập bằng mã QR* hiện ảnh QR (`qr_png_base64`) và đếm lùi, hỏi `GET /zalo/status` mỗi 2 giây tới *Đã đăng nhập X*; *Tạo mã mới* khi hết hạn; báo *bị đăng xuất vì mở Zalo Web nơi khác, tự thử lại sau 10 phút* khi `kicked`; *Đăng xuất* (hỏi lại).
+- Hộp tin, tab Zalo: hội thoại khóa đầy đủ (`zalo:u:`, `zalo:g:`) mở khung chat `/zalo/:key`; khóa cũ đọc từ thông báo vẫn mở màn cũ. Nút nổi *Tin Zalo mới* mở danh bạ (`/zalo/moi`, `GET /zalo/contacts`).
+- Khung chat: bong bóng kiểu Zalo (người khác bên trái, nhóm có tên người gửi; tin mình bên phải), gộp theo ngày, đứng ở tin cuối, *Xem tin cũ hơn*; ảnh xem nhỏ bấm mở lớn, video và tệp mở bằng trình xem máy, ghi âm nghe ngay, tệp đang lấy thì *Đang lấy...*; trích dẫn chỉ hiển thị; tin thu hồi in nghiêng *(Tin đã thu hồi)*; link, số, email bấm được. Gửi chữ và tối đa 5 tệp (`POST /zalo/messages`, tải tệp trước); tin hiện tạm *Đang gửi*, *Đã gửi, chờ Zalo báo lại* tới khi bridge báo lại; lỗi thì *Gửi lại* (429 *Gửi chậm lại, thử lại sau N giây*; chưa đăng nhập thì dải dẫn tới quét mã). Menu: *Lấy tin cũ* (nhóm lấy 50 tin, một-một Zalo không giữ lịch sử), *Đánh dấu đã xử lý*. Bot gửi thay luôn qua thẻ duyệt `send_zalo_message` ở chat.
+
 #### Thiết lập máy (Phase 2)
 
 ```
@@ -322,6 +332,10 @@ Khách sạn gắn từ thư xác nhận (QĐ-49, `stop.booking`): khối nhỏ 
 #### Báo cáo (Phase 4)
 
 Bốn thẻ, mỗi thẻ lỗi riêng được: **Chi tiêu** (tổng kỳ, so kỳ trước, 5 danh mục lớn nhất); **Lịch tuần** (số sự kiện, việc quá hạn); **Hộp tin** (quan trọng chưa xem, chưa xử lý); **Chi phí AI** (chi tháng so với mức cảnh báo 200 USD, cột theo ngày; không có trần ngày, QĐ-15); **Thiết bị** (đang nghe, tin cuối, số OTP đã chặn hôm nay). Không có nút gửi báo cáo (QĐ-11).
+
+Thẻ **Tập luyện** (QĐ-54) cuối màn Báo cáo, tải riêng `GET /reports/gym?period=week|month` (dạng thẻ như dashboard, theo đề xuất gửi agent kiến trúc): chip *Tuần này* / *Tháng này*; số buổi đã tập trên số buổi theo lịch (thiếu buổi thì màu cảnh báo), tối đa 3 bài tăng tạ nổi bật, cân nặng đầu và cuối khoảng, đạm trung bình so mục tiêu (dưới 90% màu cảnh báo), buổi hôm nay và ngày mai; nút *Mở app gym* (https://gym.baohuynh.io.vn, mở trình duyệt). `disabled` thì *Chưa nối app gym*.
+
+**Kết nối (QĐ-56, thay màn DEGO của QĐ-55):** Cài đặt → *Kết nối* (`/cai-dat/ket-noi`, đường dẫn sâu `troly://settings/connectors?ok=1&id=`, màn `settings_connectors`): danh sách kết nối (tên, *Chưa nối* / *Đã nối tài khoản X* / *Cần nối lại*). *Thêm kết nối*: tên, địa chỉ MCP, chip gợi ý ERP DEGO (`GET /connectors/presets` trả `{items}`); máy chủ có OAuth thì mở trang đăng nhập của hệ thống trong trình duyệt của app (người dùng nhập mật khẩu, đồng ý trên trang đó, về app báo đã nối; lỗi về theo mã `loi` gồm `huy`, `state`, `iss`, `token`, `loi`, app tự hiện câu); không có OAuth thì ô dán khóa (che, không tự điền). Màn một kết nối (`/cai-dat/ket-noi/:id`): trạng thái, *Kết nối*/*Nối lại* hoặc *Nhập khóa*/*Đổi khóa*, danh sách công cụ (tên hiển thị, mô tả; công cụ đọc nhãn *đọc*), mỗi công cụ ghi một công tắc (mặc định tắt, bật có cảnh báo, ghi vẫn qua thẻ duyệt; gửi `PATCH /connectors/{id}` với cả danh sách `write_tools_enabled`), *Gỡ kết nối* (hỏi lại). Chat: nút *Kết nối* cạnh Tìm web khi đã nối ít nhất một hệ thống, giữ tới khi tắt, gửi `use_connectors: true`; hành động `connect` của trợ lý chạy đúng luồng trên (có `connector_id` thì đăng nhập, không thì mở form thêm điền sẵn). API đã chốt với agent Google, cờ `use_connectors` (`true` hoặc danh sách id) và hành động `connect` đã chốt với agent AI (25/11); ẩn khi cờ `connectors` tắt.
 
 #### Cài đặt
 
