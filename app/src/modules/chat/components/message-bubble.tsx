@@ -34,14 +34,14 @@ export function MessageBubble({ messageId, role, text, model, citations, attachm
         </div>
       )}
       {text && (
-        <p
+        <div
           className={cn(
-            'max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap break-words',
+            'max-w-[85%] min-w-0 rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap break-words',
             role === 'user' ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md border bg-card',
           )}
         >
           <MessageText text={text} />
-        </p>
+        </div>
       )}
       {role === 'assistant' &&
         attachments?.map((file) => <FileCard key={file.file_id} file={{ file_id: file.file_id, name: file.name ?? 'Tệp', mime: file.mime ?? '', size_bytes: file.size_bytes }} />)}
