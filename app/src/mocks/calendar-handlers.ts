@@ -129,7 +129,7 @@ const gmailThreads: Record<string, { thread_id: string; subject: string; account
     thread_id: 't-hoadon',
     subject: 'Hóa đơn điện tử tháng 11',
     account_email: 'bao.congviec@gmail.com',
-    messages: [{ id: 'h1', from_name: 'VNPT', from_email: 'hoadon@vnpt.vn', to: ['bao.congviec@gmail.com'], cc: [], date: at(today, '07:10'), text: 'Hóa đơn cước tháng 11 của quý khách là 220.000 đ, hạn thanh toán 30/11.' }],
+    messages: [{ id: 'h1', from_name: 'VNPT', from_email: 'hoadon@vnpt.vn', to: ['bao.congviec@gmail.com'], cc: [], date: at(today, '07:10'), text: 'Kính gửi quý khách,\r\n\r\nHóa đơn cước tháng 11 của quý khách là 220.000 đ, hạn thanh toán ngày 30/11. Quý\r\nkhách xem chi tiết tại https://hoadon.vnpt.vn/tra-cuu?ma=KH8841203&ky=2026-11&nguon=email\r\nhoặc gọi tổng đài 1800 1091, email hotro@vnpt.vn.\r\n\r\nTrân trọng,\r\nVNPT\r\n\r\nHủy nhận thư: https://dashboard.render.com/email/unsubscribe?token=eyJhbGciOiJIUzI1NiJ9.abcdefghijklmnopqrstuvwxyz0123456789' }],
   },
   't-hopdong': {
     thread_id: 't-hopdong',

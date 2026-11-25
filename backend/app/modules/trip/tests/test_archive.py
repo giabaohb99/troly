@@ -123,6 +123,9 @@ def test_duplicate_keeps_title_when_not_given(db, user, trip):
 
 
 def test_api_scope_archive_duplicate(auth_client, db, user, trip):
+    service.update_trip(
+        db, user, trip.id, {"start_date": date(2099, 11, 21)}
+    )  # giờ thật: chuyến phải còn sắp tới
     r = auth_client.get("/api/v1/trips")
     assert r.status_code == 200 and [t["id"] for t in r.json()["data"]["items"]] == [trip.id]
     r = auth_client.post(f"/api/v1/trips/{trip.id}/archive")

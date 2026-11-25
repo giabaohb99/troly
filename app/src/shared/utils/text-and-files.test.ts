@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseInline, parseMarkdown } from '@/shared/utils/markdown'
 import { guessMime, isMarkdownFile } from '@/shared/utils/mime'
-import { tokenizeText } from '@/shared/utils/text-tokens'
+import { linkHost, reflowPlainText, tokenizeText } from '@/shared/utils/text-tokens'
 
 describe('mime theo đuôi', () => {
   it('mime rỗng hoặc octet-stream thì suy theo đuôi', () => {
@@ -75,3 +75,57 @@ describe('Markdown', () => {
     ])
   })
 })
+
+describe('link trong thư và Hộp tin (phản hồi 1.0.8)', () => {
+  it('email thành link soạn thư; email trong link không tách riêng', () => {
+    expect(tokenizeText('Gửi về hgbao.idagroup@gmail.com nhé.')).toEqual([
+      { type: 'text', value: 'Gửi về ' },
+      { type: 'email', value: 'hgbao.idagroup@gmail.com', href: 'mailto:hgbao.idagroup@gmail.com' },
+      { type: 'text', value: ' nhé.' },
+    ])
+    const inLink = tokenizeText('https://x.vn/huy?email=a@b.com')
+    expect(inLink).toHaveLength(1)
+    expect(inLink[0].type).toBe('link')
+  })
+
+  it('tên miền của link dài', () => {
+    expect(linkHost('https://dashboard.render.com/web/srv-abc123/settings?utm_source=email')).toBe('dashboard.render.com')
+    expect(linkHost('https://www.booking.com/x')).toBe('booking.com')
+  })
+
+  it('gộp dòng bị ngắt giữa câu, giữ đoạn, lời chào, gạch đầu dòng', () => {
+    const text = [
+      'Chào anh Bảo,',
+      '',
+      'Hóa đơn tháng 11 của dịch vụ Render đã sẵn sàng, tổng cộng 7 USD, sẽ được',
+      'trừ vào thẻ vào ngày 1 tháng 12.',
+      '- Web service: 7 USD',
+      '- Database: 0 USD',
+      '',
+      'Trân trọng,',
+      'Render',
+    ].join('\r\n')
+    expect(reflowPlainText(text)).toBe(
+      [
+        'Chào anh Bảo,',
+        '',
+        'Hóa đơn tháng 11 của dịch vụ Render đã sẵn sàng, tổng cộng 7 USD, sẽ được trừ vào thẻ vào ngày 1 tháng 12.',
+        '- Web service: 7 USD',
+        '- Database: 0 USD',
+        '',
+        'Trân trọng,',
+        'Render',
+      ].join('\n'),
+    )
+    expect(reflowPlainText('a\n\n\n\nb')).toBe('a\n\nb')
+  })
+})
+
+describe('tổng đài 1800, 1900 (phản hồi 1.0.8)', () => {
+  it('bấm gọi được; số dài ngắn sai không thành link', () => {
+    expect(tokenizeText('gọi 1800 1091 nhé')[1]).toEqual({ type: 'phone', value: '1800 1091', href: 'tel:18001091' })
+    expect(tokenizeText('1900 6600 99')[0]).toEqual({ type: 'phone', value: '1900 6600 99', href: 'tel:1900660099' })
+    expect(tokenizeText('mã 180012').every((t) => t.type === 'text')).toBe(true)
+  })
+})
+

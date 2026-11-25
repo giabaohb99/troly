@@ -28,7 +28,7 @@ def trip_client(db, user):
 
 
 def test_import_get_links_and_stop_patch(db, trip_client, maps_fake, fake_ai, sample_file):
-    resp = trip_client.post("/api/v1/trips/import", json={"file_id": sample_file, "start_date": "2026-11-21"})
+    resp = trip_client.post("/api/v1/trips/import", json={"file_id": sample_file, "start_date": "2099-11-21"})
     assert resp.status_code == 202
     trip_id = resp.json()["data"]["trip_id"]
     assert trip_client.get(f"/api/v1/trips/{trip_id}").json()["data"]["status"] == "importing"

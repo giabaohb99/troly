@@ -10,6 +10,7 @@ import { listMessages, markConversation } from '@/modules/inbox/api/inbox-api'
 import { AppTag } from '@/modules/inbox/components/app-tag'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { ErrorState } from '@/shared/components/error-state'
+import { RichText } from '@/shared/components/rich-text'
 import { SkeletonList } from '@/shared/components/skeleton-list'
 import { Button } from '@/shared/ui/button'
 import { formatWhen } from '@/shared/utils/format'
@@ -97,7 +98,12 @@ export function ConversationPage() {
             </span>
             <p className={cn('max-w-[90%] rounded-2xl rounded-tl-md border bg-card px-4 py-2 text-[15px] whitespace-pre-wrap break-words', m.hidden_content && 'text-muted-foreground italic')}>
               {m.subject ? <strong className="block">{m.subject}</strong> : null}
-              {m.text}
+              {/* Link bấm được (link dài thành chip tên miền), số bấm gọi, email bấm soạn thư (phản hồi 1.0.8). */}
+              {m.text && !m.hidden_content ? (
+                <RichText text={m.text} compactLinks onEmail={(email) => navigate('/hop-tin/email/soan', { state: { to: [email] } })} />
+              ) : (
+                m.text
+              )}
             </p>
           </div>
         ))}

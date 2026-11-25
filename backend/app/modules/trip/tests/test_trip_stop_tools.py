@@ -179,7 +179,11 @@ def test_move_stop_to_other_day_after_given_stop(db, ctx, evaluated):
 # ---------- QĐ-42: Đã đi, Đi lại ----------
 
 
-def test_archive_moves_trip_to_past_and_back(ctx, evaluated):
+def test_archive_moves_trip_to_past_and_back(ctx, evaluated, monkeypatch):
+    from app.core import clock
+
+    # Chuyến mẫu đi 21 tới 23/11/2026: cố định hôm nay trước chuyến, kẻo qua ngày đó tự thành Đã đi.
+    monkeypatch.setattr(clock, "now", lambda: ctx.now)
     out = _call(ctx, "archive_trip", trip_id=evaluated, archived=True)
     assert out.result["da_luu_tru"] is True
     past = _call(ctx, "list_trips", status=None, query=None, scope="past").result["items"]

@@ -86,16 +86,20 @@ def test_area_from_route_before_and_after_ferry(db, user):
     assert [s.area for s in stops] == [CT, PH, PH, "Long Hải, Bà Rịa - Vũng Tàu"]
 
 
-def test_area_without_ferry_uses_route_end_then_trip_destination(db, user):
-    trip = _trip(db, user, [("Cafe Mộc", "an_uong", {})], route=f"Vũng Tàu → {PH}")
+def test_area_without_ferry_or_destination_name_is_route_start(db, user):
+    """Không phà, không điểm mang tên nơi đến: vẫn ở đầu tuyến (luật QĐ 25/11). Chuyến khứ hồi không lùi
+    về end_text (là nhà)."""
+    trip = _trip(
+        db, user, [("Cafe Mộc", "an_uong", {}), ("Chợ Phước Hải", "an_uong", {})], route=f"Vũng Tàu → {PH}"
+    )
     stops = _stops(db, trip)
     geocode.fill_areas(trip, stops)
-    assert stops[0].area == PH
+    assert [s.area for s in stops] == ["Vũng Tàu, Bà Rịa - Vũng Tàu", PH]
     trip2 = _trip(db, user, [("Cafe Mộc", "an_uong", {})], route=None)
-    trip2.end_text = "Phước Hải"
+    trip2.origin_text = trip2.end_text = "Cần Thơ"
     stops2 = _stops(db, trip2)
     geocode.fill_areas(trip2, stops2)
-    assert stops2[0].area == "Phước Hải"
+    assert stops2[0].area is None
 
 
 def test_links_search_by_name_with_area():
@@ -169,7 +173,9 @@ def test_import_queues_geocode_and_links_use_coords(db, user, no_maps, fake_ai, 
     stops = [s for s in _stops(db, trip) if s.role in ("main", "via")]
     assert all(s.area for s in stops), [s.title for s in stops if not s.area]
     run_job(db, "trip_geocode", trip.id)  # Nominatim giả không biết các quán này: không đoán bừa
-    assert all(s.coord_source != "osm" for s in _stops(db, trip))
+    # Chỉ điểm mang đúng tên thành phố (Xuất phát ở Cần Thơ, Về Cần Thơ) lấy được tọa độ tâm thành phố.
+    located = {s.place_query or s.title for s in _stops(db, trip) if s.coord_source == "osm"}
+    assert located <= {"Cần Thơ"}, located
     nav = next(
         s["navigation"]
         for d in service.map_links(db, user, trip.id, None, 9)["days"]
@@ -204,3 +210,78 @@ def test_editing_area_drops_osm_coords(db, user, osm):
     assert cafe.coord_source == "osm"
     out = service.update_stop(db, user, trip.id, cafe.id, {"area": "Long Hải, Bà Rịa - Vũng Tàu"})
     assert cafe.lat is None and out["search_query"] == "Cafe Mộc, Long Hải, Bà Rịa - Vũng Tàu"
+
+
+# ---------- Lỗi thật 25/11: chuyến 7 nhập trước khi có area, cả ngày 1 thành Cần Thơ ----------
+
+
+@pytest.fixture
+def broken_trip(db, user, no_maps, fake_ai, sample_file):
+    """Chuyến từ tệp mẫu (chính là chuyến 7), đưa về đúng trạng thái hỏng trên máy thật."""
+    data = service.import_trip(db, user, file_id=sample_file, start_date=date(2026, 11, 21))
+    run_job(db, "trip_import", data["trip_id"])
+    trip = db.get(Trip, data["trip_id"])
+    day1 = [s for s in _stops(db, trip) if s.day_no == 1]
+    for s in day1:
+        s.area = "Cần Thơ"
+    for s in day1[-4:]:  # 4 điểm có tọa độ OpenStreetMap tìm theo Cần Thơ (sai)
+        s.lat, s.lng, s.coord_source = 10.03, 105.78, "osm"
+    db.flush()
+    return trip
+
+
+def _area_of(db, trip, needle):
+    stop = next(s for s in _stops(db, trip) if s.day_no == 1 and needle in s.title)
+    return stop
+
+
+def test_reinfer_day1_of_trip7(db, user, broken_trip):
+    result = geocode.reinfer_trip(db, broken_trip, use_ai=False)
+    assert result["changed"] >= 8
+    assert _area_of(db, broken_trip, "Xuất phát").area == "Cần Thơ"
+    for needle in (
+        "chợ Phước Hải",
+        "Cafe Phượng",
+        "Hotel Quốc Hương",
+        "Bánh khọt",
+        "Đèo Nước Ngọt",
+        "Hàu chị Oanh",
+    ):
+        assert _area_of(db, broken_trip, needle).area in (PH, "Đất Đỏ, Bà Rịa - Vũng Tàu"), (
+            needle
+        )  # Phước Hải thuộc Đất Đỏ
+    assert _area_of(db, broken_trip, "Long Hải Channel").area == "Long Hải, Bà Rịa - Vũng Tàu"
+    # Tọa độ tìm theo Cần Thơ bị bỏ để tìm lại theo địa phương mới.
+    assert all(s.coord_source != "osm" for s in _stops(db, broken_trip) if s.day_no == 1)
+
+
+def test_navigation_after_reinfer_points_to_phuoc_hai(db, user, broken_trip):
+    geocode.reinfer_trip(db, broken_trip, use_ai=False)
+    hau = _area_of(db, broken_trip, "Hàu chị Oanh")
+    assert service.serialize_stop(hau)["search_query"].endswith(PH)
+    day1 = next(d for d in service.map_links(db, user, broken_trip.id, 1, 9)["days"] if d["day_no"] == 1)
+    nav = next(s["navigation"] for s in day1["stops"] if s["stop_id"] == hau.id)
+    assert nav["query"].endswith(PH) and "Ph%C6%B0%E1%BB%9Bc%20H%E1%BA%A3i" in nav["uri"]
+    assert "C%E1%BA%A7n%20Th%C6%A1" not in nav["uri"]
+
+
+def test_reinfer_uses_ai_areas_when_available(db, user, broken_trip, monkeypatch):
+    asked = []
+
+    def infer_stop_areas(user_id, trip_title, day, stops):
+        asked.append(day["title"])
+        return {s["stop_id"]: "Đất Đỏ, Bà Rịa - Vũng Tàu" for s in stops if "Đèo" in s["title"]}
+
+    monkeypatch.setattr(geocode, "_infer_stop_areas", lambda: infer_stop_areas)
+    result = geocode.reinfer_trip(db, broken_trip)
+    assert len(asked) == 3 and asked[0] == "Cần Thơ → Phước Hải" and result["ai"] >= 1
+    assert _area_of(db, broken_trip, "Đèo Nước Ngọt").area == "Đất Đỏ, Bà Rịa - Vũng Tàu"
+
+
+def test_reinfer_without_ai_keeps_rule_result(db, user, broken_trip, monkeypatch):
+    def refuse(*a, **k):
+        raise RuntimeError("AI từ chối")
+
+    monkeypatch.setattr(geocode, "_infer_stop_areas", lambda: refuse)
+    geocode.reinfer_trip(db, broken_trip)
+    assert _area_of(db, broken_trip, "Hàu chị Oanh").area.startswith(("Phước Hải", "Đất Đỏ"))

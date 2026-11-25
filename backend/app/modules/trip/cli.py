@@ -2,6 +2,7 @@
 
     python -m app.modules.trip.cli geocode --trip 5
     python -m app.modules.trip.cli geocode --all
+    python -m app.modules.trip.cli geocode --trip 7 --reinfer   # chuyến cũ suy sai địa phương
 
 Mỗi điểm một yêu cầu Nominatim, 1 yêu cầu mỗi giây; điểm đã có tọa độ thì bỏ qua.
 """
@@ -27,7 +28,9 @@ def cmd_geocode(args: argparse.Namespace) -> int:
             print("Không có chuyến nào.", file=sys.stderr)
             return 1
         for trip in trips:
-            result = geocode.geocode_trip(session, trip)
+            result = (
+                geocode.reinfer_trip(session, trip) if args.reinfer else geocode.geocode_trip(session, trip)
+            )
             session.commit()
             print(json.dumps({"trip_id": trip.id, **result}, ensure_ascii=False))
     return 0
@@ -43,6 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument("--trip", type=int, help="Mã chuyến")
     group.add_argument("--all", action="store_true", help="Mọi chuyến đã nhập xong")
+    p.add_argument(
+        "--reinfer",
+        action="store_true",
+        help="Làm lại địa phương (luật rồi AI) cho chuyến nhập trước khi có area",
+    )
     p.set_defaults(func=cmd_geocode)
     args = parser.parse_args(argv)
     return args.func(args)
