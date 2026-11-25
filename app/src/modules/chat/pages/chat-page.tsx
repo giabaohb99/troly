@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Bot, Info, Loader2, Menu, MoreVertical, RefreshCw, Search, TriangleAlert } from 'lucide-react'
+import { Info, Loader2, Menu, MoreVertical, RefreshCw, Search, TriangleAlert } from 'lucide-react'
+import { AppMark } from '@/shared/components/app-mark'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { getErrorMessage } from '@/core/api/api-error'
+import { ApiError, getErrorMessage } from '@/core/api/api-error'
 import { createSession } from '@/modules/chat/api/chat-api'
 import { ActionList } from '@/modules/chat/components/action-list'
 import { Composer } from '@/modules/chat/components/composer'
@@ -69,6 +70,13 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
     if (id === session?.id) navigate('/', { replace: true })
   }
   const { update } = useSessionMutations(afterDelete)
+  // Phiên không còn (máy chủ dọn phiên rỗng sau 1 ngày, hoặc đã xóa ở máy khác): về phiên gần nhất thay vì kẹt ở lỗi.
+  const missing = sessionId !== null && today.error instanceof ApiError && today.error.status === 404
+  useEffect(() => {
+    if (!missing) return
+    toast.info('Phiên này không còn.')
+    navigate('/', { replace: true })
+  }, [missing, navigate])
 
   // Từ màn chia sẻ (QĐ-51 bước 2): gửi ngay chữ và tệp đã tải lên vào phiên vừa chọn, một lần.
   const location = useLocation()
@@ -305,11 +313,11 @@ function ChatView({ sessionId }: { sessionId: number | null }) {
         )}
 
         {today.isPending && <SkeletonList rows={3} />}
-        {today.isError && <ErrorState error={today.error} onRetry={() => void today.refetch()} />}
+        {today.isError && !missing && <ErrorState error={today.error} onRetry={() => void today.refetch()} />}
 
         {today.isSuccess && messages.length === 0 && !turn && (
           <section className="flex flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-8 text-center">
-            <Bot className="size-10 text-primary" />
+            <AppMark className="size-14" />
             <p className="text-sm text-muted-foreground">Nhắn một câu là em ghi, tra, nhắc. Bật Tìm web để hỏi tin mới, Nghĩ kỹ cho câu khó.</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((text) => (

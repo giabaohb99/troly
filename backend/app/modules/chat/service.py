@@ -277,6 +277,9 @@ class PreparedTurn:
 
 
 TITLE_MAX = 120
+# Phiên chưa có tin nào chỉ hiện trong danh sách ngần này phút sau khi tạo (nút Phiên mới), rồi ẩn; job
+# cleanup_old_data xóa phiên rỗng quá 1 ngày.
+EMPTY_VISIBLE_MINUTES = 10
 
 
 def _clean_title(value: str | None) -> str | None:
@@ -717,11 +720,17 @@ def run_turn_json(prepared: PreparedTurn) -> dict:
 
 
 def get_today(session: Session, user: UserContext) -> dict:
-    """Giữ cho bản app cũ (trước QĐ-51): trả phiên hoạt động gần nhất, chưa có thì tạo."""
-    now = clock.now()
-    conversation = repo.get_or_create_conversation(
-        session, user.user_id, clock.chat_day(now, user.timezone), now
-    )
+    """Giữ cho bản app cũ (trước QĐ-51): trả phiên hoạt động gần nhất. Chưa có phiên nào thì `conversation`
+    null, không tạo phiên rỗng (phản hồi 1.1.1); phiên mới chỉ ghi DB khi có tin đầu."""
+    conversation = repo.latest_conversation(session, user.user_id)
+    if conversation is None:
+        pending = repo.list_pending_actions(session, user.user_id, ["pending"])
+        return {
+            "conversation": None,
+            "messages": [],
+            "next_cursor": None,
+            "pending_actions": [serialize_pending(a) for a in pending],
+        }
     return get_conversation_page(session, user, conversation)
 
 
@@ -798,7 +807,8 @@ def list_conversations(
     """Danh sách phiên: ghim trước, rồi tin mới nhất giảm dần; `q` tìm theo tiêu đề và nội dung tin."""
     after = _parse_cursor(cursor) if cursor else None
     q = (q or "").strip() or None
-    rows = repo.list_conversations(session, user.user_id, after, limit + 1, q)
+    empty_since = clock.now() - timedelta(minutes=EMPTY_VISIBLE_MINUTES)
+    rows = repo.list_conversations(session, user.user_id, after, limit + 1, q, empty_since)
     items = rows[:limit]
     next_cursor = None
     if len(rows) > limit:
@@ -866,11 +876,19 @@ def search_history(
 
 
 def create_conversation(session: Session, user: UserContext, title: str | None = None) -> dict:
-    """Phiên mới (nút *Phiên mới*). Phiên gần nhất còn trống, chưa đặt tên thì dùng lại, khỏi đẻ phiên rỗng."""
+    """Phiên mới (nút *Phiên mới*). Phiên gần nhất còn trống, chưa đặt tên và vừa tạo (trong
+    EMPTY_VISIBLE_MINUTES) thì dùng lại, khỏi đẻ phiên rỗng; phiên rỗng cũ hơn thì không (danh sách đã ẩn nó,
+    job dọn sẽ xóa)."""
     now = clock.now()
     title = _clean_title(title)
     latest = repo.latest_conversation(session, user.user_id)
-    if latest is not None and latest.message_count == 0 and latest.title is None:
+    fresh_empty = (
+        latest is not None
+        and latest.message_count == 0
+        and latest.title is None
+        and latest.created_at >= now - timedelta(minutes=EMPTY_VISIBLE_MINUTES)
+    )
+    if fresh_empty:
         if title:
             latest.title, latest.title_source = title, "user"
         latest.last_message_at = now

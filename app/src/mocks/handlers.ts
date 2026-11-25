@@ -191,6 +191,11 @@ const chatSessions = new Map<number, MockSession>([
   ] }],
 ])
 const messagesOf = (id: number): ChatMessage[] => (id === MAIN_SESSION ? mockDb.messages : (chatSessions.get(id)?.messages ?? []))
+// Phản hồi 1.1.1: phiên chưa có tin chỉ hiện khi vừa tạo bằng POST trong 10 phút; /chat/today không tạo phiên.
+const isFreshEmpty = (s: MockSession) => messagesOf(s.id).length === 0 && Date.now() - Date.parse(s.created_at) < 10 * 60_000
+const isVisibleSession = (s: MockSession) => messagesOf(s.id).length > 0 || isFreshEmpty(s)
+const latestVisibleSession = () =>
+  [...chatSessions.values()].filter(isVisibleSession).sort((a, b) => Date.parse(sessionMeta(b).last_message_at ?? b.created_at) - Date.parse(sessionMeta(a).last_message_at ?? a.created_at))[0]
 function sessionMeta(s: MockSession) {
   const msgs = messagesOf(s.id)
   const last = msgs[msgs.length - 1]
@@ -286,12 +291,13 @@ export const handlers = [
 
   // Phiên chat đặt tên (QĐ-51 bước 1): /chat/today là phiên hoạt động gần nhất.
   http.get(`${API}/chat/today`, () => {
-    const latest = [...chatSessions.values()].sort((a, b) => Date.parse(sessionMeta(b).last_message_at ?? b.created_at) - Date.parse(sessionMeta(a).last_message_at ?? a.created_at))[0]
+    const latest = latestVisibleSession()
     return ok(latest ? sessionView(latest.id) : { conversation: null, messages: [], next_cursor: null, pending_actions: mockDb.pending })
   }),
   http.get(`${API}/chat/conversations`, ({ request }) => {
     const q = (new URL(request.url).searchParams.get('q') ?? '').toLowerCase()
     const items = [...chatSessions.values()]
+      .filter(isVisibleSession)
       .map((s) => sessionMeta(s))
       .filter((m) => !q || `${m.title ?? ''} ${messagesOf(m.id).map((x) => x.text).join(' ')}`.toLowerCase().includes(q))
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || Date.parse(b.last_message_at ?? b.started_at) - Date.parse(a.last_message_at ?? a.started_at))
@@ -299,6 +305,8 @@ export const handlers = [
   }),
   http.post(`${API}/chat/conversations`, async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { title?: string }
+    const reuse = [...chatSessions.values()].find(isFreshEmpty)
+    if (reuse) return ok(sessionMeta(reuse), 200)
     const id = nextId()
     chatSessions.set(id, { id, title: body.title?.trim() || null, pinned: false, created_at: new Date().toISOString(), messages: [] })
     return ok(sessionMeta(chatSessions.get(id)!), 201)
@@ -333,7 +341,7 @@ export const handlers = [
   http.post(`${API}/chat/messages`, async ({ request }) => {
     const body = (await request.json()) as { text: string; mode?: string; attachment_file_ids?: number[]; conversation_id?: number }
     // Không chỉ phiên: phiên hoạt động gần nhất; phiên chưa có tên thì đặt theo câu đầu (như máy chủ).
-    const target = chatSessions.get(body.conversation_id ?? -1) ?? [...chatSessions.values()].sort((a, b) => Date.parse(sessionMeta(b).last_message_at ?? b.created_at) - Date.parse(sessionMeta(a).last_message_at ?? a.created_at))[0]
+    const target = chatSessions.get(body.conversation_id ?? -1) ?? latestVisibleSession()
     if (body.text.toLowerCase().includes('lỗi mạng')) return fail(502, 'AI_UNAVAILABLE', 'Trợ lý đang lỗi, thử lại sau.')
     const userMessage = message('user', body.text, { attachments: body.attachment_file_ids?.length ? body.attachment_file_ids.map((id) => ({ file_id: id })) : null })
     const plan = planReply(body.text, body.mode ?? 'chat')

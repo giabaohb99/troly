@@ -513,3 +513,55 @@ def test_search_history_finds_old_messages_newest_first(db, user):
     only_old = service.search_history(db, user, "Trà Vinh", exclude_conversation_id=newer.id)
     assert {h["conversation_id"] for h in only_old} == {old.id}
     assert service.search_history(db, user, "  ") == []
+
+
+# ---------- Phản hồi 1.1.1: không còn phiên rỗng ----------
+
+
+def test_today_without_sessions_creates_nothing(auth_client, db, user):
+    from app.modules.chat.models import Conversation
+
+    today = auth_client.get("/api/v1/chat/today").json()["data"]
+    assert today["conversation"] is None and today["messages"] == []
+    assert db.query(Conversation).filter_by(user_id=user.user_id).count() == 0
+
+
+def test_list_hides_empty_sessions_except_just_created(auth_client, db, user):
+    from app.modules.chat.models import Conversation
+
+    old_empty = repo.create_conversation(db, user.user_id, clock.chat_day(vn(2026, 11, 21, 9), user.timezone),
+                                         vn(2026, 11, 21, 9))  # fmt: skip
+    old_empty.created_at = vn(2026, 11, 21, 9)  # phiên luật cũ tự tạo, 0 tin
+    with_msgs = _old_conversation(db, user, vn(2026, 11, 20, 9))
+    db.flush()
+    fresh = auth_client.post("/api/v1/chat/conversations").json()["data"]  # nút Phiên mới
+    ids = [c["id"] for c in auth_client.get("/api/v1/chat/conversations").json()["data"]["items"]]
+    assert ids == [fresh["id"], with_msgs.id]  # phiên rỗng cũ không hiện
+    # Quá 10 phút mà vẫn trống thì cũng ẩn.
+    db.get(Conversation, fresh["id"]).created_at = clock.now() - timedelta(minutes=11)
+    db.flush()
+    ids = [c["id"] for c in auth_client.get("/api/v1/chat/conversations").json()["data"]["items"]]
+    assert ids == [with_msgs.id]
+
+
+def test_cleanup_deletes_empty_sessions_older_than_a_day(db, user):
+    from sqlalchemy import text as sql
+
+    from app.modules.chat.models import Conversation
+    from worker.jobs import cleanup
+
+    old_empty = repo.create_conversation(db, user.user_id, clock.chat_day(vn(2026, 11, 21, 9), user.timezone),
+                                         vn(2026, 11, 21, 9))  # fmt: skip
+    new_empty = repo.create_conversation(
+        db, user.user_id, clock.chat_day(clock.now(), user.timezone), clock.now()
+    )
+    kept = _old_conversation(db, user, vn(2026, 11, 20, 9))
+    db.execute(
+        sql("UPDATE tab_conversation SET created_at = now() - interval '2 days' WHERE id IN (:a, :b)"),
+        {"a": old_empty.id, "b": kept.id},
+    )
+    db.commit()
+    cleanup.cleanup_old_data()
+    db.expire_all()
+    left = {c.id for c in db.query(Conversation).filter_by(user_id=user.user_id)}
+    assert left == {new_empty.id, kept.id}

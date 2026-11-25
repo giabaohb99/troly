@@ -153,10 +153,10 @@ Lỗi chung (`AUTH_*`, `VALIDATION_ERROR`, `NOT_FOUND`, `RATE_LIMITED`, `INTERNA
 | POST | `/memory/profile/revisions/{version}/restore` | U | `version` hiện tại | Hồ sơ sau khôi phục (Hoàn tác của `memory_changed`) | V1.0 |
 | GET, POST | `/memory/notes` | U | `q`, `tag`, `cursor` / `title`, `body`, `tags` | `items: Note[]` / `Note` | V1.0 |
 | GET, PATCH, DELETE | `/memory/notes/{id}` | U | | `Note` / `null` (R) | V1.0 |
-| GET | `/chat/today` | U | | `{conversation, messages (50 tin), next_cursor, pending_actions}`; từ QĐ-51 là phiên hoạt động gần nhất (chưa có thì tạo), giữ cho bản app cũ | V1.0 |
-| GET | `/chat/conversations` | U | `q`, `cursor`, `limit` | `{items: Conversation[], next_cursor}`; ghim trước, rồi `last_message_at` giảm dần; `q` tìm theo tiêu đề (không dấu) và nội dung tin hiện (tìm toàn văn); con trỏ `<0|1>|<giờ>|<id>` | QĐ-51 |
+| GET | `/chat/today` | U | | `{conversation, messages (50 tin), next_cursor, pending_actions}`; từ QĐ-51 là phiên hoạt động gần nhất, giữ cho bản app cũ; chưa có phiên nào thì `conversation: null`, không tạo phiên rỗng (phản hồi 1.1.1) | V1.0 |
+| GET | `/chat/conversations` | U | `q`, `cursor`, `limit` | `{items: Conversation[], next_cursor}`; ghim trước, rồi `last_message_at` giảm dần; không trả phiên chưa có tin nào, trừ phiên tạo bằng `POST` trong 10 phút gần nhất; `q` tìm theo tiêu đề (không dấu) và nội dung tin hiện (tìm toàn văn); con trỏ `<0|1>|<giờ>|<id>` | QĐ-51 |
 | GET | `/chat/conversations/{id}` | U | | cùng dạng `/chat/today` cho một phiên: `{conversation, messages (50 tin), next_cursor, pending_actions}`; không có thì 404 | QĐ-51 |
-| POST | `/chat/conversations` | U | `title` (tùy chọn) | `Conversation` (201); phiên gần nhất còn trống, chưa tên thì dùng lại | QĐ-51 |
+| POST | `/chat/conversations` | U | `title` (tùy chọn) | `Conversation` (201); phiên gần nhất còn trống, chưa tên và vừa tạo trong 10 phút thì dùng lại | QĐ-51 |
 | PATCH | `/chat/conversations/{id}` | U | `title`, `pinned` | `Conversation`; đổi tên thì `title_source = user` | QĐ-51 |
 | GET | `/chat/conversations/{id}/messages` | U | `cursor` | `items: Message[]` | V1.0 |
 | DELETE | `/chat/conversations/{id}` | U | | `null` (xóa phiên, không hoàn tác) | V1.0 |

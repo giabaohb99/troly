@@ -57,11 +57,15 @@ def list_conversations(
     after: tuple[bool, datetime, int] | None,
     limit: int,
     q: str | None = None,
+    empty_since: datetime | None = None,
 ) -> list[Conversation]:
     """Ghim trước, rồi tin mới nhất giảm dần. `after` là (pinned, last_message_at, id) của dòng cuối trang trước.
     `q` tìm theo tiêu đề (không dấu) và nội dung tin hiện (tìm toàn văn `troly_vn`)."""
     at = func.coalesce(Conversation.last_message_at, Conversation.started_at)
     stmt = select(Conversation).where(Conversation.user_id == user_id)
+    if empty_since is not None:
+        # Phiên chưa có tin nào chỉ hiện khi vừa tạo bằng nút Phiên mới (phản hồi 1.1.1).
+        stmt = stmt.where(or_(Conversation.message_count > 0, Conversation.created_at >= empty_since))
     if q:
         matches = (
             select(Message.conversation_id)

@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { Bot, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { AppMark } from '@/shared/components/app-mark'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { getErrorMessage } from '@/core/api/api-error'
 import { useLogin, useSession } from '@/modules/auth/hooks/use-session'
@@ -36,9 +37,7 @@ export function LoginPage() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-8 px-6 pt-[env(safe-area-inset-top)]">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          <Bot className="size-8" />
-        </div>
+        <AppMark />
         <h1 className="text-2xl font-bold">Trợ lý</h1>
         <p className="text-sm text-muted-foreground">Đăng nhập một lần, app nhớ tới 365 ngày.</p>
       </div>

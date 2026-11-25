@@ -179,7 +179,7 @@ Vòng chạy: chờ `troly_wake` hoặc `WORKER_POLL_SECONDS`; chạy job hàng 
 | `expire_pending_actions` | 5 phút | `pending` quá hạn thành `expired` | `modules/chat/jobs.py` | V1.0 |
 | `check_silent_devices` | mỗi giờ | Thiết bị `listener_connected` mà 24 giờ không có sự kiện: cảnh báo ở `/system/status` | `modules/device/jobs.py` | V1.2 |
 | `backup_database` | chủ nhật 02:00 | `pg_dump` lên `backups/weekly/`; giữ 5 bản cả bản `premigrate`, xóa bản không phải weekly trước, luôn còn 1 bản weekly; ghi `tab_job_run.detail` | `worker/jobs/backup.py` | V1.0 |
-| `cleanup_old_data` | 03:30 hằng ngày | Theo `11-co-so-du-lieu.md` mục 3.15, gồm cả đặt rỗng tọa độ Google quá 30 ngày ở `tab_place_cache` và `tab_trip_stop` (K19) | `worker/jobs/cleanup.py` | V1.0 |
+| `cleanup_old_data` | 03:30 hằng ngày | Theo `11-co-so-du-lieu.md` mục 3.15, gồm cả đặt rỗng tọa độ Google quá 30 ngày ở `tab_place_cache` và `tab_trip_stop` (K19); phiên chat không có tin nào quá 1 ngày (phản hồi 1.1.1) | `worker/jobs/cleanup.py` | V1.0 |
 | `disk_check` | 15 phút | Dưới 15% cảnh báo; dưới 8% tạm dừng `sync_gmail`, `extract_file_text` | `worker/jobs/disk.py` | V1.0 |
 | `recover_stuck_items` | 5 phút | Dòng kẹt ở `processing` quá 10 phút trả về `pending` | `worker/jobs/queue.py` | V1.0 |
 
