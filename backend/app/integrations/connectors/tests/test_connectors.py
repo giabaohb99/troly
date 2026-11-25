@@ -25,6 +25,21 @@ TOOLS = [
 ]
 
 
+def test_tools_without_hint_classified_by_name(db, user, world):
+    """ERP DEGO không ghi readOnlyHint: tên giống đọc thì là đọc và tự bật; trùng công cụ app thì tắt."""
+    cid = _oauth(db, user, world)
+    world.tools = TOOLS + [
+        {"name": "list_skills", "description": "Liệt kê skill"},
+        {"name": "search_chat_history", "description": "Tìm hội thoại cũ"},
+        {"name": "get_issue", "annotations": {"readOnlyHint": False}},
+    ]
+    got = {t["name"]: (t["write"], t["enabled"]) for t in service.list_tools(db, user.user_id, cid)}
+    assert got["list_skills"] == (False, True)
+    assert got["search_chat_history"] == (False, False)  # trùng công cụ của app, chat không dùng
+    assert got["get_issue"] == (True, False)  # máy chủ nói rõ là ghi
+    assert got["draft_leave_request"] == (True, False)
+
+
 class FakeWorld:
     def __init__(self):
         self.registered, self.revoked, self.codes, self.refresh = [], [], {}, {}
@@ -99,7 +114,7 @@ class FakeWorld:
             return httpx.Response(202)
         result = {"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "x"}}
         if msg["method"] == "tools/list":
-            result = {"tools": TOOLS}
+            result = {"tools": getattr(self, "tools", TOOLS)}
         if msg["method"] == "tools/call":
             self.called.append(msg["params"])
             result = {"content": [{"type": "text", "text": f"đã chạy {msg['params']['name']}"}],

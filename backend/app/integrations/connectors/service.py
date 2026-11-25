@@ -498,7 +498,7 @@ def _mark_reauth(session: Session, c: Connector, reason: str) -> None:
 
 
 def list_tools(session: Session, user_id: int, connector_id: int) -> list[dict]:
-    """GET /connectors/{id}/tools: `[{name, title, description, write, enabled}]`. Công cụ đọc luôn bật; công
+    """GET /connectors/{id}/tools: `[{name, title, description, write, enabled}]`. Công cụ đọc tự bật; công
     cụ ghi chỉ bật khi người dùng chọn (write_tools_enabled)."""
     c = _get(session, user_id, connector_id)
     token = get_access_token(session, user_id, connector_id)
@@ -511,9 +511,14 @@ def list_tools(session: Session, user_id: int, connector_id: int) -> list[dict]:
             session, user_id, connector_id, force_refresh=True
         )  # token có thể vừa bị thu
         tools = mcp.list_tools(c.url, token)
+    from app.ai.mcp import is_read_tool, looks_write
+
     enabled = set(c.write_tools_enabled or [])
     for t in tools:
-        t["enabled"] = (not t["write"]) or t["name"] in enabled
+        # Cùng luật với lượt chat (ai.mcp): máy chủ không ghi readOnlyHint thì đoán theo tên. Công cụ đọc tự
+        # bật, trừ cái trùng công cụ của app; công cụ ghi chỉ bật khi người dùng chọn.
+        t["write"] = t.get("read_only_hint") is False or looks_write(t["name"] or "")
+        t["enabled"] = t["name"] in enabled if t["write"] else is_read_tool(t)
     c.tools_count = len(tools)
     session.flush()
     return tools

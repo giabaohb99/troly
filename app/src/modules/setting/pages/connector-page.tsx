@@ -26,7 +26,8 @@ export function ConnectorPage() {
   const connectors = useConnectors()
   const item = connectors.data?.find((c) => c.id === id) ?? null
   const connected = item?.status === 'connected'
-  const tools = useQuery({ queryKey: ['connectors', id, 'tools'], queryFn: () => listConnectorTools(id), enabled: connected, select: (d) => d.items })
+  const toolsKey = ['connectors', id, 'tools']
+  const tools = useQuery({ queryKey: toolsKey, queryFn: () => listConnectorTools(id), enabled: connected, select: (d) => d.items })
   const connect = useConnectFlow()
   const [keyOpen, setKeyOpen] = useState(askKey)
   const [confirmTool, setConfirmTool] = useState<ConnectorTool | null>(null)
@@ -38,12 +39,23 @@ export function ConnectorPage() {
       const current = tools.data?.filter((t) => t.write && t.enabled).map((t) => t.name) ?? item?.write_tools_enabled ?? []
       return updateConnector(id, { write_tools_enabled: toggledWriteTools(current, tool.name, on) })
     },
+    // Đổi công tắc ngay trên danh sách đang có; hỏi lại tools/list của hệ thống kia chậm vài giây nên không chờ.
+    onMutate: async ({ tool, on }) => {
+      await queryClient.cancelQueries({ queryKey: toolsKey })
+      const previous = queryClient.getQueryData<{ items: ConnectorTool[] }>(toolsKey)
+      if (previous) {
+        queryClient.setQueryData(toolsKey, { ...previous, items: previous.items.map((t) => (t.name === tool.name ? { ...t, enabled: on } : t)) })
+      }
+      return { previous }
+    },
     onSuccess: (_c, { tool, on }) => {
       refresh()
-      void queryClient.invalidateQueries({ queryKey: ['connectors', id, 'tools'] })
       toast.success(`${on ? 'Đã bật' : 'Đã tắt'} ${tool.title || tool.name}`)
     },
-    onError: (error) => toast.error(getErrorMessage(error)),
+    onError: (error, _v, context) => {
+      if (context?.previous) queryClient.setQueryData(toolsKey, context.previous)
+      toast.error(getErrorMessage(error))
+    },
   })
   const remove = useMutation({
     mutationFn: () => removeConnector(id),
@@ -111,12 +123,14 @@ export function ConnectorPage() {
                       // Công cụ ghi: mỗi cái một công tắc, mặc định tắt; bật có cảnh báo.
                       <Switch
                         checked={t.enabled}
-                        disabled={toggleWrite.isPending}
                         aria-label={`Cho dùng ${t.title || t.name}`}
                         onCheckedChange={(on) => (on ? setConfirmTool(t) : toggleWrite.mutate({ tool: t, on: false }))}
                       />
+                    ) : t.enabled ? (
+                      <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">đọc, đã bật</span>
                     ) : (
-                      <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">đọc</span>
+                      // Trùng công cụ sẵn có của app (tìm hội thoại, xuất tệp) nên trợ lý không dùng bản của hệ thống kia.
+                      <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">app đã có</span>
                     )}
                   </li>
                 ))}
