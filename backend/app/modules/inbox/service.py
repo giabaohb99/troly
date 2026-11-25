@@ -200,6 +200,10 @@ def ingest_notification(
             continue  # QĐ-52: tin đã về qua zalo-bridge, thông báo máy chỉ là dự phòng
         sender_key = f"{app}:{fold(sender) or '?'}"
         key = conversation_key(app, sender_key, conv_title, is_group)
+        if app == "zalo":
+            from app.modules.inbox import zalo
+
+            key = zalo.linked_key(session, user.user_id, sender_key, conv_title, is_group) or key
         at, exact = _message_time(item.get("at"), posted_at)
         stamp = f"{at:%Y%m%d%H%M%S}" if exact else f"{posted_at:%Y%m%d%H%M}"
         folded_sender, folded_body = fold(sender), fold(body)

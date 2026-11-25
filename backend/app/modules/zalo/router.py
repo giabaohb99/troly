@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.context import UserContext
 from app.core.db import get_session
-from app.core.errors import ok
+from app.core.errors import NotFoundError, ok
 from app.modules.zalo import service
 
 router = APIRouter()
@@ -55,6 +55,19 @@ def logout(user: UserContext = Depends(get_current_user), session: Session = Dep
 @router.get("/zalo/contacts")
 def get_contacts(user: UserContext = Depends(get_current_user)) -> dict:
     return ok({"items": service.contacts(user)})
+
+
+@router.post("/zalo/conversations/{conversation_key}/link")
+def link_conversation(
+    conversation_key: str,
+    user: UserContext = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Cuộc Zalo đọc từ thông báo: nối với người hoặc nhóm cùng tên trong danh bạ Zalo để nhắn được."""
+    key = service.link_thread(session, user, conversation_key)
+    if key is None:
+        raise NotFoundError("Không tìm thấy đúng một người hoặc nhóm cùng tên trong danh bạ Zalo.")
+    return ok({"conversation_key": key})
 
 
 @router.post("/zalo/conversations/{conversation_key}/sync")

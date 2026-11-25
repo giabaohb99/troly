@@ -172,6 +172,55 @@ def contacts(user: UserContext) -> list[dict]:
     ]
 
 
+def _fold_name(name: str | None) -> str:
+    from app.modules.inbox.service import fold
+
+    return fold(name or "").strip()
+
+
+def _match_contact(items: list[dict], title: str | None, is_group: bool | None) -> dict | None:
+    want = _fold_name(title)
+    if not want:
+        return None
+    hits = [
+        c
+        for c in items
+        if _fold_name(c.get("name")) == want
+        and (is_group is None or (c.get("thread_type") == "group") == is_group)
+    ]
+    return hits[0] if len(hits) == 1 else None
+
+
+def link_thread(session: Session, user: UserContext, conversation_key: str, items: list[dict] | None = None) -> str | None:
+    """Cuộc Zalo đọc từ thông báo: tìm đúng một người hoặc nhóm cùng tên trong danh bạ Zalo rồi kéo cả cuộc sang khóa
+    thật (nhắn được, tin bridge về sau gộp vào). Đã là khóa thật thì trả lại; không khớp hoặc trùng tên thì None."""
+    if inbox_zalo.parse_key(conversation_key):
+        return conversation_key
+    threads = {k: (t, g) for k, t, g in inbox_zalo.notification_threads(session, user.user_id)}
+    if conversation_key not in threads:
+        return None
+    title, is_group = threads[conversation_key]
+    hit = _match_contact(items if items is not None else contacts(user), title, is_group)
+    if hit is None:
+        return None
+    new_key = inbox_zalo.conversation_key(str(hit["thread_id"]), hit.get("thread_type") or "user")
+    inbox_zalo.move_conversation(session, user.user_id, conversation_key, new_key, hit.get("name") or title)
+    session.flush()
+    return new_key
+
+
+def link_all_threads(session: Session, user: UserContext) -> dict:
+    """Nối mọi cuộc Zalo từ thông báo với danh bạ (một lần gọi danh bạ)."""
+    items = contacts(user)
+    linked = unmatched = 0
+    for key, _title, _group in inbox_zalo.notification_threads(session, user.user_id):
+        if link_thread(session, user, key, items):
+            linked += 1
+        else:
+            unmatched += 1
+    return {"linked": linked, "unmatched": unmatched}
+
+
 def sync_history(session: Session, user: UserContext, conversation_key: str) -> dict:
     """Lấy thêm tin cũ: nhóm thì lấy thẳng 50 tin từ Zalo và lưu; một-một Zalo không có lịch sử nên xin Zalo
     gửi lại tin cũ, tin về sau qua đường sự kiện."""

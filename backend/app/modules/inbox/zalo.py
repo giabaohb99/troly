@@ -9,7 +9,7 @@ chuyện cũ (theo khóa thông báo) sang khóa mới; tin thông báo về sau
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -95,6 +95,46 @@ def _find_notification_twin(session: Session, user_id: int, body: str, at: datet
         .order_by(InboxMessage.id.desc())
         .limit(1)
     )
+
+
+def linked_key(session: Session, user_id: int, sender_key: str, conv_title: str | None, is_group: bool) -> str | None:
+    """Khóa Zalo thật của cuộc đọc từ thông báo đã được nối (tin thông báo cũ cùng người gửi, cùng tên nhóm đã nằm
+    dưới khóa `zalo:u:`/`zalo:g:`), để tin thông báo về sau vào đúng cuộc nhắn được."""
+    stmt = select(InboxMessage.conversation_key).where(
+        InboxMessage.user_id == user_id,
+        InboxMessage.app == APP,
+        InboxMessage.source == "notification",
+        InboxMessage.conversation_key.like("zalo:g:%" if is_group else "zalo:u:%"),
+    )
+    if is_group:
+        if not conv_title:
+            return None
+        stmt = stmt.where(InboxMessage.conversation_title == conv_title)
+    else:
+        stmt = stmt.where(InboxMessage.sender_key == sender_key)
+    return session.scalar(stmt.order_by(InboxMessage.posted_at.desc()).limit(1))
+
+
+def move_conversation(session: Session, user_id: int, old_key: str, new_key: str, title: str | None) -> None:
+    _move_conversation(session, user_id, old_key, new_key, title)
+
+
+def notification_threads(session: Session, user_id: int) -> list[tuple[str, str | None, bool]]:
+    """(khóa, tên cuộc, nhóm?) của các cuộc Zalo chỉ có từ thông báo (chưa nối khóa thật)."""
+    rows = session.execute(
+        select(
+            InboxMessage.conversation_key,
+            func.max(InboxMessage.conversation_title),
+            func.bool_or(InboxMessage.is_group),
+        )
+        .where(
+            InboxMessage.user_id == user_id,
+            InboxMessage.app == APP,
+            InboxMessage.conversation_key.not_like("zalo:%"),
+        )
+        .group_by(InboxMessage.conversation_key)
+    )
+    return [(r[0], r[1], bool(r[2])) for r in rows]
 
 
 def _move_conversation(session: Session, user_id: int, old_key: str, new_key: str, title: str | None) -> None:

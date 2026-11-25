@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, Search, UserRound, Users } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { listZaloContacts } from '@/modules/inbox/api/zalo-api'
 import { needsZaloLogin, zaloSendErrorText } from '@/modules/inbox/utils/zalo'
 import { SkeletonList } from '@/shared/components/skeleton-list'
@@ -13,7 +13,9 @@ const fold = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').r
 // Tin Zalo mới (QĐ-52): chọn người hoặc nhóm trong danh bạ Zalo rồi mở khung chat.
 export function ZaloNewPage() {
   const navigate = useNavigate()
-  const [q, setQ] = useState('')
+  // ?q=: mở từ cuộc đọc từ thông báo chưa khớp được tên, gõ sẵn tên để chọn.
+  const [params] = useSearchParams()
+  const [q, setQ] = useState(() => params.get('q') ?? '')
   const contacts = useQuery({ queryKey: ['zalo', 'contacts'], queryFn: listZaloContacts, staleTime: 5 * 60_000, retry: 0 })
   const items = useMemo(() => (contacts.data?.items ?? []).filter((c) => !q.trim() || fold(c.name).includes(fold(q.trim()))), [contacts.data, q])
 

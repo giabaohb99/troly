@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { Bot, Check, ChevronLeft, ExternalLink, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Bot, Check, ChevronLeft, ExternalLink, Loader2, MessageSquare } from 'lucide-react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -7,6 +7,8 @@ import { getErrorMessage } from '@/core/api/api-error'
 import { isNative } from '@/core/config'
 import { Notify } from '@/core/native/notify'
 import { listMessages, markConversation } from '@/modules/inbox/api/inbox-api'
+import { linkZaloConversation } from '@/modules/inbox/api/zalo-api'
+import { useFeatures } from '@/shared/hooks/use-features'
 import { AppTag } from '@/modules/inbox/components/app-tag'
 import { queryKeys } from '@/shared/constants/query-keys'
 import { ErrorState } from '@/shared/components/error-state'
@@ -41,6 +43,22 @@ export function ConversationPage() {
     markedRef.current = true
     void markConversation(key, 'seen').then(() => queryClient.invalidateQueries({ queryKey: queryKeys.inbox.all }))
   }, [items, key, queryClient])
+
+  // Zalo qua zca-js (QĐ-52): cuộc đọc từ thông báo tự nối với danh bạ Zalo rồi mở khung chat nhắn được. Không khớp
+  // đúng một người, nhóm cùng tên thì để nút chọn trong danh bạ.
+  const features = useFeatures()
+  const zaloBridge = first?.app === 'zalo' && !!features.zalo_bridge
+  const [linking, setLinking] = useState<'idle' | 'trying' | 'failed'>('idle')
+  useEffect(() => {
+    if (!zaloBridge || linking !== 'idle') return
+    setLinking('trying')
+    linkZaloConversation(key)
+      .then(({ conversation_key }) => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.inbox.all })
+        navigate(`/zalo/${encodeURIComponent(conversation_key)}`, { replace: true })
+      })
+      .catch(() => setLinking('failed'))
+  }, [zaloBridge, linking, key, navigate, queryClient])
 
   // Zalo không gửi thay (QĐ-43): mở đúng cuộc chat qua thông báo gốc nếu còn, không thì mở app Zalo.
   const canOpenSource = first?.app === 'zalo'
@@ -111,13 +129,19 @@ export function ConversationPage() {
 
       {items.length > 0 && (
         <div className="flex flex-col gap-2">
+          {zaloBridge && (
+            <Button disabled={linking === 'trying'} onClick={() => navigate(`/zalo/moi?q=${encodeURIComponent(title)}`)}>
+              {linking === 'trying' ? <Loader2 className="size-4 animate-spin" /> : <MessageSquare className="size-4" />}
+              {linking === 'trying' ? 'Đang tìm trong danh bạ Zalo' : 'Nhắn Zalo'}
+            </Button>
+          )}
           {canOpenSource && (
             <Button variant="outline" onClick={() => void openSource()}>
               <ExternalLink className="size-4" />
               Mở trong Zalo
             </Button>
           )}
-          <Button onClick={() => void markDone()}>
+          <Button variant={zaloBridge ? 'outline' : 'default'} onClick={() => void markDone()}>
             <Check className="size-4" />
             Đã xử lý
           </Button>

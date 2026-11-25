@@ -27,6 +27,7 @@ class FakeBridge:
         self.media = {"https://f.zdn.vn/a.jpg": (b"\xff\xd8anh", "image/jpeg", "a.jpg")}
         self.group_items: list[dict] = []
         self.next_msg = 9000
+        self.contacts = [{"thread_id": "g1", "thread_type": "group", "name": "Nhà mình", "avatar": None}]
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -45,9 +46,7 @@ class FakeBridge:
             self.state = "logged_out"
             return self.ok({"state": "logged_out"})
         if path == "/conversations":
-            return self.ok(
-                {"items": [{"thread_id": "g1", "thread_type": "group", "name": "Nhà mình", "avatar": None}]}
-            )
+            return self.ok({"items": self.contacts})
         if path == "/conversations/g1/messages":
             return self.ok({"items": self.group_items})
         if path == "/sync/old-messages":
@@ -276,3 +275,32 @@ def test_group_history_sync_and_user_request(auth_client, db, user, fake):
     assert (
         auth_client.post("/api/v1/zalo/conversations/zalo:u:u-lan/sync").json()["data"]["mode"] == "requested"
     )
+
+
+def test_notification_threads_linked_to_zalo_contacts_by_name(db, user, fake):
+    """Cuộc Zalo đọc từ thông báo không gửi được (không có mã cuộc). Khớp tên với danh bạ Zalo: trùng đúng một người
+    hoặc nhóm thì kéo cả cuộc sang khóa Zalo thật để nhắn được; tin thông báo về sau cũng vào khóa đó."""
+    from app.core.context import UserContext
+
+    u = UserContext(user_id=user.user_id, timezone=user.timezone)
+    zalo = {"parser": "zalo", "app_package": "com.zing.zalo"}
+    fake.contacts += [
+        {"thread_id": "u-lan", "thread_type": "user", "name": "Lan", "avatar": None},
+        {"thread_id": "u-minh1", "thread_type": "user", "name": "Minh", "avatar": None},
+        {"thread_id": "u-minh2", "thread_type": "user", "name": "Minh", "avatar": None},
+    ]
+    for name in ("Lan", "Minh", "Hùng"):
+        inbox_service.ingest_notification(db, u, **zalo, payload={"title": name, "text": f"Chào {name}"},
+                                          posted_at=T0)  # fmt: skip
+    keys = {r.sender: r.conversation_key for r in db.query(InboxMessage).filter_by(user_id=user.user_id)}
+    assert zalo_service.link_thread(db, u, keys["Lan"]) == "zalo:u:u-lan"
+    assert zalo_service.link_thread(db, u, keys["Minh"]) is None  # hai người cùng tên: không đoán
+    assert zalo_service.link_thread(db, u, keys["Hùng"]) is None  # không có trong danh bạ
+    assert zalo_service.link_thread(db, u, "zalo:u:u-lan") == "zalo:u:u-lan"  # đã là khóa thật
+    lan = db.query(InboxMessage).filter_by(sender="Lan").one()
+    assert lan.conversation_key == "zalo:u:u-lan"
+    inbox_service.ingest_notification(db, u, **zalo, payload={"title": "Lan", "text": "Tối nay rảnh không"},
+                                      posted_at=T0 + timedelta(hours=1))  # fmt: skip
+    later = db.query(InboxMessage).filter_by(text="Tối nay rảnh không").one()
+    assert later.conversation_key == "zalo:u:u-lan"
+    assert zalo_service.link_all_threads(db, u) == {"linked": 0, "unmatched": 2}

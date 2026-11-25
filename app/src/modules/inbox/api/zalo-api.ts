@@ -18,6 +18,8 @@ export interface SendZaloInput {
 }
 
 export const listZaloContacts = () => apiGet<{ items: ZaloContact[] }>('/zalo/contacts')
+// Cuộc Zalo đọc từ thông báo: nối với người hoặc nhóm cùng tên trong danh bạ Zalo để nhắn được; không khớp thì 404.
+export const linkZaloConversation = (key: string) => apiPost<{ conversation_key: string }>(`/zalo/conversations/${encodeURIComponent(key)}/link`)
 export const syncZaloConversation = (key: string) => apiPost<{ mode: 'group_history' | 'requested'; saved?: number }>(`/zalo/conversations/${encodeURIComponent(key)}/sync`)
 export const sendZaloMessage = (input: SendZaloInput) => apiPost<{ msg_ids: string[]; client_ref: string | null; conversation_key: string }>('/zalo/messages', input)
 
