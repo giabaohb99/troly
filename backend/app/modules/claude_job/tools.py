@@ -19,7 +19,9 @@ class GiveJobInput(BaseModel):
 
 class AnswerJobInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    job_id: int = Field(description="Số việc đang chờ câu trả lời")
+    job_id: int | None = Field(
+        description="job_id trong ghi chú hệ thống nếu biết; null thì lấy việc đang chờ của đoạn chat này"
+    )
 
 
 class ListJobsInput(BaseModel):
@@ -31,7 +33,10 @@ def run_give(ctx: ToolContext, data: GiveJobInput) -> ToolOutput:
     return ToolOutput(
         result={
             "viec": job,
-            "ghi_chu": "Đã xếp việc cho Claude trên VPS. Nói ngắn là đã giao, xong sẽ báo vào đoạn chat này.",
+            "ghi_chu": (
+                "Đã xếp việc cho Claude trên VPS. Nói ngắn là đã giao, xong sẽ báo vào đoạn chat này; không nhắc "
+                "số việc."
+            ),
         }
     )
 
@@ -62,8 +67,9 @@ TOOLS = [
         name="tra_loi_claude",
         label="Đang chuyển câu trả lời cho Claude",
         description=(
-            "Người dùng vừa trả lời câu hỏi mà Claude trên VPS đặt ra (tin báo có dòng Em cần đại ca trả lời của "
-            "Việc #số). Câu trả lời gửi đi là nguyên văn câu người dùng vừa gõ."
+            "Người dùng vừa trả lời câu hỏi mà Claude trên VPS đặt ra (tin báo Claude trên VPS có dòng Em cần đại ca "
+            "trả lời). Câu trả lời gửi đi là nguyên văn câu người dùng vừa gõ. Nói với người dùng thì không nhắc số "
+            "việc."
         ),
         input_model=AnswerJobInput,
         run=run_answer,

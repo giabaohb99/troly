@@ -71,7 +71,8 @@ def test_runner_flow_question_answer_resume_and_report(client, db, user, runner_
     ).json()["data"]["job"]  # fmt: skip
     assert asked["status"] == "waiting" and asked["question"] == "Xóa ảnh docker cũ của Gamebar luôn không?"
     report = db.query(Message).filter_by(conversation_id=conv.id, role="assistant").order_by(Message.id.desc()).first()
-    assert report.notify_done and "Em cần đại ca trả lời" in report.text and "Việc #" in report.text
+    assert report.notify_done and "Em cần đại ca trả lời" in report.text
+    assert "#" not in report.text and report.text.startswith("**Claude trên VPS**")  # không đánh số việc
     hidden = db.query(Message).filter_by(turn_id=report.turn_id, role="user").one()
     assert hidden.hidden  # giữ luân phiên user/assistant cho lịch sử chat
 
@@ -79,7 +80,7 @@ def test_runner_flow_question_answer_resume_and_report(client, db, user, runner_
                    content=[{"type": "text", "text": "xóa luôn em"}], text="xóa luôn em"))  # fmt: skip
     db.flush()
     spec = _tool("tra_loi_claude")
-    spec.run(_ctx(db, user, conv), spec.input_model(job_id=job["id"]))
+    spec.run(_ctx(db, user, conv), spec.input_model(job_id=None))  # tự tìm việc đang chờ của đoạn chat
     db.commit()
     again = client.post("/api/v1/internal/claude/jobs/claim", headers=runner_token).json()["data"]["job"]
     assert again["resume_session_id"] == "s-1" and "xóa luôn em" in again["prompt"]

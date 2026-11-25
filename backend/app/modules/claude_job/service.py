@@ -94,9 +94,22 @@ def _get(session: Session, user_id: int, job_id: int) -> ClaudeJob:
     return job
 
 
-def answer_job(session: Session, user_id: int, job_id: int, conversation_id: int | None) -> dict:
-    """Người dùng trả lời câu hỏi của Claude: câu trả lời là nguyên văn câu vừa gõ; việc xếp hàng chạy tiếp."""
-    job = _get(session, user_id, job_id)
+def _waiting_job(session: Session, user_id: int, conversation_id: int | None) -> ClaudeJob:
+    """Việc đang chờ câu trả lời: ưu tiên việc của đoạn chat này, không có thì việc chờ gần nhất."""
+    base = select(ClaudeJob).where(ClaudeJob.user_id == user_id, ClaudeJob.status == "waiting")
+    job = None
+    if conversation_id:
+        job = session.scalar(base.where(ClaudeJob.conversation_id == conversation_id).order_by(ClaudeJob.id.desc()))
+    job = job or session.scalar(base.order_by(ClaudeJob.id.desc()))
+    if job is None:
+        raise ValidationError("Claude không có câu hỏi nào đang chờ đại ca trả lời.")
+    return job
+
+
+def answer_job(session: Session, user_id: int, job_id: int | None, conversation_id: int | None) -> dict:
+    """Người dùng trả lời câu hỏi của Claude: câu trả lời là nguyên văn câu vừa gõ; việc xếp hàng chạy tiếp.
+    Không nêu việc nào thì lấy việc đang chờ của đoạn chat này."""
+    job = _get(session, user_id, job_id) if job_id else _waiting_job(session, user_id, conversation_id)
     if job.status != "waiting":
         raise ValidationError("Việc này không chờ câu trả lời.")
     job.answer_text = _user_words(session, user_id, conversation_id or job.conversation_id)
@@ -187,15 +200,20 @@ def _finish(
     job.finished_at = clock.now() if status in ("done", "failed") else None
     if job.conversation_id is None:
         return
-    head = f"Việc #{job.id} (Claude trên VPS)"
+    # Người dùng không nhớ số việc: tin hiện không đánh số; số chỉ nằm ở ghi chú ẩn cho trợ lý.
     if status == "waiting":
         body = (result + "\n\n" if result else "") + f"**Em cần đại ca trả lời:** {question}"
     elif status == "done":
         body = result or "Đã xong."
     else:
         body = f"Việc chưa xong: {job.error_text or 'lỗi không rõ'}"
+    request = " ".join(job.request_text.split())[:120]
     chat_service.post_report(
-        session, job.user_id, job.conversation_id, f"(Hệ thống) Báo cáo của {head}.", f"**{head}**\n\n{body}"
+        session,
+        job.user_id,
+        job.conversation_id,
+        f"(Hệ thống) Claude trên VPS báo về việc job_id={job.id}: {request}",
+        f"**Claude trên VPS**\n\n{body}",
     )
 
 
