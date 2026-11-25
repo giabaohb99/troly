@@ -1052,6 +1052,40 @@ def list_actions(session: Session, user: UserContext, status: str) -> list[dict]
     return [serialize_pending(a) for a in repo.list_pending_actions(session, user.user_id, statuses)]
 
 
+def latest_user_text(session: Session, user_id: int, conversation_id: int) -> str | None:
+    """Câu người dùng gõ gần nhất trong phiên (tin hiện, vai user). Dùng khi lệnh phải lấy nguyên văn lời người dùng."""
+    return session.scalar(
+        select(Message.text)
+        .where(
+            Message.user_id == user_id,
+            Message.conversation_id == conversation_id,
+            Message.role == "user",
+            Message.hidden.is_(False),
+        )
+        .order_by(Message.id.desc())
+        .limit(1)
+    )
+
+
+def post_report(session: Session, user_id: int, conversation_id: int, note: str, text: str) -> int:
+    """Báo cáo từ việc chạy nền (Claude trên VPS, QĐ-60) vào phiên: một tin user ẩn ghi nguồn (giữ luân phiên
+    user/assistant cho lịch sử) rồi tin trả lời hiện, bật notify_done để máy báo thông báo. Trả id tin trả lời."""
+    now = clock.now()
+    turn_id = uuid.uuid4()
+    repo.add_message(
+        session,
+        Message(user_id=user_id, conversation_id=conversation_id, turn_id=turn_id, role="user",
+                content=[{"type": "text", "text": note}], text=note, hidden=True),
+    )  # fmt: skip
+    answer = repo.add_message(
+        session,
+        Message(user_id=user_id, conversation_id=conversation_id, turn_id=turn_id, role="assistant",
+                content=[{"type": "text", "text": text}], text=text, model="Claude Code trên VPS", notify_done=True),
+    )  # fmt: skip
+    repo.touch_conversation(session, user_id, conversation_id, now, visible=True)
+    return answer.id
+
+
 def _system_note(session: Session, action: PendingAction, text: str) -> None:
     if action.conversation_id is None:
         return

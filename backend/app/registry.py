@@ -17,6 +17,7 @@ ENABLED_MODULES = [
     "booking",
     "gym",
     "zalo",
+    "claude_job",
     "search",
     "report",
     "notice",
@@ -31,6 +32,7 @@ FEATURE_FLAGS = {
     "gym": "feature_gym",
     "connectors": "feature_connectors",
     "zalo": "feature_zalo_bridge",
+    "claude_job": "feature_claude_worker",
 }
 
 
@@ -47,7 +49,12 @@ def features() -> dict[str, bool]:
     from app.core.config import get_settings
 
     s = get_settings()
-    return {"gym": s.feature_gym, "connectors": s.feature_connectors, "zalo_bridge": s.feature_zalo_bridge}
+    return {
+        "gym": s.feature_gym,
+        "connectors": s.feature_connectors,
+        "zalo_bridge": s.feature_zalo_bridge,
+        "claude_worker": s.feature_claude_worker,
+    }
 
 
 def _import_if_exists(name: str):

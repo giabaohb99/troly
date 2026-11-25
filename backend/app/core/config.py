@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     feature_gym: bool = False
     feature_connectors: bool = False
     feature_zalo_bridge: bool = False
+    feature_claude_worker: bool = False
+    # Claude Code trên VPS (QĐ-60): khóa nội bộ cho trình chạy lấy việc, báo kết quả.
+    claude_worker_token: str = ""
     # zalo-bridge (QĐ-52, 50 mục 3.15): khóa nội bộ hai chiều; api gọi bridge và bridge đẩy sự kiện sang api.
     zalo_bridge_url: str = "http://zalo-bridge:3000"
     zalo_bridge_token: str = ""

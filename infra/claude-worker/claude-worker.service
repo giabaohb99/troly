@@ -1,0 +1,21 @@
+[Unit]
+Description=Claude Code worker cho app Tro ly (QD-60)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=claude
+Group=claude
+WorkingDirectory=/home/claude
+EnvironmentFile=/etc/claude-worker/env
+Environment=HOME=/home/claude
+ExecStart=/usr/bin/python3 /opt/claude-worker/runner.py
+Restart=always
+RestartSec=15
+# Giữ máy cho Gamebar, gym: Claude chạy ưu tiên thấp.
+Nice=10
+CPUQuota=150%
+MemoryMax=1536M
+
+[Install]
+WantedBy=multi-user.target
