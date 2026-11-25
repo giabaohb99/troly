@@ -138,11 +138,11 @@ def test_message_events_saved_deduped_and_bad_ones_rejected(client, auth_client,
     assert out["accepted"] == 6 and [r["event_id"] for r in out["rejected"]] == ["x", "msg:4"]
     rows = db.query(InboxMessage).filter_by(source="zalo").order_by(InboxMessage.posted_at).all()
     assert [(r.text, r.is_self, r.status, r.conversation_key) for r in rows] == [
-        ("Mai đi cafe không", False, "new", "zalo:u:u-lan"),
+        ("Mai đi cafe không", False, "seen", "zalo:u:u-lan"),  # mình đã trả lời: coi như đã đọc
         ("Ok 8h nhé", True, "seen", "zalo:u:u-lan"),
     ]
     [conv] = auth_client.get("/api/v1/inbox/conversations", params={"app": "zalo"}).json()["data"]["items"]
-    assert (conv["title"], conv["unread_count"]) == ("Lan", 1)
+    assert (conv["title"], conv["unread_count"]) == ("Lan", 0)
     items = auth_client.get("/api/v1/inbox/conversations/zalo:u:u-lan/messages").json()["data"]["items"]
     assert {m["text"]: (m["is_self"], m["sender"]) for m in items} == {
         "Ok 8h nhé": (True, None),
@@ -304,3 +304,27 @@ def test_notification_threads_linked_to_zalo_contacts_by_name(db, user, fake):
     later = db.query(InboxMessage).filter_by(text="Tối nay rảnh không").one()
     assert later.conversation_key == "zalo:u:u-lan"
     assert zalo_service.link_all_threads(db, u) == {"linked": 0, "unmatched": 2}
+
+
+def test_reading_or_replying_elsewhere_marks_thread_seen(client, db, user, fake):
+    """Đọc trên Zalo PC, điện thoại: nhóm thì Zalo báo đã xem có mã của mình; một-một thì mình trả lời là đã đọc."""
+    from app.modules.zalo.models import ZaloAccount
+
+    assert post_events(client, [msg("1", "Tối nay rảnh không")]).status_code == 200
+    db.query(ZaloAccount).update({"zalo_uid": "u-me"})
+    db.commit()
+    assert db.query(InboxMessage).filter_by(external_id="1").one().status == "new"
+    post_events(client, [msg("2", "Rảnh nè", is_self=True, at=T0 + timedelta(minutes=1))])
+    db.expire_all()
+    assert db.query(InboxMessage).filter_by(external_id="1").one().status == "seen"
+
+    group = msg("3", "Mai họp 8h", thread="g1", kind="group", from_name="Tuấn", at=T0 + timedelta(minutes=2))
+    post_events(client, [group])
+    seen = {"event_id": "seen:g1:3:x", "kind": "seen", "ts": (T0 + timedelta(minutes=3)).isoformat(),
+            "thread_id": "g1", "thread_type": "group", "msg_ids": ["3"], "seen_uids": ["uid-Lan"]}  # fmt: skip
+    post_events(client, [seen])
+    db.expire_all()
+    assert db.query(InboxMessage).filter_by(external_id="3").one().status == "new"  # người khác xem: không đổi
+    post_events(client, [{**seen, "event_id": "seen:g1:3:me", "seen_uids": ["uid-Lan", "u-me"]}])
+    db.expire_all()
+    assert db.query(InboxMessage).filter_by(external_id="3").one().status == "seen"

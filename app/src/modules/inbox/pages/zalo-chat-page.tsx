@@ -19,6 +19,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { formatDayTitle, formatTime } from '@/shared/utils/format'
 import { cn } from '@/shared/utils/cn'
 
+// Màu riêng của Zalo (khác màn Trợ lý): nền khung chat xám, tin người khác nền trắng nổi lên, tin của mình xanh nhạt
+// kiểu Zalo; trích dẫn nhạt hơn nội dung.
+const SELF_BUBBLE = 'bg-[color-mix(in_srgb,var(--app-2)_18%,var(--card))] text-foreground'
+const OTHER_BUBBLE = 'bg-card text-foreground'
+
 // Một bong bóng tin Zalo: tin người khác bên trái (nhóm có tên người gửi), tin của mình bên phải; trích dẫn chỉ hiển
 // thị; tin thu hồi in nghiêng; link, số, email bấm được.
 function Bubble({ m, group, onEmail }: { m: InboxMessage; group: boolean; onEmail: (email: string) => void }) {
@@ -29,15 +34,15 @@ function Bubble({ m, group, onEmail }: { m: InboxMessage; group: boolean; onEmai
       {group && !self && m.sender && <span className="px-2 text-xs font-medium text-muted-foreground">{m.sender}</span>}
       <div
         className={cn(
-          'flex max-w-[82%] flex-col gap-1.5 rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap',
-          self ? 'rounded-tr-md bg-primary text-primary-foreground' : 'rounded-tl-md border bg-card',
+          'flex max-w-[82%] flex-col gap-1.5 rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap shadow-sm',
+          self ? `rounded-tr-md ${SELF_BUBBLE}` : `rounded-tl-md ${OTHER_BUBBLE}`,
         )}
       >
         {m.quote && !recalled && (
-          <span className={cn('block border-l-2 pl-2 text-xs opacity-80', self ? 'border-primary-foreground/60' : 'border-primary/60')}>{m.quote.text || 'Tin được trích dẫn'}</span>
+          <span className="line-clamp-3 block rounded-md border-l-2 border-app-2/70 bg-foreground/5 px-2 py-1 text-xs text-muted-foreground">{m.quote.text || 'Tin được trích dẫn'}</span>
         )}
         {recalled ? (
-          <span className="italic opacity-80">(Tin đã thu hồi)</span>
+          <span className="text-muted-foreground italic">(Tin đã thu hồi)</span>
         ) : (
           <>
             {m.media?.map((media, i) => <ZaloMediaView key={`${m.id}-${i}`} media={media} />)}
@@ -73,8 +78,8 @@ export function ZaloChatPage() {
     queryFn: ({ pageParam }) => listMessages(key, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
-    // Đang chờ bridge báo lại tin vừa gửi: hỏi 3 giây; bình thường 15 giây để thấy tin mới.
-    refetchInterval: () => (pending.some((p) => p.status === 'sent') ? 3_000 : 15_000),
+    // Đang mở khung chat: hỏi tin mới mỗi 3 giây (tin về qua zca-js gần như tức thì); app chạy nền thì thôi hỏi.
+    refetchInterval: 3_000,
   })
   const items = useMemo(() => (messages.data?.pages ?? []).flatMap((p) => p.items), [messages.data])
   const groups = useMemo(() => groupByDay(items), [items])
@@ -96,12 +101,15 @@ export function ZaloChatPage() {
     void markConversation(key, 'seen').then(() => queryClient.invalidateQueries({ queryKey: queryKeys.inbox.all }))
   }, [items, key, queryClient])
 
-  // Đứng ở tin cuối khi mở và khi có tin mới, tin tạm.
-  const lastId = items[items.length - 1]?.id
+  // Đứng ở tin cuối khi mở và khi có tin mới, tin tạm. Trang máy chủ trả tin mới trước nên lấy id lớn nhất, không lấy
+  // phần tử cuối. Đang kéo lên đọc tin cũ (cách đáy xa) thì không giật xuống, trừ khi chính mình vừa gửi.
+  const newestId = items.reduce((max, m) => Math.max(max, m.id), 0)
+  const nearBottomRef = useRef(true)
+  const pendingCount = pending.length
   useLayoutEffect(() => {
     const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [lastId, pending.length])
+    if (el && (nearBottomRef.current || pendingCount > 0)) el.scrollTop = el.scrollHeight
+  }, [newestId, pendingCount])
 
   const sync = useMutation({
     mutationFn: () => syncZaloConversation(key),
@@ -174,7 +182,14 @@ export function ZaloChatPage() {
         </div>
       )}
 
-      <div ref={listRef} className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-3">
+      <div
+        ref={listRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+        }}
+        className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-muted px-4 pt-2 pb-3"
+      >
         {messages.hasNextPage && (
           <Button variant="ghost" size="sm" className="self-center" disabled={messages.isFetchingNextPage} onClick={() => void messages.fetchNextPage()}>
             {messages.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}
@@ -188,7 +203,7 @@ export function ZaloChatPage() {
         )}
         {groups.map((g) => (
           <div key={g.day} className="flex flex-col gap-3">
-            <p className="self-center rounded-full bg-muted px-3 py-0.5 text-[11px] text-muted-foreground">{formatDayTitle(g.day)}</p>
+            <p className="self-center rounded-full bg-background/80 px-3 py-0.5 text-[11px] text-muted-foreground">{formatDayTitle(g.day)}</p>
             {g.items.map((m) => (
               <Bubble key={m.id} m={m} group={group} onEmail={onEmail} />
             ))}
@@ -196,7 +211,7 @@ export function ZaloChatPage() {
         ))}
         {pending.map((p) => (
           <div key={p.clientRef} className="flex flex-col items-end gap-0.5">
-            <div className={cn('flex max-w-[82%] flex-col gap-1 rounded-2xl rounded-tr-md px-3.5 py-2 text-[15px] whitespace-pre-wrap', p.status === 'failed' ? 'border border-destructive/50 bg-destructive/5' : 'bg-primary/70 text-primary-foreground')}>
+            <div className={cn('flex max-w-[82%] flex-col gap-1 rounded-2xl rounded-tr-md px-3.5 py-2 text-[15px] whitespace-pre-wrap', p.status === 'failed' ? 'border border-destructive/50 bg-destructive/5' : `${SELF_BUBBLE} opacity-80`)}>
               {p.fileNames.map((n) => (
                 <PendingFileChip key={n} name={n} />
               ))}

@@ -214,7 +214,11 @@ def list_notices(
                     "kind": "important_message",
                     "title": who[:BODY_MAX],
                     "body": r.text[:BODY_MAX],
-                    "deep_link": f"troly://hop-tin/{r.conversation_key}",
+                    "deep_link": (
+                        f"troly://zalo/{r.conversation_key}"
+                        if r.conversation_key.startswith("zalo:")
+                        else f"troly://hop-tin/{r.conversation_key}"
+                    ),
                 }
             )
         if len(rows) == LIMIT:

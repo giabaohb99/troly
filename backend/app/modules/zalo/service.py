@@ -92,11 +92,23 @@ def _apply(session: Session, acc: ZaloAccount, ev: dict) -> None:
         if not ev.get("thread_id") or not ev.get("msg_id"):
             raise KeyError("thread_id")
         inbox_zalo.save_message(session, acc.user_id, ev)
+        if ev.get("is_self"):
+            # Mình vừa nhắn trong cuộc này (ở bất kỳ máy nào): các tin trước đó coi như đã đọc.
+            key = inbox_zalo.conversation_key(str(ev["thread_id"]), ev.get("thread_type") or "user")
+            inbox_zalo.mark_thread_seen(session, acc.user_id, key, _ts(ev))
+    elif kind == "seen":
+        # Nhóm: Zalo báo đã xem kèm mã của chính mình khi đọc ở máy khác.
+        if acc.zalo_uid and str(acc.zalo_uid) in [str(u) for u in ev.get("seen_uids") or []] and ev.get("thread_id"):
+            key = inbox_zalo.conversation_key(str(ev["thread_id"]), ev.get("thread_type") or "user")
+            inbox_zalo.mark_thread_seen(session, acc.user_id, key, _ts(ev))
     elif kind == "undo":
         inbox_zalo.recall_message(session, acc.user_id, str(ev.get("undo_msg_id") or ev["msg_id"]), _ts(ev))
     elif kind == "session":
         acc.state = str(ev["state"])
-    # seen, delivered, reaction: chưa lưu (app chưa hiện), nhận để bridge không gửi lại.
+        account = ev.get("account") or None
+        if account and account.get("uid"):
+            acc.zalo_uid, acc.display_name = account.get("uid"), account.get("name")
+    # delivered, reaction: chưa lưu (app chưa hiện), nhận để bridge không gửi lại.
 
 
 # ---------- Đăng nhập, trạng thái ----------

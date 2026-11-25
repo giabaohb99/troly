@@ -243,6 +243,21 @@ def save_message(session: Session, user_id: int, ev: dict) -> int | None:
     return new_id
 
 
+def mark_thread_seen(session: Session, user_id: int, key: str, upto: datetime) -> int:
+    """Đã đọc ở máy khác (Zalo PC, điện thoại): tin mới của cuộc này tới `upto` thành đã xem."""
+    result = session.execute(
+        update(InboxMessage)
+        .where(
+            InboxMessage.user_id == user_id,
+            InboxMessage.conversation_key == key,
+            InboxMessage.status == "new",
+            InboxMessage.posted_at <= upto,
+        )
+        .values(status="seen")
+    )
+    return result.rowcount or 0
+
+
 def recall_message(session: Session, user_id: int, msg_id: str, at: datetime) -> bool:
     """Sự kiện `undo`: tin bị thu hồi thì bỏ nội dung, giữ dòng (*Tin đã thu hồi*)."""
     m = session.scalar(
